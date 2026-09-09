@@ -35,3 +35,17 @@ CREATE TABLE IF NOT EXISTS item_tags (
   tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   PRIMARY KEY (item_id, tag_id)
 );
+
+CREATE TABLE IF NOT EXISTS categories (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  user_id TEXT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS item_categories (
+  item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  PRIMARY KEY (item_id, category_id)
+);

@@ -86,3 +86,14 @@
 @utility animate-rise {
   animation: rise 0.35s ease-out both;
 }
+
+/* Ekran dışı satır/kartların layout+paint maliyetini atla. */
+@utility cv-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
+}
+
+@utility cv-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}

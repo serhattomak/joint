@@ -28,9 +28,11 @@ document.getElementById("collect").addEventListener("click", async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || tab.id == null) throw new Error("no active tab");
+    // Site router: tab URL decides the adapter, single Collect button.
+    const script = (tab.url || "").includes("instagram.com") ? "scrape-instagram.js" : "scrape.js";
     const injected = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["scrape.js"]
+      files: [script]
     });
     const items = (injected && injected[0] && injected[0].result) || [];
     if (!items.length) {

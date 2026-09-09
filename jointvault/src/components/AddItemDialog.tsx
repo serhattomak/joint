@@ -11,11 +11,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { TagPicker } from '@/components/TagPicker';
 import {
   createItem,
+  getCategoriesForItem,
+  getOrCreateCategory,
   getOrCreateTag,
   getTagsForItem,
+  listCategories,
   listCollections,
+  listTags,
+  setCategoriesForItem,
   setTagsForItem,
   toggleFavorite,
   updateItem,
@@ -30,8 +36,6 @@ interface AddItemDialogProps {
   initial?: Item | null;
 }
 
-const parseTagInput = (raw: string): string[] => [...new Set(raw.split(',').map((t) => t.trim()).filter(Boolean))];
-
 export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: AddItemDialogProps) {
   const editing = initial !== null;
   const [url, setUrl] = useState('');
@@ -39,7 +43,8 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
   const [note, setNote] = useState('');
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [collectionId, setCollectionId] = useState('');
-  const [tags, setTags] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [favorite, setFavorite] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -55,9 +60,13 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
     setThumbnail(initial?.thumbnail ?? null);
     setCollectionId(initial?.collection_id ?? '');
     setFavorite(initial?.favorite ?? false);
-    setTags('');
+    setTags([]);
+    setCategories([]);
     void listCollections().then(setCollections);
-    if (initial) void getTagsForItem(initial.id).then((ts) => setTags(ts.map((t) => t.name).join(', ')));
+    if (initial) {
+      void getTagsForItem(initial.id).then((ts) => setTags(ts.map((t) => t.name)));
+      void getCategoriesForItem(initial.id).then((cs) => setCategories(cs.map((c) => c.name)));
+    }
   }, [open, initial]);
 
   const platform = detectPlatform(url);
@@ -88,7 +97,7 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
     setSaving(true);
     setError(null);
     try {
-      const tagNames = parseTagInput(tags);
+      const tagNames = tags;
       const payload = {
         url: cleanUrl,
         title: title.trim() || null,
@@ -99,8 +108,10 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
       };
       const saved = editing && initial ? await updateItem(initial.id, payload) : await createItem(payload);
       if (favorite !== saved.favorite) await toggleFavorite(saved.id);
-      const ids = await Promise.all(tagNames.map((name) => getOrCreateTag(name)));
-      await setTagsForItem(saved.id, ids.map((t) => t.id));
+      const tagIds = await Promise.all(tagNames.map((name) => getOrCreateTag(name)));
+      await setTagsForItem(saved.id, tagIds.map((t) => t.id));
+      const catIds = await Promise.all(categories.map((name) => getOrCreateCategory(name)));
+      await setCategoriesForItem(saved.id, catIds.map((c) => c.id));
       onSaved();
       onOpenChange(false);
     } catch (e) {
@@ -157,7 +168,8 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
               <Star className={favorite ? 'fill-current' : ''} />
             </Button>
           </div>
-          <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Etiketler (virgülle ayır)" />
+          <TagPicker selected={tags} onChange={setTags} loadNames={listTags} placeholder="Etiket seç veya yaz" />
+          <TagPicker selected={categories} onChange={setCategories} loadNames={listCategories} placeholder="Kategori seç veya yaz (Teknoloji, Spor…)" />
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>

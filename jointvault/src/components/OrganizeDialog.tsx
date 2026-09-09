@@ -10,16 +10,20 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
+  createCategory,
   createCollection,
   createTag,
+  listCategories,
   listCollections,
   listTags,
+  removeCategory,
   removeCollection,
   removeTag,
+  updateCategory,
   updateCollection,
   updateTag,
 } from '@/lib/db/client';
-import type { Collection, Tag } from '@/lib/db/types';
+import type { Category, Collection, Tag } from '@/lib/db/types';
 
 interface OrganizeDialogProps {
   open: boolean;
@@ -30,24 +34,30 @@ interface OrganizeDialogProps {
 export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialogProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [newCollection, setNewCollection] = useState('');
   const [newTag, setNewTag] = useState('');
+  const [newCategory, setNewCategory] = useState('');
   const [editingCollection, setEditingCollection] = useState<string | null>(null);
   const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
   const reload = async (): Promise<void> => {
-    const [cols, ts] = await Promise.all([listCollections(), listTags()]);
+    const [cols, ts, cs] = await Promise.all([listCollections(), listTags(), listCategories()]);
     setCollections(cols);
     setTags(ts);
+    setCategories(cs);
   };
 
   useEffect(() => {
     if (open) {
       setNewCollection('');
       setNewTag('');
+      setNewCategory('');
       setEditingCollection(null);
       setEditingTag(null);
+      setEditingCategory(null);
       void reload();
     }
   }, [open]);
@@ -101,15 +111,33 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
     await changed();
   };
 
-  const startRename = (kind: 'collection' | 'tag', id: string, name: string): void => {
+  const handleCreateCategory = async (): Promise<void> => {
+    const name = newCategory.trim();
+    if (!name) return;
+    await createCategory(name);
+    setNewCategory('');
+    await changed();
+  };
+
+  const handleRenameCategory = async (id: string): Promise<void> => {
+    const name = editName.trim();
+    if (!name) return;
+    await updateCategory(id, name);
+    setEditingCategory(null);
+    await changed();
+  };
+
+  const handleDeleteCategory = async (id: string): Promise<void> => {
+    if (!window.confirm('Kategoriyi silmek istiyor musun?')) return;
+    await removeCategory(id);
+    await changed();
+  };
+
+  const startRename = (kind: 'collection' | 'tag' | 'category', id: string, name: string): void => {
     setEditName(name);
-    if (kind === 'collection') {
-      setEditingCollection(id);
-      setEditingTag(null);
-    } else {
-      setEditingTag(id);
-      setEditingCollection(null);
-    }
+    setEditingCollection(kind === 'collection' ? id : null);
+    setEditingTag(kind === 'tag' ? id : null);
+    setEditingCategory(kind === 'category' ? id : null);
   };
 
   return (
@@ -117,7 +145,7 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Düzenle</DialogTitle>
-          <DialogDescription>Koleksiyon ve etiketleri yönet.</DialogDescription>
+            <DialogDescription>Koleksiyon, kategori ve etiketleri yönet.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-5">
           <section className="flex flex-col gap-2">
@@ -157,6 +185,49 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => void handleDeleteCollection(c.id)}
+                        aria-label="Sil"
+                      >
+                        <Trash2 />
+                      </Button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section className="flex flex-col gap-2">
+            <h4 className="text-sm font-medium">Kategoriler</h4>
+            <div className="flex gap-2">
+              <Input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="Yeni kategori" />
+              <Button variant="outline" size="icon" onClick={() => void handleCreateCategory()} aria-label="Kategori ekle">
+                <Plus />
+              </Button>
+            </div>
+            <ul className="flex flex-col gap-1">
+              {categories.map((c) => (
+                <li key={c.id} className="flex items-center gap-2">
+                  {editingCategory === c.id ? (
+                    <>
+                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+                      <Button size="sm" onClick={() => void handleRenameCategory(c.id)}>
+                        Kaydet
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 truncate text-sm">{c.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => startRename('category', c.id, c.name)}
+                        aria-label="Yeniden adlandır"
+                      >
+                        <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => void handleDeleteCategory(c.id)}
                         aria-label="Sil"
                       >
                         <Trash2 />

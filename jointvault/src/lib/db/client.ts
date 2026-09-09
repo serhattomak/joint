@@ -1,6 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
 import schema from './schema.sql?raw';
-import type { Collection, Item, Tag } from './types';
+import type { Category, Collection, Item, Tag } from './types';
 
 const DB_PATH = 'sqlite:jointvault.db';
 
@@ -185,10 +185,93 @@ export async function getTagsForItem(item_id: string): Promise<Tag[]> {
   return db.select<Tag[]>('SELECT t.* FROM tags t JOIN item_tags it ON it.tag_id = t.id WHERE it.item_id = $1', [item_id]);
 }
 
+// ponytail: tek JOIN ile tüm eşleşmeler — filtre değişiminde N+1 IPC yerine 1 tur.
+export async function getAllTagsByItem(): Promise<Record<string, Tag[]>> {
+  const db = await getDb();
+  const rows = await db.select<(Tag & { item_id: string })[]>(
+    'SELECT t.*, it.item_id FROM tags t JOIN item_tags it ON it.tag_id = t.id',
+  );
+  const map: Record<string, Tag[]> = {};
+  for (const r of rows) {
+    const { item_id, ...tag } = r;
+    (map[item_id] ??= []).push(tag);
+  }
+  return map;
+}
+
 export async function setTagsForItem(item_id: string, tag_ids: string[]): Promise<void> {
   const db = await getDb();
   await db.execute('DELETE FROM item_tags WHERE item_id = $1', [item_id]);
   for (const tag_id of tag_ids) {
     await db.execute('INSERT INTO item_tags (item_id, tag_id) VALUES ($1, $2)', [item_id, tag_id]);
+  }
+}
+
+// --- categories (mirror of tags: broad topics, many-to-many) ---
+
+export async function createCategory(name: string, user_id: string | null = null): Promise<Category> {
+  const db = await getDb();
+  const row: Category = { id: crypto.randomUUID(), name, user_id, created_at: now(), updated_at: now() };
+  await db.execute('INSERT INTO categories (id, name, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)', [
+    row.id,
+    row.name,
+    row.user_id,
+    row.created_at,
+    row.updated_at,
+  ]);
+  return row;
+}
+
+export async function listCategories(): Promise<Category[]> {
+  const db = await getDb();
+  return db.select<Category[]>('SELECT * FROM categories ORDER BY name ASC');
+}
+
+export async function updateCategory(id: string, name: string): Promise<Category> {
+  const db = await getDb();
+  await db.execute('UPDATE categories SET name = $1, updated_at = $2 WHERE id = $3', [name, now(), id]);
+  const [row] = await db.select<Category[]>('SELECT * FROM categories WHERE id = $1', [id]);
+  return row;
+}
+
+export async function removeCategory(id: string): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM categories WHERE id = $1', [id]);
+}
+
+export async function getOrCreateCategory(name: string, user_id: string | null = null): Promise<Category> {
+  const db = await getDb();
+  const [existing] = await db.select<Category[]>('SELECT * FROM categories WHERE name = $1', [name]);
+  if (existing) return existing;
+  return createCategory(name, user_id);
+}
+
+export async function getCategoriesForItem(item_id: string): Promise<Category[]> {
+  const db = await getDb();
+  return db.select<Category[]>(
+    'SELECT c.* FROM categories c JOIN item_categories ic ON ic.category_id = c.id WHERE ic.item_id = $1',
+    [item_id],
+  );
+}
+
+// ponytail: tek JOIN ile tüm eşleşmeler — filtre değişiminde N+1 IPC yerine 1 tur.
+export async function getAllCategoriesByItem(): Promise<Record<string, Category[]>> {
+  const db = await getDb();
+  const rows = await db.select<(Category & { item_id: string })[]>(
+    'SELECT c.*, ic.item_id FROM categories c JOIN item_categories ic ON ic.category_id = c.id',
+  );
+  const map: Record<string, Category[]> = {};
+  for (const r of rows) {
+    const { item_id, ...cat } = r;
+    (map[item_id] ??= []).push(cat);
+  }
+  return map;
+}
+
+export async function setCategoriesForItem(item_id: string, category_ids: string[]): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM item_categories WHERE item_id = $1', [item_id]);
+  for (const category_id of category_ids) {
+    await db.execute('INSERT INTO item_categories (item_id, category_id) VALUES ($1, $2)', [item_id, category_id]);
   }
 }

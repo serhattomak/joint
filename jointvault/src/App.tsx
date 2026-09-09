@@ -10,16 +10,20 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { listCollections } from '@/lib/db/client';
-import type { Collection } from '@/lib/db/types';
+import { listCategories, listCollections, listTags } from '@/lib/db/client';
+import type { Category, Collection, Tag } from '@/lib/db/types';
 import { PLATFORM_META, PLATFORM_ORDER } from '@/lib/platform';
 
 function App() {
   const [query, setQuery] = useState('');
   const [platform, setPlatform] = useState('all');
   const [collectionId, setCollectionId] = useState('all');
+  const [categoryId, setCategoryId] = useState('all');
+  const [tagId, setTagId] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [view, setView] = useState<'grid' | 'rows'>(() =>
     window.localStorage.getItem('jv-view') === 'rows' ? 'rows' : 'grid',
   );
@@ -38,11 +42,15 @@ function App() {
 
   useEffect(() => {
     void listCollections().then(setCollections);
+    void listCategories().then(setCategories);
+    void listTags().then(setTags);
   }, [refreshKey, organizeOpen]);
 
   const showAll = (): void => {
     setPlatform('all');
     setCollectionId('all');
+    setCategoryId('all');
+    setTagId('all');
     setFavoritesOnly(false);
   };
 
@@ -54,13 +62,13 @@ function App() {
   return (
     <TooltipProvider delay={300}>
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="hidden w-60 shrink-0 flex-col gap-5 border-r border-border bg-card px-3 py-4 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border bg-card px-3 py-4 md:flex">
         <div className="flex items-center gap-2 px-1.5">
           <Archive className="size-5 text-primary" strokeWidth={2} />
           <span className="font-display text-xl tracking-tight">JointVault</span>
         </div>
         <nav className="flex flex-col gap-0.5">
-          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && !favoritesOnly)}>
+          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly)}>
             <LayoutGrid className="size-4" /> Tümü
           </button>
           <button
@@ -69,6 +77,8 @@ function App() {
               setFavoritesOnly(true);
               setPlatform('all');
               setCollectionId('all');
+              setCategoryId('all');
+              setTagId('all');
             }}
             className={navBtn(favoritesOnly)}
           >
@@ -93,6 +103,52 @@ function App() {
               {PLATFORM_META[p].label}
             </button>
           ))}
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
+          <p className="px-2.5 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            Kategori
+          </p>
+          <div className="flex max-h-32 flex-col gap-0.5 overflow-y-auto">
+            {categories.length === 0 && (
+              <p className="px-2.5 text-xs text-muted-foreground">Henüz yok.</p>
+            )}
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  setCategoryId(c.id);
+                  setFavoritesOnly(false);
+                }}
+                className={`${navBtn(categoryId === c.id)} truncate`}
+              >
+                <span className="truncate">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
+          <p className="px-2.5 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            Etiket
+          </p>
+          <div className="flex max-h-32 flex-col gap-0.5 overflow-y-auto">
+            {tags.length === 0 && (
+              <p className="px-2.5 text-xs text-muted-foreground">Henüz yok.</p>
+            )}
+            {tags.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setTagId(t.id);
+                  setFavoritesOnly(false);
+                }}
+                className={`${navBtn(tagId === t.id)} truncate`}
+              >
+                <span className="truncate">#{t.name}</span>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-0.5">
           <div className="flex items-center justify-between px-2.5 pb-1">
@@ -177,6 +233,8 @@ function App() {
             query={query}
             platform={platform}
             collectionId={collectionId}
+            categoryId={categoryId}
+            tagId={tagId}
             favoritesOnly={favoritesOnly}
             refreshKey={refreshKey}
             view={view}
