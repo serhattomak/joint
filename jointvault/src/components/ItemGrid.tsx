@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PackageOpen, Pencil, Star, Trash2 } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   getTagsForItem,
   listCollections,
@@ -20,22 +21,25 @@ interface ItemGridProps {
   collectionId: string; // 'all' or a collection id
   favoritesOnly: boolean;
   refreshKey: number;
+  view: 'grid' | 'rows';
 }
 
 // 06: Tauri opener plugin — falls back to window.open in dev-browser mode.
+// block + w-full: içindeki truncate/line-clamp zincirinin çalışması için
+// ebeveyn genişliğine sabitlenir (yoksa buton içeriğe göre şişer).
 function OpenLink({ url, children }: { url: string; children: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={() => void openExternal(url)}
-      className="cursor-pointer text-left"
+      className="block w-full min-w-0 cursor-pointer text-left"
     >
       {children}
     </button>
   );
 }
 
-export function ItemGrid({ query, platform, collectionId, favoritesOnly, refreshKey }: ItemGridProps) {
+export function ItemGrid({ query, platform, collectionId, favoritesOnly, refreshKey, view }: ItemGridProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [tagsByItem, setTagsByItem] = useState<Record<string, Tag[]>>({});
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -102,6 +106,63 @@ export function ItemGrid({ query, platform, collectionId, favoritesOnly, refresh
 
   return (
     <>
+      {view === 'rows' ? (
+        <div className="animate-rise divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-card">
+          {items.map((item) => (
+            <div key={item.id} className="group flex items-center gap-3 px-3 py-2 transition hover:bg-muted/60">
+              {item.thumbnail ? (
+                <img src={item.thumbnail} alt="" className="size-11 shrink-0 rounded-lg object-cover" />
+              ) : (
+                <span
+                  className={`size-2.5 shrink-0 rounded-full ${PLATFORM_META[(item.platform as Platform)]?.dot ?? PLATFORM_META.other.dot}`}
+                />
+              )}
+              <div className="min-w-0 max-w-xl flex-1 overflow-hidden">
+                <OpenLink url={item.url}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <p className="truncate font-display text-[15px] leading-snug hover:underline">
+                          {item.title || item.url}
+                        </p>
+                      }
+                    />
+                    <TooltipContent>{item.title || item.url}</TooltipContent>
+                  </Tooltip>
+                </OpenLink>
+                <p className="truncate text-xs text-muted-foreground">
+                  {PLATFORM_META[(item.platform as Platform)]?.label ?? item.platform}
+                  {collectionName(item.collection_id) && ` · ${collectionName(item.collection_id)}`}
+                  {(tagsByItem[item.id] ?? []).map((t) => ` #${t.name}`).join('')}
+                  {` · ${new Date(item.created_at).toLocaleDateString('tr-TR')}`}
+                </p>
+                <div className="mt-0.5 flex items-center gap-0.5">
+                  <Button
+                    variant={item.favorite ? 'default' : 'ghost'}
+                    size="icon-sm"
+                    onClick={() => void handleFavorite(item.id)}
+                    aria-label="Favori"
+                    aria-pressed={item.favorite}
+                  >
+                    <Star className={item.favorite ? 'fill-current' : ''} />
+                  </Button>
+                  <Button variant="ghost" size="icon-sm" onClick={() => handleEdit(item)} aria-label="Düzenle">
+                    <Pencil />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => void handleDelete(item.id)}
+                    aria-label="Sil"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item, i) => (
           <article
@@ -160,6 +221,7 @@ export function ItemGrid({ query, platform, collectionId, favoritesOnly, refresh
           </article>
         ))}
       </div>
+      )}
       <AddItemDialog
         open={editOpen}
         onOpenChange={setEditOpen}

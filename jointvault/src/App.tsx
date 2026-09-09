@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Archive, LayoutGrid, Plus, Search, Settings, SlidersHorizontal, Star, Upload } from 'lucide-react';
+import { Archive, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Upload } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { ItemGrid } from '@/components/ItemGrid';
@@ -9,6 +9,7 @@ import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { listCollections } from '@/lib/db/client';
 import type { Collection } from '@/lib/db/types';
 import { PLATFORM_META, PLATFORM_ORDER } from '@/lib/platform';
@@ -19,6 +20,9 @@ function App() {
   const [collectionId, setCollectionId] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [view, setView] = useState<'grid' | 'rows'>(() =>
+    window.localStorage.getItem('jv-view') === 'rows' ? 'rows' : 'grid',
+  );
   const [refreshKey, setRefreshKey] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -26,6 +30,11 @@ function App() {
   const [pairingOpen, setPairingOpen] = useState(false);
 
   const refresh = (): void => setRefreshKey((k) => k + 1);
+
+  const switchView = (next: 'grid' | 'rows'): void => {
+    setView(next);
+    window.localStorage.setItem('jv-view', next);
+  };
 
   useEffect(() => {
     void listCollections().then(setCollections);
@@ -43,6 +52,7 @@ function App() {
     }`;
 
   return (
+    <TooltipProvider delay={300}>
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="hidden w-60 shrink-0 flex-col gap-5 border-r border-border bg-card px-3 py-4 md:flex">
         <div className="flex items-center gap-2 px-1.5">
@@ -140,6 +150,26 @@ function App() {
           <Button variant="outline" onClick={() => setBulkOpen(true)}>
             <Upload /> Toplu aktar
           </Button>
+          <div className="flex items-center rounded-lg border border-border p-0.5" role="group" aria-label="Görünüm">
+            <button
+              type="button"
+              onClick={() => switchView('grid')}
+              aria-pressed={view === 'grid'}
+              aria-label="Kart görünümü"
+              className={`rounded-md p-1.5 transition ${view === 'grid' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <LayoutGrid className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => switchView('rows')}
+              aria-pressed={view === 'rows'}
+              aria-label="Satır görünümü"
+              className={`rounded-md p-1.5 transition ${view === 'rows' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <Rows3 className="size-4" />
+            </button>
+          </div>
           <ThemeToggle />
         </header>
         <main className="px-4 py-4">
@@ -149,6 +179,7 @@ function App() {
             collectionId={collectionId}
             favoritesOnly={favoritesOnly}
             refreshKey={refreshKey}
+            view={view}
           />
         </main>
       </div>
@@ -159,6 +190,7 @@ function App() {
       <PairingSettings open={pairingOpen} onOpenChange={setPairingOpen} />
       <XSyncReviewDialog onDone={refresh} />
     </div>
+    </TooltipProvider>
   );
 }
 
