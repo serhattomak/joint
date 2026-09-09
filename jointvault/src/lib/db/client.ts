@@ -129,6 +129,65 @@ export async function searchItems(q: string): Promise<Item[]> {
   return rows.map(toItem);
 }
 
+export interface ItemFilters {
+  query?: string;
+  platform?: string; // 'all' or slug
+  collectionId?: string; // 'all' or id
+  categoryId?: string; // 'all' or id
+  tagId?: string; // 'all' or id
+  favoritesOnly?: boolean;
+  downloadedOnly?: boolean;
+}
+
+// Sayfalı okuma: filtre SQL'de, sayım DISTINCT ile, satır çekimi LIMIT/OFFSET.
+// Arama tüm tabloya karşı LIKE ile çalışır; ekrana sadece sayfa gelir.
+export async function listItemsPage(
+  limit: number,
+  offset: number,
+  f: ItemFilters = {},
+): Promise<{ rows: Item[]; total: number }> {
+  const db = await getDb();
+  const conds: string[] = [];
+  const params: unknown[] = [];
+  const q = f.query?.trim();
+  if (q) {
+    conds.push('(i.title LIKE ? OR i.note LIKE ? OR i.url LIKE ?)');
+    const like = `%${q}%`;
+    params.push(like, like, like);
+  }
+  if (f.platform && f.platform !== 'all') {
+    conds.push('i.platform = ?');
+    params.push(f.platform);
+  }
+  if (f.collectionId && f.collectionId !== 'all') {
+    conds.push('i.collection_id = ?');
+    params.push(f.collectionId);
+  }
+  if (f.categoryId && f.categoryId !== 'all') {
+    conds.push('ic.category_id = ?');
+    params.push(f.categoryId);
+  }
+  if (f.tagId && f.tagId !== 'all') {
+    conds.push('it.tag_id = ?');
+    params.push(f.tagId);
+  }
+  if (f.favoritesOnly) conds.push('i.favorite = 1');
+  if (f.downloadedOnly) conds.push("i.download_status = 'done'");
+  const from =
+    'FROM items i LEFT JOIN item_categories ic ON ic.item_id = i.id LEFT JOIN item_tags it ON it.item_id = i.id';
+  const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+  const [countRows] = [
+    await db.select<{ n: number }[]>(`SELECT COUNT(DISTINCT i.id) AS n ${from} ${where}`, params),
+  ];
+  const total = countRows[0]?.n ?? 0;
+  if (total === 0) return { rows: [], total };
+  const rows = await db.select<ItemRow[]>(
+    `SELECT DISTINCT i.* ${from} ${where} ORDER BY i.created_at DESC LIMIT ? OFFSET ?`,
+    [...params, limit, offset],
+  );
+  return { rows: rows.map(toItem), total };
+}
+
 // ponytail: thin wrapper over updateItem — translates short keys to columns, refreshes updated_at.
 export async function setDownloadState(
   id: string,

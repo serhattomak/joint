@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Archive, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Upload } from 'lucide-react';
+import { Archive, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { DownloadDialog } from '@/components/DownloadDialog';
 import { DownloadSettings } from '@/components/DownloadSettings';
+import { FilterMenu } from '@/components/FilterMenu';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid } from '@/components/ItemGrid';
 import { OrganizeDialog } from '@/components/OrganizeDialog';
@@ -15,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { listCategories, listCollections, listTags } from '@/lib/db/client';
 import type { Category, Collection, Tag } from '@/lib/db/types';
-import { PLATFORM_META, PLATFORM_ORDER } from '@/lib/platform';
+import { PLATFORM_META } from '@/lib/platform';
 
 function App() {
   const [query, setQuery] = useState('');
@@ -67,6 +68,55 @@ function App() {
       active ? 'bg-secondary font-medium text-secondary-foreground' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
     }`;
 
+  const leaveViews = (): void => {
+    setFavoritesOnly(false);
+    setDownloadedOnly(false);
+  };
+  const pickPlatform = (p: string): void => {
+    setPlatform(p);
+    leaveViews();
+  };
+  const pickCollection = (id: string): void => {
+    setCollectionId(id);
+    leaveViews();
+  };
+  const pickCategory = (id: string): void => {
+    setCategoryId(id);
+    leaveViews();
+  };
+  const pickTag = (id: string): void => {
+    setTagId(id);
+    leaveViews();
+  };
+
+  const activeCount = [platform, collectionId, categoryId, tagId].filter((v) => v !== 'all').length;
+
+  const chips: { key: string; label: string; clear: () => void }[] = [];
+  if (platform !== 'all')
+    chips.push({
+      key: 'platform',
+      label: (PLATFORM_META as Record<string, { label: string }>)[platform]?.label ?? platform,
+      clear: () => setPlatform('all'),
+    });
+  if (collectionId !== 'all')
+    chips.push({
+      key: 'collection',
+      label: collections.find((c) => c.id === collectionId)?.name ?? 'Koleksiyon',
+      clear: () => setCollectionId('all'),
+    });
+  if (categoryId !== 'all')
+    chips.push({
+      key: 'category',
+      label: categories.find((c) => c.id === categoryId)?.name ?? 'Kategori',
+      clear: () => setCategoryId('all'),
+    });
+  if (tagId !== 'all')
+    chips.push({
+      key: 'tag',
+      label: `#${tags.find((t) => t.id === tagId)?.name ?? ''}`,
+      clear: () => setTagId('all'),
+    });
+
   return (
     <TooltipProvider delay={300}>
     <div className="flex min-h-screen bg-background text-foreground">
@@ -108,108 +158,10 @@ function App() {
             <Download className="size-4" /> İndirilenler
           </button>
         </nav>
-        <div className="flex flex-col gap-0.5">
-          <p className="px-2.5 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-            Platform
-          </p>
-          {PLATFORM_ORDER.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => {
-                setPlatform(p);
-                setFavoritesOnly(false);
-                setDownloadedOnly(false);
-              }}
-              className={navBtn(platform === p)}
-            >
-              <span className={`size-2 rounded-full ${PLATFORM_META[p].dot}`} />
-              {PLATFORM_META[p].label}
-            </button>
-          ))}
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
-          <p className="px-2.5 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-            Kategori
-          </p>
-          <div className="flex max-h-32 flex-col gap-0.5 overflow-y-auto">
-            {categories.length === 0 && (
-              <p className="px-2.5 text-xs text-muted-foreground">Henüz yok.</p>
-            )}
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  setCategoryId(c.id);
-                  setFavoritesOnly(false);
-                  setDownloadedOnly(false);
-                }}
-                className={`${navBtn(categoryId === c.id)} truncate`}
-              >
-                <span className="truncate">{c.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
-          <p className="px-2.5 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-            Etiket
-          </p>
-          <div className="flex max-h-32 flex-col gap-0.5 overflow-y-auto">
-            {tags.length === 0 && (
-              <p className="px-2.5 text-xs text-muted-foreground">Henüz yok.</p>
-            )}
-            {tags.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => {
-                  setTagId(t.id);
-                  setFavoritesOnly(false);
-                  setDownloadedOnly(false);
-                }}
-                className={`${navBtn(tagId === t.id)} truncate`}
-              >
-                <span className="truncate">#{t.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
-          <div className="flex items-center justify-between px-2.5 pb-1">
-            <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-              Koleksiyon
-            </p>
-            <button
-              type="button"
-              onClick={() => setOrganizeOpen(true)}
-              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              <SlidersHorizontal className="size-3" /> Düzenle
-            </button>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-            {collections.length === 0 && (
-              <p className="px-2.5 text-xs text-muted-foreground">Henüz yok.</p>
-            )}
-            {collections.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  setCollectionId(c.id);
-                  setFavoritesOnly(false);
-                  setDownloadedOnly(false);
-                }}
-                className={`${navBtn(collectionId === c.id)} truncate`}
-              >
-                <span className="truncate">{c.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
         <div className="border-t border-border pt-2">
+          <button type="button" onClick={() => setOrganizeOpen(true)} className={navBtn(false)}>
+            <SlidersHorizontal className="size-4" /> Koleksiyonlar
+          </button>
           <button type="button" onClick={() => setPairingOpen(true)} className={navBtn(false)}>
             <Settings className="size-4" /> Eklenti eşleşme
           </button>
@@ -230,6 +182,21 @@ function App() {
               className="pl-8"
             />
           </div>
+          <FilterMenu
+            platform={platform}
+            collectionId={collectionId}
+            categoryId={categoryId}
+            tagId={tagId}
+            collections={collections}
+            categories={categories}
+            tags={tags}
+            onPlatform={pickPlatform}
+            onCollection={pickCollection}
+            onCategory={pickCategory}
+            onTag={pickTag}
+            onClear={showAll}
+            activeCount={activeCount}
+          />
           <Button onClick={() => setAddOpen(true)}>
             <Plus /> Yeni öğe
           </Button>
@@ -262,6 +229,33 @@ function App() {
           <ThemeToggle />
         </header>
         <main className="px-4 py-4">
+          {chips.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              {chips.map((chip) => (
+                <span
+                  key={chip.key}
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-card py-0.5 pr-1 pl-2.5 text-xs"
+                >
+                  {chip.label}
+                  <button
+                    type="button"
+                    onClick={chip.clear}
+                    aria-label={`${chip.label} filtresini kaldır`}
+                    className="rounded-full p-0.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={showAll}
+                className="text-xs text-muted-foreground transition hover:text-foreground"
+              >
+                Temizle
+              </button>
+            </div>
+          )}
           <ItemGrid
             query={query}
             platform={platform}

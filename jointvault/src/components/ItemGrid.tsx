@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, PackageOpen, Pencil, RotateCcw, Star, Trash2 } from 'lucide-react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, PackageOpen, Pencil, RotateCcw, Star, Trash2 } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkActions } from '@/components/BulkActions';
 import { Badge } from '@/components/ui/badge';
@@ -9,9 +9,8 @@ import {
   getAllCategoriesByItem,
   getAllTagsByItem,
   listCollections,
-  listItems,
+  listItemsPage,
   removeItem,
-  searchItems,
   setDownloadState,
   toggleFavorite,
 } from '@/lib/db/client';
@@ -206,8 +205,13 @@ const Thumb = memo(function Thumb({
 
 // İlk boyamada sadece ilk dilim kurulur, gerisi boş karelerde büyür.
 // content-visibility granted, ama 1000+ düğümün tek commit'te kurulması dev build'de pahalı.
-const PAGE_SIZE = 120;
-const GROW_STEP = 250;
+const DEFAULT_PAGE_SIZE = 48;
+const PAGE_SIZES = [24, 48, 96] as const;
+
+function readPageSize(): number {
+  const v = Number.parseInt(window.localStorage.getItem('jv-page-size') ?? '', 10);
+  return (PAGE_SIZES as readonly number[]).includes(v) ? v : DEFAULT_PAGE_SIZE;
+}
 
 // memo: seçim değişiminde sadece dokunulan satır render edilir.
 const ItemRowView = memo(function ItemRowView({
@@ -340,15 +344,19 @@ const ItemCardView = memo(function ItemCardView({
 });
 
 export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, refreshKey, view, onPickVideo }: ItemGridProps & { onPickVideo: (item: Item) => void }) {
-  // Ham satırlar: sadece arama metni + refresh değişince çekilir (IPC).
-  const [allItems, setAllItems] = useState<Item[]>([]);
+  // Sayfa verisi: filtre+arama SQL'de (LIMIT/OFFSET), ekrana tek sayfa gelir.
+  const [rows, setRows] = useState<Item[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(() => readPageSize());
+  const [bump, setBump] = useState(0);
+  const [goto, setGoto] = useState<string | null>(null);
   const [tagsByItem, setTagsByItem] = useState<Record<string, Tag[]>>({});
   const [catsByItem, setCatsByItem] = useState<Record<string, Category[]>>({});
   const [collections, setCollections] = useState<Collection[]>([]);
   const [editing, setEditing] = useState<Item | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   // Inline progress percents by item id; cleared when the download settles.
   const [progress, setProgress] = useState<Record<string, number>>({});
@@ -361,19 +369,31 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     return () => clearTimeout(t);
   }, [query]);
 
-  // Satırlar: arama/refresh değişince tek tur.
+  // Sayfa çekimi: arama+filtre+sayfa+boyut+refresh değişince tek tur.
+  const fetchPage = useCallback(
+    async (p: number, size: number): Promise<void> => {
+      const res = await listItemsPage(size, p * size, {
+        query: debouncedQuery,
+        platform,
+        collectionId,
+        categoryId,
+        tagId,
+        favoritesOnly,
+        downloadedOnly,
+      });
+      if (res.total <= p * size && p > 0) {
+        setPage(p - 1); // son sayfa boşaldıysa geri adım
+        return;
+      }
+      setRows(res.rows);
+      setTotal(res.total);
+    },
+    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly],
+  );
+
   useEffect(() => {
-    let live = true;
-    void (async () => {
-      const q = debouncedQuery.trim();
-      // ponytail: SQL LIKE search in client, no FTS5 table for MVP.
-      const rows = q ? await searchItems(q) : await listItems();
-      if (live) setAllItems(rows);
-    })();
-    return () => {
-      live = false;
-    };
-  }, [debouncedQuery, refreshKey]);
+    void fetchPage(page, pageSize);
+  }, [fetchPage, page, pageSize, refreshKey, bump]);
 
   // Eşleşmeler: refresh değişince tek tur (3 IPC), filtre tıklamasında YOK.
   useEffect(() => {
@@ -392,65 +412,19 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     return () => {
       live = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, bump]);
 
-  // Filtreler saf hesap: IPC yok, memo sayesinde sadece giren/çıkan satır oynar.
-  const filtered = useMemo(
-    () =>
-      allItems.filter(
-        (it) =>
-          (platform === 'all' || it.platform === platform) &&
-          (collectionId === 'all' || it.collection_id === collectionId) &&
-          (categoryId === 'all' || (catsByItem[it.id] ?? []).some((c) => c.id === categoryId)) &&
-          (tagId === 'all' || (tagsByItem[it.id] ?? []).some((t) => t.id === tagId)) &&
-          (!favoritesOnly || it.favorite) &&
-          (!downloadedOnly || it.download_status === 'done'),
-      ),
-    [allItems, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, tagsByItem, catsByItem],
-  );
-
-  // Yazma sonrası (sil/kaydet): satır + eşleşme birlikte tazelenir.
-  const refreshAll = useCallback(async (): Promise<void> => {
-    const q = debouncedQuery.trim();
-    const [rows, cols, tagMap, catMap] = await Promise.all([
-      q ? searchItems(q) : listItems(),
-      listCollections(),
-      getAllTagsByItem(),
-      getAllCategoriesByItem(),
-    ]);
-    setAllItems(rows);
-    setCollections(cols as Collection[]);
-    setTagsByItem(tagMap);
-    setCatsByItem(catMap);
+  // Yazma sonrası (sil/kaydet): efektler bump ile tazelenir.
+  const refreshAll = useCallback((): void => {
     setSelected(new Set());
-  }, [debouncedQuery]);
+    setBump((b) => b + 1);
+  }, []);
 
-  // Filtre değişince seçim sıfırlanır, görünür dilim başa döner.
+  // Filtre değişince ilk sayfaya dön, seçim sıfırlanır.
   useEffect(() => {
+    setPage(0);
     setSelected(new Set());
-    setVisibleCount(PAGE_SIZE);
   }, [platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, debouncedQuery]);
-
-  // Liste büyüdükçe dilim dilim ekle — ilk kare hep hızlı.
-  useEffect(() => {
-    if (visibleCount >= filtered.length) return;
-    let live = true;
-    const grow = (): void => {
-      if (live) setVisibleCount((v) => Math.min(v + GROW_STEP, filtered.length));
-    };
-    if (typeof window.requestIdleCallback === 'function') {
-      const id = window.requestIdleCallback(grow, { timeout: 300 });
-      return () => {
-        live = false;
-        window.cancelIdleCallback(id);
-      };
-    }
-    const t = setTimeout(grow, 60);
-    return () => {
-      live = false;
-      clearTimeout(t);
-    };
-  }, [visibleCount, filtered.length]);
 
   const toggleSelect = useCallback((id: string): void => {
     setSelected((prev) => {
@@ -462,13 +436,13 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   }, []);
 
   const selectAll = useCallback((): void => {
-    const allIds = filtered.map((it) => it.id);
+    const allIds = rows.map((it) => it.id);
     setSelected((prev) => (prev.size === allIds.length && allIds.length > 0 ? new Set() : new Set(allIds)));
-  }, [filtered]);
+  }, [rows]);
 
   const handleFavorite = useCallback(async (id: string): Promise<void> => {
     const updated = await toggleFavorite(id);
-    setAllItems((prev) => prev.map((it) => (it.id === id ? updated : it)));
+    setRows((prev) => prev.map((it) => (it.id === id ? updated : it)));
   }, []);
 
   const handleDelete = useCallback(
@@ -511,7 +485,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
       if (!markedActive.current.has(e.itemId)) {
         markedActive.current.add(e.itemId);
         void setDownloadState(e.itemId, { status: 'active' }).then((updated) => {
-          setAllItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+          setRows((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
         });
       }
     }, []),
@@ -522,7 +496,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     setEditOpen(true);
   }, []);
 
-  if (filtered.length === 0) {
+  if (rows.length === 0) {
     const isFiltering =
       query.trim() !== '' ||
       platform !== 'all' ||
@@ -545,11 +519,101 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   const collectionLabel = (id: string | null): string | null =>
     collections.find((c) => c.id === id)?.name ?? null;
 
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : page * pageSize + 1;
+  const to = Math.min(total, (page + 1) * pageSize);
+
+  const commitGoto = (): void => {
+    if (goto === null) return;
+    const n = Number.parseInt(goto, 10);
+    setGoto(null);
+    if (!Number.isFinite(n)) return;
+    setPage(Math.min(pages - 1, Math.max(0, n - 1)));
+  };
+
+  const pager = total > Math.min(...PAGE_SIZES) && (
+    <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+      <span className="flex items-center gap-2">
+        <span className="tabular-nums">
+          {from}–{to} / {total}
+        </span>
+        <select
+          value={pageSize}
+          onChange={(e) => {
+            const next = Number.parseInt(e.target.value, 10);
+            window.localStorage.setItem('jv-page-size', String(next));
+            setPageSize(next);
+            setPage(0);
+          }}
+          aria-label="Sayfa başına"
+          className="h-7 rounded-md border border-border bg-transparent px-1 text-xs outline-none focus:border-input"
+        >
+          {PAGE_SIZES.map((n) => (
+            <option key={n} value={n}>
+              {n}/sayfa
+            </option>
+          ))}
+        </select>
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage(0)}
+          disabled={page === 0}
+          aria-label="İlk sayfa"
+        >
+          <ChevronsLeft />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+          disabled={page === 0}
+          aria-label="Önceki sayfa"
+        >
+          <ChevronLeft />
+        </Button>
+        <input
+          value={goto ?? String(page + 1)}
+          onChange={(e) => setGoto(e.target.value)}
+          onBlur={commitGoto}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+          inputMode="numeric"
+          aria-label="Sayfaya git"
+          className="h-7 w-12 rounded-md border border-border bg-transparent px-1 text-center text-xs tabular-nums outline-none focus:border-input"
+        />
+        <span className="tabular-nums">/{pages}</span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage((p) => Math.min(pages - 1, p + 1))}
+          disabled={page >= pages - 1}
+          aria-label="Sonraki sayfa"
+        >
+          <ChevronRight />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage(pages - 1)}
+          disabled={page >= pages - 1}
+          aria-label="Son sayfa"
+        >
+          <ChevronsRight />
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <>
+      {pager}
       {view === 'rows' ? (
         <div className="animate-rise divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-card">
-          {filtered.slice(0, visibleCount).map((item) => (
+          {rows.map((item) => (
             <ItemRowView
               key={item.id}
               item={item}
@@ -570,7 +634,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         </div>
       ) : (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {filtered.slice(0, visibleCount).map((item, i) => (
+        {rows.map((item, i) => (
           <ItemCardView
             key={item.id}
             item={item}
@@ -590,24 +654,19 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         ))}
       </div>
       )}
-      {visibleCount < filtered.length && (
-        <p className="py-3 text-center text-xs text-muted-foreground">
-          {visibleCount}/{filtered.length} yükleniyor…
-        </p>
-      )}
       <AddItemDialog
         open={editOpen}
         onOpenChange={setEditOpen}
-        onSaved={() => void refreshAll()}
+        onSaved={() => refreshAll()}
         initial={editing}
       />
       <BulkActions
         ids={[...selected]}
-        total={filtered.length}
-        allSelected={filtered.length > 0 && selected.size === filtered.length}
+        total={rows.length}
+        allSelected={rows.length > 0 && selected.size === rows.length}
         onSelectAll={selectAll}
         onClear={() => setSelected(new Set())}
-        onDone={() => void refreshAll()}
+        onDone={() => refreshAll()}
       />
     </>
   );
