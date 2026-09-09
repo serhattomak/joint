@@ -3,20 +3,89 @@
 <head>
 <meta charset="utf-8" />
 <style>
-body { width: 280px; font: 13px system-ui; padding: 12px; }
-label { display: block; margin: 8px 0 2px; }
-input { width: 100%; box-sizing: border-box; }
-button { margin-top: 10px; width: 100%; }
-#status { margin-top: 8px; min-height: 1.2em; }
+  :root {
+    --paper: #faf7f1;
+    --card: #fffdf8;
+    --ink: #1c1917;
+    --muted: #6b6259;
+    --line: #e0d7c0;
+    --accent: #9a3412;
+    --accent-ink: #fff7ed;
+    --danger: #b91c1c;
+    --ok: #3f6212;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 320px;
+    margin: 0;
+    padding: 14px;
+    background: var(--paper);
+    color: var(--ink);
+    font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .brand svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .brand h1 { font: 600 16px/1.2 Georgia, "Times New Roman", serif; letter-spacing: -0.01em; margin: 0; }
+  .site {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; margin-bottom: 10px; font-size: 12.5px;
+  }
+  .site .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .site .sub { color: var(--muted); font-size: 12px; }
+  button#collect {
+    width: 100%; border: 0; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink);
+    font-size: 13.5px; font-weight: 600; padding: 9px 12px;
+    transition: filter 150ms ease-out, transform 150ms ease-out;
+  }
+  button#collect:hover:not(:disabled) { filter: brightness(1.08); }
+  button#collect:active:not(:disabled) { transform: translateY(1px); }
+  button#collect:disabled { opacity: 0.6; cursor: wait; }
+  button#collect:focus-visible, input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+  summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--ink); }
+  label { display: block; margin: 8px 0 3px; font-size: 12px; color: var(--muted); }
+  input {
+    width: 100%; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--card); color: var(--ink);
+    font-size: 12.5px; padding: 7px 9px;
+  }
+  input::placeholder { color: var(--muted); opacity: 0.8; }
+  #status { margin-top: 10px; min-height: 1.4em; font-size: 12.5px; }
+  #status[data-state="ok"] { color: var(--ok); font-weight: 600; }
+  #status[data-state="error"] { color: var(--danger); }
+  #status[data-state="busy"] { color: var(--muted); }
 </style>
 </head>
 <body>
-<label for="endpoint">Endpoint</label>
-<input id="endpoint" />
-<label for="token">Token</label>
-<input id="token" type="password" />
-<button id="collect">Collect</button>
-<div id="status"></div>
-<script src="popup.js"></script>
+  <div class="brand">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="2" y="3" width="20" height="5" rx="1"/>
+      <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+      <path d="M10 12h4"/>
+    </svg>
+    <h1>JointVault Collector</h1>
+  </div>
+  <div class="site">
+    <span class="dot" id="siteDot" style="background:#a8a29e"></span>
+    <div>
+      <div id="siteName">Sekme okunuyor…</div>
+      <div class="sub" id="siteHint">Kaydedilenler sayfasını açıp Topla'ya bas.</div>
+    </div>
+  </div>
+  <button id="collect">Topla</button>
+  <details>
+    <summary>Bağlantı ayarları</summary>
+    <label for="endpoint">Uygulama adresi</label>
+    <input id="endpoint" placeholder="http://127.0.0.1:48120/collect" />
+    <label for="token">Eşleşme anahtarı</label>
+    <input id="token" type="password" placeholder="JointVault → Eklenti eşleşme" />
+  </details>
+  <div id="status" role="status"></div>
+  <script src="popup.js"></script>
 </body>
 </html>

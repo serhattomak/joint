@@ -31,6 +31,7 @@ interface XSyncRow {
   thumbnail: string | null;
   platform: string;
   skipped: boolean;
+  skipReason?: 'db' | 'batch';
   state: 'pending' | 'ok' | 'fail';
   reason?: string;
 }
@@ -62,14 +63,16 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
       const next: XSyncRow[] = metas.map((m) => {
         const url = m.url.trim();
         const key = canonicalizeUrl(url);
-        const dup = isKnownUrl(existing, url) || seen.has(key);
+        const inDb = isKnownUrl(existing, url);
+        const inBatch = seen.has(key);
         seen.add(key);
         return {
           url,
           title: m.title?.trim() ? m.title.trim() : null,
           thumbnail: m.thumbnail?.trim() ? m.thumbnail.trim() : null,
           platform: detectPlatform(url),
-          skipped: dup,
+          skipped: inDb || inBatch,
+          skipReason: inDb ? 'db' : inBatch ? 'batch' : undefined,
           state: 'pending' as const,
         };
       });
@@ -154,7 +157,7 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
               </div>
               <Badge variant="outline">{r.platform}</Badge>
               {r.skipped ? (
-                <Badge variant="secondary">TEKRAR</Badge>
+                <Badge variant="secondary">{r.skipReason === 'db' ? 'KAYITLI' : 'ÇİFT'}</Badge>
               ) : (
                 <Badge
                   variant={r.state === 'ok' ? 'default' : r.state === 'fail' ? 'destructive' : 'secondary'}

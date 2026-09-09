@@ -102,6 +102,11 @@ const Thumb = memo(function Thumb({
   );
 });
 
+// İlk boyamada sadece ilk dilim kurulur, gerisi boş karelerde büyür.
+// content-visibility granted, ama 1000+ düğümün tek commit'te kurulması dev build'de pahalı.
+const PAGE_SIZE = 120;
+const GROW_STEP = 250;
+
 // memo: seçim değişiminde sadece dokunulan satır render edilir.
 const ItemRowView = memo(function ItemRowView({
   item,
@@ -233,6 +238,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   const [editing, setEditing] = useState<Item | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   // Arama her tuşta IPC yapmasın.
@@ -304,10 +310,32 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     setSelected(new Set());
   }, [debouncedQuery]);
 
-  // Filtre değişince seçim sıfırlanır (liste dışına taşmasın).
+  // Filtre değişince seçim sıfırlanır, görünür dilim başa döner.
   useEffect(() => {
     setSelected(new Set());
+    setVisibleCount(PAGE_SIZE);
   }, [platform, collectionId, categoryId, tagId, favoritesOnly, debouncedQuery]);
+
+  // Liste büyüdükçe dilim dilim ekle — ilk kare hep hızlı.
+  useEffect(() => {
+    if (visibleCount >= filtered.length) return;
+    let live = true;
+    const grow = (): void => {
+      if (live) setVisibleCount((v) => Math.min(v + GROW_STEP, filtered.length));
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(grow, { timeout: 300 });
+      return () => {
+        live = false;
+        window.cancelIdleCallback(id);
+      };
+    }
+    const t = setTimeout(grow, 60);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [visibleCount, filtered.length]);
 
   const toggleSelect = useCallback((id: string): void => {
     setSelected((prev) => {
@@ -368,7 +396,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     <>
       {view === 'rows' ? (
         <div className="animate-rise divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-card">
-          {filtered.map((item) => (
+          {filtered.slice(0, visibleCount).map((item) => (
             <ItemRowView
               key={item.id}
               item={item}
@@ -386,7 +414,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         </div>
       ) : (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((item, i) => (
+        {filtered.slice(0, visibleCount).map((item, i) => (
           <ItemCardView
             key={item.id}
             item={item}
@@ -402,6 +430,11 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
           />
         ))}
       </div>
+      )}
+      {visibleCount < filtered.length && (
+        <p className="py-3 text-center text-xs text-muted-foreground">
+          {visibleCount}/{filtered.length} yükleniyor…
+        </p>
       )}
       <AddItemDialog
         open={editOpen}
