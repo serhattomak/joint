@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Archive, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Upload, X } from 'lucide-react';
+import { Archive, Download, LayoutGrid, Plus, Search, Settings, SlidersHorizontal, Star, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { DownloadDialog } from '@/components/DownloadDialog';
-import { DownloadSettings } from '@/components/DownloadSettings';
 import { FilterMenu } from '@/components/FilterMenu';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
-import { ItemGrid } from '@/components/ItemGrid';
+import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
 import { OrganizeDialog } from '@/components/OrganizeDialog';
-import { PairingSettings } from '@/components/PairingSettings';
+import { SettingsDialog } from '@/components/SettingsDialog';
 import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -32,12 +30,12 @@ function App() {
   const [view, setView] = useState<'grid' | 'rows'>(() =>
     window.localStorage.getItem('jv-view') === 'rows' ? 'rows' : 'grid',
   );
+  const [pageSize, setPageSize] = useState<number>(() => readPageSize());
   const [refreshKey, setRefreshKey] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
-  const [pairingOpen, setPairingOpen] = useState(false);
-  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [urlDlOpen, setUrlDlOpen] = useState(false);
   const [formatTarget, setFormatTarget] = useState<FormatTarget | null>(null);
 
@@ -162,11 +160,8 @@ function App() {
           <button type="button" onClick={() => setOrganizeOpen(true)} className={navBtn(false)}>
             <SlidersHorizontal className="size-4" /> Koleksiyonlar
           </button>
-          <button type="button" onClick={() => setPairingOpen(true)} className={navBtn(false)}>
-            <Settings className="size-4" /> Eklenti eşleşme
-          </button>
-          <button type="button" onClick={() => setDownloadOpen(true)} className={navBtn(false)}>
-            <Settings className="size-4" /> İndirme klasörü
+          <button type="button" onClick={() => setSettingsOpen(true)} className={navBtn(false)}>
+            <Settings className="size-4" /> Ayarlar
           </button>
         </div>
       </aside>
@@ -206,27 +201,6 @@ function App() {
           <Button variant="outline" onClick={() => setUrlDlOpen(true)}>
             <Download /> URL&apos;den indir
           </Button>
-          <div className="flex items-center rounded-lg border border-border p-0.5" role="group" aria-label="Görünüm">
-            <button
-              type="button"
-              onClick={() => switchView('grid')}
-              aria-pressed={view === 'grid'}
-              aria-label="Kart görünümü"
-              className={`rounded-md p-1.5 transition ${view === 'grid' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              <LayoutGrid className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => switchView('rows')}
-              aria-pressed={view === 'rows'}
-              aria-label="Satır görünümü"
-              className={`rounded-md p-1.5 transition ${view === 'rows' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              <Rows3 className="size-4" />
-            </button>
-          </div>
-          <ThemeToggle />
         </header>
         <main className="px-4 py-4">
           {chips.length > 0 && (
@@ -266,6 +240,12 @@ function App() {
             downloadedOnly={downloadedOnly}
             refreshKey={refreshKey}
             view={view}
+            onViewChange={switchView}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => {
+              window.localStorage.setItem('jv-page-size', String(n));
+              setPageSize(n);
+            }}
             onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
           />
         </main>
@@ -284,8 +264,16 @@ function App() {
       <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
       <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
       <OrganizeDialog open={organizeOpen} onOpenChange={setOrganizeOpen} onChanged={refresh} />
-      <PairingSettings open={pairingOpen} onOpenChange={setPairingOpen} />
-      <DownloadSettings open={downloadOpen} onOpenChange={setDownloadOpen} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        pageSize={pageSize}
+        pageSizes={PAGE_SIZES}
+        onPageSizeChange={(n) => {
+          window.localStorage.setItem('jv-page-size', String(n));
+          setPageSize(n);
+        }}
+      />
       <XSyncReviewDialog onDone={refresh} />
     </div>
     </TooltipProvider>

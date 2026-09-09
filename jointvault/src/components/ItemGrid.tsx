@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, PackageOpen, Pencil, RotateCcw, Star, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, LayoutGrid, PackageOpen, Pencil, RotateCcw, Rows3, Star, Trash2 } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkActions } from '@/components/BulkActions';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,9 @@ interface ItemGridProps {
   downloadedOnly: boolean;
   refreshKey: number;
   view: 'grid' | 'rows';
+  pageSize: number;
+  onPageSizeChange: (n: number) => void;
+  onViewChange: (next: 'grid' | 'rows') => void;
 }
 
 // 06: Tauri opener plugin — falls back to window.open in dev-browser mode.
@@ -205,12 +208,11 @@ const Thumb = memo(function Thumb({
 
 // İlk boyamada sadece ilk dilim kurulur, gerisi boş karelerde büyür.
 // content-visibility granted, ama 1000+ düğümün tek commit'te kurulması dev build'de pahalı.
-const DEFAULT_PAGE_SIZE = 48;
-const PAGE_SIZES = [24, 48, 96] as const;
+export const PAGE_SIZES = [24, 48, 96] as const;
 
-function readPageSize(): number {
+export function readPageSize(): number {
   const v = Number.parseInt(window.localStorage.getItem('jv-page-size') ?? '', 10);
-  return (PAGE_SIZES as readonly number[]).includes(v) ? v : DEFAULT_PAGE_SIZE;
+  return (PAGE_SIZES as readonly number[]).includes(v) ? v : 48;
 }
 
 // memo: seçim değişiminde sadece dokunulan satır render edilir.
@@ -343,12 +345,11 @@ const ItemCardView = memo(function ItemCardView({
   );
 });
 
-export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, refreshKey, view, onPickVideo }: ItemGridProps & { onPickVideo: (item: Item) => void }) {
+export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, refreshKey, view, pageSize, onPageSizeChange, onViewChange, onPickVideo }: ItemGridProps & { onPickVideo: (item: Item) => void }) {
   // Sayfa verisi: filtre+arama SQL'de (LIMIT/OFFSET), ekrana tek sayfa gelir.
   const [rows, setRows] = useState<Item[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState<number>(() => readPageSize());
   const [bump, setBump] = useState(0);
   const [goto, setGoto] = useState<string | null>(null);
   const [tagsByItem, setTagsByItem] = useState<Record<string, Tag[]>>({});
@@ -540,9 +541,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         <select
           value={pageSize}
           onChange={(e) => {
-            const next = Number.parseInt(e.target.value, 10);
-            window.localStorage.setItem('jv-page-size', String(next));
-            setPageSize(next);
+            onPageSizeChange(Number.parseInt(e.target.value, 10));
             setPage(0);
           }}
           aria-label="Sayfa başına"
@@ -556,6 +555,26 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         </select>
       </span>
       <div className="flex items-center gap-1">
+        <div className="flex items-center rounded-lg border border-border p-0.5" role="group" aria-label="Görünüm">
+          <button
+            type="button"
+            onClick={() => onViewChange('grid')}
+            aria-pressed={view === 'grid'}
+            aria-label="Kart görünümü"
+            className={`rounded-md p-1.5 transition ${view === 'grid' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <LayoutGrid className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewChange('rows')}
+            aria-pressed={view === 'rows'}
+            aria-label="Satır görünümü"
+            className={`rounded-md p-1.5 transition ${view === 'rows' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <Rows3 className="size-4" />
+          </button>
+        </div>
         <Button
           variant="ghost"
           size="icon-sm"
