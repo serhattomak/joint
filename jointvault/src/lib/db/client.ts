@@ -19,7 +19,25 @@ async function initDb(): Promise<Database> {
     const sql = stmt.trim();
     if (sql) await db.execute(sql);
   }
+  await ensureDownloadColumns(db);
   return db;
+}
+
+// ponytail: existing DBs lack the download columns (added later). ALTER fails on
+// second run (SQLite: duplicate column name), so ignore that error — keeps init
+// green on both fresh (columns already in CREATE TABLE) and existing DBs.
+async function ensureDownloadColumns(db: Database): Promise<void> {
+  for (const sql of [
+    'ALTER TABLE items ADD COLUMN local_path TEXT',
+    "ALTER TABLE items ADD COLUMN download_status TEXT NOT NULL DEFAULT 'none'",
+    'ALTER TABLE items ADD COLUMN download_error TEXT',
+  ]) {
+    try {
+      await db.execute(sql);
+    } catch (e) {
+      if (!/duplicate column name/i.test(String(e))) throw e;
+    }
+  }
 }
 
 export function getDb(): Promise<Database> {
@@ -51,6 +69,10 @@ export async function createItem(input: NewItem): Promise<Item> {
     favorite: 0,
     collection_id: input.collection_id ?? null,
     user_id: input.user_id ?? null,
+    // ponytail: DB defaults cover these (INSERT omits them); literal needs them for the ItemRow type.
+    local_path: null,
+    download_status: 'none',
+    download_error: null,
     created_at: now(),
     updated_at: now(),
   };
@@ -68,7 +90,9 @@ export async function listItems(): Promise<Item[]> {
   return rows.map(toItem);
 }
 
-export type ItemPatch = Partial<Pick<Item, 'url' | 'title' | 'note' | 'platform' | 'thumbnail' | 'collection_id'>>;
+export type ItemPatch = Partial<
+  Pick<Item, 'url' | 'title' | 'note' | 'platform' | 'thumbnail' | 'collection_id' | 'local_path' | 'download_status' | 'download_error'>
+>;
 
 export async function updateItem(id: string, patch: ItemPatch): Promise<Item> {
   const db = await getDb();
@@ -103,6 +127,18 @@ export async function searchItems(q: string): Promise<Item[]> {
     [like],
   );
   return rows.map(toItem);
+}
+
+// ponytail: thin wrapper over updateItem — translates short keys to columns, refreshes updated_at.
+export async function setDownloadState(
+  id: string,
+  patch: { status: Item['download_status']; local_path?: string | null; error?: string | null },
+): Promise<Item> {
+  return updateItem(id, {
+    download_status: patch.status,
+    ...(patch.local_path !== undefined ? { local_path: patch.local_path } : {}),
+    ...(patch.error !== undefined ? { download_error: patch.error } : {}),
+  });
 }
 
 // --- collections ---

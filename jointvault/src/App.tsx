@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Archive, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Upload } from 'lucide-react';
+import { Archive, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Upload } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
+import { DownloadDialog } from '@/components/DownloadDialog';
+import { DownloadSettings } from '@/components/DownloadSettings';
+import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid } from '@/components/ItemGrid';
 import { OrganizeDialog } from '@/components/OrganizeDialog';
 import { PairingSettings } from '@/components/PairingSettings';
@@ -21,6 +24,7 @@ function App() {
   const [categoryId, setCategoryId] = useState('all');
   const [tagId, setTagId] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [downloadedOnly, setDownloadedOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -32,6 +36,9 @@ function App() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [pairingOpen, setPairingOpen] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [urlDlOpen, setUrlDlOpen] = useState(false);
+  const [formatTarget, setFormatTarget] = useState<FormatTarget | null>(null);
 
   const refresh = (): void => setRefreshKey((k) => k + 1);
 
@@ -52,6 +59,7 @@ function App() {
     setCategoryId('all');
     setTagId('all');
     setFavoritesOnly(false);
+    setDownloadedOnly(false);
   };
 
   const navBtn = (active: boolean): string =>
@@ -68,7 +76,7 @@ function App() {
           <span className="font-display text-xl tracking-tight">JointVault</span>
         </div>
         <nav className="flex flex-col gap-0.5">
-          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly)}>
+          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly && !downloadedOnly)}>
             <LayoutGrid className="size-4" /> Tümü
           </button>
           <button
@@ -79,10 +87,25 @@ function App() {
               setCollectionId('all');
               setCategoryId('all');
               setTagId('all');
+              setDownloadedOnly(false);
             }}
             className={navBtn(favoritesOnly)}
           >
             <Star className="size-4" /> Favoriler
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDownloadedOnly(true);
+              setPlatform('all');
+              setCollectionId('all');
+              setCategoryId('all');
+              setTagId('all');
+              setFavoritesOnly(false);
+            }}
+            className={navBtn(downloadedOnly)}
+          >
+            <Download className="size-4" /> İndirilenler
           </button>
         </nav>
         <div className="flex flex-col gap-0.5">
@@ -96,6 +119,7 @@ function App() {
               onClick={() => {
                 setPlatform(p);
                 setFavoritesOnly(false);
+                setDownloadedOnly(false);
               }}
               className={navBtn(platform === p)}
             >
@@ -119,6 +143,7 @@ function App() {
                 onClick={() => {
                   setCategoryId(c.id);
                   setFavoritesOnly(false);
+                  setDownloadedOnly(false);
                 }}
                 className={`${navBtn(categoryId === c.id)} truncate`}
               >
@@ -142,6 +167,7 @@ function App() {
                 onClick={() => {
                   setTagId(t.id);
                   setFavoritesOnly(false);
+                  setDownloadedOnly(false);
                 }}
                 className={`${navBtn(tagId === t.id)} truncate`}
               >
@@ -174,6 +200,7 @@ function App() {
                 onClick={() => {
                   setCollectionId(c.id);
                   setFavoritesOnly(false);
+                  setDownloadedOnly(false);
                 }}
                 className={`${navBtn(collectionId === c.id)} truncate`}
               >
@@ -185,6 +212,9 @@ function App() {
         <div className="border-t border-border pt-2">
           <button type="button" onClick={() => setPairingOpen(true)} className={navBtn(false)}>
             <Settings className="size-4" /> Eklenti eşleşme
+          </button>
+          <button type="button" onClick={() => setDownloadOpen(true)} className={navBtn(false)}>
+            <Settings className="size-4" /> İndirme klasörü
           </button>
         </div>
       </aside>
@@ -205,6 +235,9 @@ function App() {
           </Button>
           <Button variant="outline" onClick={() => setBulkOpen(true)}>
             <Upload /> Toplu aktar
+          </Button>
+          <Button variant="outline" onClick={() => setUrlDlOpen(true)}>
+            <Download /> URL&apos;den indir
           </Button>
           <div className="flex items-center rounded-lg border border-border p-0.5" role="group" aria-label="Görünüm">
             <button
@@ -236,16 +269,29 @@ function App() {
             categoryId={categoryId}
             tagId={tagId}
             favoritesOnly={favoritesOnly}
+            downloadedOnly={downloadedOnly}
             refreshKey={refreshKey}
             view={view}
+            onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
           />
         </main>
       </div>
 
       <AddItemDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />
+      <DownloadDialog
+        open={urlDlOpen}
+        onOpenChange={setUrlDlOpen}
+        onDone={refresh}
+        onPickVideo={(t) => {
+          setUrlDlOpen(false);
+          setFormatTarget(t);
+        }}
+      />
+      <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
       <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
       <OrganizeDialog open={organizeOpen} onOpenChange={setOrganizeOpen} onChanged={refresh} />
       <PairingSettings open={pairingOpen} onOpenChange={setPairingOpen} />
+      <DownloadSettings open={downloadOpen} onOpenChange={setDownloadOpen} />
       <XSyncReviewDialog onDone={refresh} />
     </div>
     </TooltipProvider>

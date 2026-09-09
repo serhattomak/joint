@@ -1,7 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { PackageOpen, Pencil, Star, Trash2 } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, PackageOpen, Pencil, RotateCcw, Star, Trash2 } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkActions } from '@/components/BulkActions';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -11,9 +12,11 @@ import {
   listItems,
   removeItem,
   searchItems,
+  setDownloadState,
   toggleFavorite,
 } from '@/lib/db/client';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
+import { QUALITY_OPTIONS, getDefaultQuality, setDefaultQuality, startDownload, useDownloadProgress, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
 import { openExternal } from '@/lib/external';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
 
@@ -24,6 +27,7 @@ interface ItemGridProps {
   categoryId: string; // 'all' or a category id
   tagId: string; // 'all' or a tag id
   favoritesOnly: boolean;
+  downloadedOnly: boolean;
   refreshKey: number;
   view: 'grid' | 'rows';
 }
@@ -54,6 +58,9 @@ interface ItemViewProps {
   onFavorite: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (item: Item) => void;
+  progress: number | undefined;
+  onAudio: (item: Item, quality: DownloadQuality) => void;
+  onPickVideo: (item: Item) => void;
 }
 
 function ActionButtons({ item, onFavorite, onDelete, onEdit }: Pick<ItemViewProps, 'item' | 'onFavorite' | 'onDelete' | 'onEdit'>) {  return (
@@ -74,6 +81,101 @@ function ActionButtons({ item, onFavorite, onDelete, onEdit }: Pick<ItemViewProp
         <Trash2 />
       </Button>
     </>
+  );
+}
+
+// Per-item download state: done → badge, queued/active → inline progress bar,
+// error → message + retry menu, none → Download button with Video/Ses mini-menu.
+// ponytail: badge only on done — opening local files needs an opener bridge (later).
+function DownloadZone({
+  item,
+  progress,
+  onAudio,
+  onPickVideo,
+}: Pick<ItemViewProps, 'item' | 'progress' | 'onAudio' | 'onPickVideo'>) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
+  const status = item.download_status;
+
+  if (status === 'done') return <Badge variant="secondary">Yerel</Badge>;
+
+  if (status === 'queued' || status === 'active') {
+    const pct = Math.round(progress ?? 0);
+    return (
+      <div className="flex min-w-24 flex-1 items-center gap-1.5" aria-label={`İndiriliyor %{pct}`}>
+        <div className="h-1 flex-1 overflow-hidden rounded bg-muted">
+          <div className="h-full rounded bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="text-[11px] tabular-nums text-muted-foreground">%{pct}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {status === 'error' ? (
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="max-w-40 truncate text-[11px] text-destructive" title={item.download_error ?? 'Hata'}>
+            {item.download_error ?? 'Hata'}
+          </span>
+          <Button variant="ghost" size="icon-sm" onClick={() => setMenuOpen((o) => !o)} aria-label="Tekrar indir">
+            <RotateCcw />
+          </Button>
+        </div>
+      ) : (
+        <Button variant="ghost" size="icon-sm" onClick={() => setMenuOpen((o) => !o)} aria-label="İndir">
+          <Download />
+        </Button>
+      )}
+      {menuOpen && (
+        <>
+          <button
+            type="button"
+            aria-hidden
+            tabIndex={-1}
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="absolute bottom-full left-0 z-20 mb-1 flex min-w-28 flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+            <select
+              value={quality}
+              onChange={(e) => setQuality(e.target.value as DownloadQuality)}
+              className="border-b border-border bg-transparent px-2.5 py-1.5 text-xs outline-none"
+              aria-label="Kalite"
+            >
+              {QUALITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onPickVideo(item);
+                }}
+                className="flex-1 px-2.5 py-1.5 text-xs hover:bg-muted"
+              >
+                Video…
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setDefaultQuality(quality);
+                  onAudio(item, quality);
+                }}
+                className="flex-1 px-2.5 py-1.5 text-xs hover:bg-muted"
+              >
+                Ses
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -118,6 +220,9 @@ const ItemRowView = memo(function ItemRowView({
   onFavorite,
   onDelete,
   onEdit,
+  progress,
+  onAudio,
+  onPickVideo,
 }: ItemViewProps) {
   return (
     <div className="cv-row group flex items-center gap-3 px-3 py-2 transition hover:bg-muted/60">
@@ -159,6 +264,7 @@ const ItemRowView = memo(function ItemRowView({
                 </p>
         <div className="mt-0.5 flex items-center gap-0.5">
           <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
+          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} />
         </div>
       </div>
     </div>
@@ -176,6 +282,9 @@ const ItemCardView = memo(function ItemCardView({
   onFavorite,
   onDelete,
   onEdit,
+  progress,
+  onAudio,
+  onPickVideo,
 }: ItemViewProps) {
   return (
     <article
@@ -223,13 +332,14 @@ const ItemCardView = memo(function ItemCardView({
         </div>
         <div className="mt-1 flex items-center gap-1 border-t border-border pt-2">
           <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
+          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} />
         </div>
       </div>
     </article>
   );
 });
 
-export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, refreshKey, view }: ItemGridProps) {
+export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, refreshKey, view, onPickVideo }: ItemGridProps & { onPickVideo: (item: Item) => void }) {
   // Ham satırlar: sadece arama metni + refresh değişince çekilir (IPC).
   const [allItems, setAllItems] = useState<Item[]>([]);
   const [tagsByItem, setTagsByItem] = useState<Record<string, Tag[]>>({});
@@ -240,6 +350,10 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
+  // Inline progress percents by item id; cleared when the download settles.
+  const [progress, setProgress] = useState<Record<string, number>>({});
+  // Guards the one-time queued→active DB flip per download (progress events stream in).
+  const markedActive = useRef<Set<string>>(new Set());
 
   // Arama her tuşta IPC yapmasın.
   useEffect(() => {
@@ -289,9 +403,10 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
           (collectionId === 'all' || it.collection_id === collectionId) &&
           (categoryId === 'all' || (catsByItem[it.id] ?? []).some((c) => c.id === categoryId)) &&
           (tagId === 'all' || (tagsByItem[it.id] ?? []).some((t) => t.id === tagId)) &&
-          (!favoritesOnly || it.favorite),
+          (!favoritesOnly || it.favorite) &&
+          (!downloadedOnly || it.download_status === 'done'),
       ),
-    [allItems, platform, collectionId, categoryId, tagId, favoritesOnly, tagsByItem, catsByItem],
+    [allItems, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, tagsByItem, catsByItem],
   );
 
   // Yazma sonrası (sil/kaydet): satır + eşleşme birlikte tazelenir.
@@ -314,7 +429,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   useEffect(() => {
     setSelected(new Set());
     setVisibleCount(PAGE_SIZE);
-  }, [platform, collectionId, categoryId, tagId, favoritesOnly, debouncedQuery]);
+  }, [platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, debouncedQuery]);
 
   // Liste büyüdükçe dilim dilim ekle — ilk kare hep hızlı.
   useEffect(() => {
@@ -359,10 +474,47 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   const handleDelete = useCallback(
     async (id: string): Promise<void> => {
       if (!window.confirm('Bu öğeyi silmek istiyor musun?')) return;
+      // ponytail: downloaded file stays on disk (orphan cleanup later).
       await removeItem(id);
       await refreshAll();
     },
     [refreshAll],
+  );
+
+  const runDownload = useCallback(
+    async (item: Item, kind: DownloadKind, quality: DownloadQuality): Promise<void> => {
+      setProgress((p) => ({ ...p, [item.id]: 0 }));
+      await startDownload(item.id, item.url, kind, quality);
+      markedActive.current.delete(item.id);
+      setProgress((p) => {
+        const next = { ...p };
+        delete next[item.id];
+        return next;
+      });
+      await refreshAll();
+    },
+    [refreshAll],
+  );
+
+  const handleAudioDownload = useCallback(
+    (item: Item, quality: DownloadQuality): void => {
+      void runDownload(item, 'audio', quality);
+    },
+    [runDownload],
+  );
+
+  // First progress event flips queued→active in DB (once per download);
+  // percents stay local — no SQLite write per tick.
+  useDownloadProgress(
+    useCallback((e: { itemId: string; percent: number }) => {
+      setProgress((p) => ({ ...p, [e.itemId]: e.percent }));
+      if (!markedActive.current.has(e.itemId)) {
+        markedActive.current.add(e.itemId);
+        void setDownloadState(e.itemId, { status: 'active' }).then((updated) => {
+          setAllItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+        });
+      }
+    }, []),
   );
 
   const handleEdit = useCallback((item: Item): void => {
@@ -377,7 +529,8 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
       collectionId !== 'all' ||
       categoryId !== 'all' ||
       tagId !== 'all' ||
-      favoritesOnly;
+      favoritesOnly ||
+      downloadedOnly;
     return (
       <div className="animate-rise flex flex-col items-center gap-2 py-16 text-center">
         <PackageOpen className="size-8 text-muted-foreground" strokeWidth={1.5} />
@@ -409,6 +562,9 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
               onFavorite={handleFavorite}
               onDelete={handleDelete}
               onEdit={handleEdit}
+              progress={progress[item.id]}
+              onAudio={handleAudioDownload}
+              onPickVideo={onPickVideo}
             />
           ))}
         </div>
@@ -427,6 +583,9 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
             onFavorite={handleFavorite}
             onDelete={handleDelete}
             onEdit={handleEdit}
+            progress={progress[item.id]}
+            onAudio={handleAudioDownload}
+            onPickVideo={onPickVideo}
           />
         ))}
       </div>

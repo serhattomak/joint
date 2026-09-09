@@ -11,6 +11,10 @@
     "sql:allow-execute",
     "opener:default",
     "dialog:default",
-    "clipboard-manager:default"
+    "clipboard-manager:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{ "name": "yt-dlp", "sidecar": true }]
+    }
   ]
 }

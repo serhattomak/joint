@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS items (
   favorite INTEGER NOT NULL DEFAULT 0,
   collection_id TEXT NULL REFERENCES collections(id) ON DELETE SET NULL,
   user_id TEXT NULL,
+  local_path TEXT NULL,
+  download_status TEXT NOT NULL DEFAULT 'none',
+  download_error TEXT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

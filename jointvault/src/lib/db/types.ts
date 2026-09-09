@@ -8,6 +8,8 @@ export interface Collection {
   updated_at: string;
 }
 
+export type DownloadStatus = 'none' | 'queued' | 'active' | 'done' | 'error';
+
 export interface Item {
   id: string;
   url: string;
@@ -18,6 +20,9 @@ export interface Item {
   favorite: boolean;
   collection_id: string | null;
   user_id: string | null;
+  local_path: string | null;
+  download_status: DownloadStatus;
+  download_error: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,6 +1,8 @@
 mod collect;
+mod download;
 mod pairing;
 mod preview;
+mod settings;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -8,8 +10,9 @@ pub fn run() {
     .plugin(tauri_plugin_sql::Builder::default().build())
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_clipboard_manager::init())
-    .invoke_handler(tauri::generate_handler![preview::fetch_preview, pairing::get_pairing_token, pairing::regenerate_pairing_token])
+    .invoke_handler(tauri::generate_handler![preview::fetch_preview, pairing::get_pairing_token, pairing::regenerate_pairing_token, settings::get_download_dir, settings::set_download_dir, download::download_media, download::list_formats])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
