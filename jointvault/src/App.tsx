@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Archive, Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Sun, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
+import { ClipboardWatcher } from '@/components/ClipboardWatcher';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
 import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
@@ -378,6 +379,7 @@ function App() {
         }}
       />
       <XSyncReviewDialog onDone={refresh} />
+      <ClipboardWatcher onDone={refresh} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
     </div>
     </TooltipProvider>

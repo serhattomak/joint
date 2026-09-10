@@ -6,6 +6,7 @@ mod pairing;
 mod preview;
 mod preview_media;
 mod settings;
+mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,9 +25,11 @@ pub fn run() {
             .build(),
         )?;
       }
+      tray::setup_tray(app.handle())?;
       tauri::async_runtime::spawn(collect::run_bridge(app.handle().clone()));
       Ok(())
     })
+    .on_window_event(|window, event| tray::on_window_close(window, event))
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

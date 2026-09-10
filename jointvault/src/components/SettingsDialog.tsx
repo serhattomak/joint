@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { Button } from '@/components/ui/button';
-import {
+import { Button } from '@/components/ui/button';import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -11,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/components/ClipboardWatcher';
 import { QUALITY_OPTIONS, getDefaultQuality, setDefaultQuality, type DownloadQuality } from '@/lib/downloads';
 
 type SettingsTab = 'view' | 'downloads' | 'extension';
@@ -35,6 +35,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function SettingsDialog(props: SettingsDialogProps) {
   const { open, onOpenChange, pageSize, pageSizes, onPageSizeChange } = props;
   const [tab, setTab] = useState<SettingsTab>('view');
+  const [watch, setWatch] = useState(() => isWatchEnabled());
   // İndirme klasörü
   const [dir, setDir] = useState('');
   const [dirBusy, setDirBusy] = useState(false);
@@ -50,6 +51,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setDirError(null);
     setTokenError(null);
     setQuality(getDefaultQuality());
+    setWatch(isWatchEnabled());
     void invoke<string>('get_download_dir')
       .then(setDir)
       .catch((e: unknown) => setDirError(String(e)));
@@ -134,6 +136,19 @@ export function SettingsDialog(props: SettingsDialogProps) {
           <div className="flex flex-col">
             <Row label="Tema">
               <ThemeToggle />
+            </Row>
+            <Row label="Pano izleme">
+              <input
+                type="checkbox"
+                checked={watch}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setWatch(on);
+                  localStorage.setItem(CLIPBOARD_WATCH_KEY, on ? 'on' : 'off');
+                }}
+                className="size-4 accent-primary"
+                aria-label="Pano izleme"
+              />
             </Row>
             <Row label="Sayfa başına">
               <select
