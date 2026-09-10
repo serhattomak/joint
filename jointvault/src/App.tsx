@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Archive, Clapperboard, Download, LayoutGrid, Plus, Search, Settings, SlidersHorizontal, Star, Upload, X } from 'lucide-react';
+import { Archive, Clapperboard, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Sun, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
+import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
 import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
 import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
@@ -17,6 +18,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { listCategories, listCollections, listTags } from '@/lib/db/client';
 import type { Category, Collection, Tag } from '@/lib/db/types';
 import { PLATFORM_META } from '@/lib/platform';
+import { cycleTheme } from '@/lib/theme';
 
 // ponytail: no node:path in bundle — basename via string split.
 function basename(p: string): string {
@@ -48,6 +50,7 @@ function App() {
   const [urlDlOpen, setUrlDlOpen] = useState(false);
   const [formatTarget, setFormatTarget] = useState<FormatTarget | null>(null);
   const [editorSource, setEditorSource] = useState<EditorSource | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const refresh = (): void => setRefreshKey((k) => k + 1);
 
@@ -62,6 +65,17 @@ function App() {
     void listTags().then(setTags);
   }, [refreshKey, organizeOpen]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const showAll = (): void => {
     setPlatform('all');
     setCollectionId('all');
@@ -71,6 +85,45 @@ function App() {
     setDownloadedOnly(false);
     setConverterOnly(false);
   };
+
+  const openConverter = (): void => {
+    showAll();
+    setConverterOnly(true);
+  };
+
+  const goFavorites = (): void => {
+    setFavoritesOnly(true);
+    setPlatform('all');
+    setCollectionId('all');
+    setCategoryId('all');
+    setTagId('all');
+    setDownloadedOnly(false);
+    setConverterOnly(false);
+  };
+
+  const goDownloads = (): void => {
+    setDownloadedOnly(true);
+    setPlatform('all');
+    setCollectionId('all');
+    setCategoryId('all');
+    setTagId('all');
+    setFavoritesOnly(false);
+    setConverterOnly(false);
+  };
+
+  const paletteCommands: PaletteCommand[] = [
+    { id: 'add', label: 'Yeni öğe ekle', icon: <Plus className="size-4" />, run: () => setAddOpen(true) },
+    { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
+    { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
+    { id: 'converter', label: 'Dönüştürücü', icon: <Clapperboard className="size-4" />, run: openConverter },
+    { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
+    { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
+    { id: 'dl', label: 'İndirilenler', icon: <Download className="size-4" />, run: goDownloads },
+    { id: 'settings', label: 'Ayarlar', icon: <Settings className="size-4" />, run: () => setSettingsOpen(true) },
+    { id: 'theme', label: 'Tema değiştir', icon: <Sun className="size-4" />, run: () => cycleTheme() },
+    { id: 'grid', label: 'Kart görünümü', icon: <LayoutGrid className="size-4" />, run: () => switchView('grid') },
+    { id: 'rows', label: 'Satır görünümü', icon: <Rows3 className="size-4" />, run: () => switchView('rows') },
+  ];
 
   const navBtn = (active: boolean): string =>
     `flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition ${
@@ -141,30 +194,14 @@ function App() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setFavoritesOnly(true);
-              setPlatform('all');
-              setCollectionId('all');
-              setCategoryId('all');
-              setTagId('all');
-              setDownloadedOnly(false);
-              setConverterOnly(false);
-            }}
+            onClick={goFavorites}
             className={navBtn(favoritesOnly)}
           >
             <Star className="size-4" /> Favoriler
           </button>
           <button
             type="button"
-            onClick={() => {
-              setDownloadedOnly(true);
-              setPlatform('all');
-              setCollectionId('all');
-              setCategoryId('all');
-              setTagId('all');
-              setFavoritesOnly(false);
-              setConverterOnly(false);
-            }}
+            onClick={goDownloads}
             className={navBtn(downloadedOnly)}
           >
             <Download className="size-4" /> İndirilenler
@@ -202,7 +239,7 @@ function App() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ara: başlık, not, URL…"
+              placeholder="Ara: başlık, not, URL…  (Ctrl+K palet)"
               className="pl-8"
             />
           </div>
@@ -319,6 +356,7 @@ function App() {
         }}
       />
       <XSyncReviewDialog onDone={refresh} />
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
     </div>
     </TooltipProvider>
   );
