@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, LayoutGrid, PackageOpen, Pencil, RotateCcw, Rows3, Star, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, LayoutGrid, PackageOpen, Pencil, RotateCcw, Rows3, Scissors, Star, Trash2 } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkActions } from '@/components/BulkActions';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +63,7 @@ interface ItemViewProps {
   progress: number | undefined;
   onAudio: (item: Item, quality: DownloadQuality) => void;
   onPickVideo: (item: Item) => void;
+  onConvert: (item: Item) => void;
 }
 
 function ActionButtons({ item, onFavorite, onDelete, onEdit }: Pick<ItemViewProps, 'item' | 'onFavorite' | 'onDelete' | 'onEdit'>) {  return (
@@ -94,12 +95,23 @@ function DownloadZone({
   progress,
   onAudio,
   onPickVideo,
-}: Pick<ItemViewProps, 'item' | 'progress' | 'onAudio' | 'onPickVideo'>) {
+  onConvert,
+}: Pick<ItemViewProps, 'item' | 'progress' | 'onAudio' | 'onPickVideo' | 'onConvert'>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
   const status = item.download_status;
 
-  if (status === 'done') return <Badge variant="secondary">Yerel</Badge>;
+  if (status === 'done')
+    return (
+      <span className="flex items-center gap-0.5">
+        <Badge variant="secondary">Yerel</Badge>
+        {item.local_path && (
+          <Button variant="ghost" size="icon-sm" onClick={() => onConvert(item)} aria-label="Dönüştür">
+            <Scissors />
+          </Button>
+        )}
+      </span>
+    );
 
   if (status === 'queued' || status === 'active') {
     const pct = Math.round(progress ?? 0);
@@ -229,6 +241,7 @@ const ItemRowView = memo(function ItemRowView({
   progress,
   onAudio,
   onPickVideo,
+  onConvert,
 }: ItemViewProps) {
   return (
     <div className="cv-row group flex items-center gap-3 px-3 py-2 transition hover:bg-muted/60">
@@ -270,7 +283,7 @@ const ItemRowView = memo(function ItemRowView({
                 </p>
         <div className="mt-0.5 flex items-center gap-0.5">
           <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
-          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} />
+          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
         </div>
       </div>
     </div>
@@ -291,6 +304,7 @@ const ItemCardView = memo(function ItemCardView({
   progress,
   onAudio,
   onPickVideo,
+  onConvert,
 }: ItemViewProps) {
   return (
     <article
@@ -338,14 +352,14 @@ const ItemCardView = memo(function ItemCardView({
         </div>
         <div className="mt-1 flex items-center gap-1 border-t border-border pt-2">
           <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
-          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} />
+          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
         </div>
       </div>
     </article>
   );
 });
 
-export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, refreshKey, view, pageSize, onPageSizeChange, onViewChange, onPickVideo }: ItemGridProps & { onPickVideo: (item: Item) => void }) {
+export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, refreshKey, view, pageSize, onPageSizeChange, onViewChange, onPickVideo, onConvert }: ItemGridProps & { onPickVideo: (item: Item) => void; onConvert: (item: Item) => void }) {
   // Sayfa verisi: filtre+arama SQL'de (LIMIT/OFFSET), ekrana tek sayfa gelir.
   const [rows, setRows] = useState<Item[]>([]);
   const [total, setTotal] = useState(0);
@@ -648,6 +662,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
               progress={progress[item.id]}
               onAudio={handleAudioDownload}
               onPickVideo={onPickVideo}
+              onConvert={onConvert}
             />
           ))}
         </div>
@@ -669,6 +684,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
             progress={progress[item.id]}
             onAudio={handleAudioDownload}
             onPickVideo={onPickVideo}
+            onConvert={onConvert}
           />
         ))}
       </div>

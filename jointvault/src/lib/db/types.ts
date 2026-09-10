@@ -23,6 +23,7 @@ export interface Item {
   local_path: string | null;
   download_status: DownloadStatus;
   download_error: string | null;
+  converted_path: string | null;
   created_at: string;
   updated_at: string;
 }

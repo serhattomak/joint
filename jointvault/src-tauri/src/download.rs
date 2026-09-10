@@ -6,7 +6,7 @@ use tauri_plugin_shell::ShellExt;
 // until the running one finishes; the frontend marks that item `queued` at
 // invoke time and flips it to `active` on the first progress event below.
 // ponytail: tauri re-exports tokio's Mutex, so no extra tokio features needed.
-static QUEUE: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
+pub(crate) static QUEUE: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
 
 #[derive(Clone, serde::Serialize)]
 struct ProgressPayload {
@@ -150,6 +150,8 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
         "--newline".to_string(),
         "--progress".to_string(),
         "--no-playlist".to_string(),
+        "--print".to_string(),
+        "after_move:filepath".to_string(),
         "-f".to_string(),
         format,
         "-o".to_string(),
@@ -177,11 +179,24 @@ async fn run_sidecar(app: &AppHandle, item_id: &str, args: Vec<String>) -> Resul
         .map_err(|e| e.to_string())?;
 
     let mut last_err = String::new();
+    let mut candidate: Option<String> = None;
     while let Some(event) = rx.recv().await {
         match event {
             CommandEvent::Stdout(line) => {
                 let text = String::from_utf8_lossy(&line);
                 for part in text.split(['\n', '\r']) {
+                    let t = part.trim();
+                    // Final yol satırı: '%' yok, mutlak yol gibi başlar; SONuncusu tutulur.
+                    if !t.is_empty()
+                        && !t.contains('%')
+                        && (t.starts_with('/')
+                            || (t.len() >= 3
+                                && t.as_bytes()[0].is_ascii_alphabetic()
+                                && t.as_bytes()[1] == b':'
+                                && (t.as_bytes()[2] == b'\\' || t.as_bytes()[2] == b'/')))
+                    {
+                        candidate = Some(t.to_string());
+                    }
                     if let Some(p) = parse_percent(part) {
                         emit_progress(app, item_id, p);
                     }
@@ -193,6 +208,12 @@ async fn run_sidecar(app: &AppHandle, item_id: &str, args: Vec<String>) -> Resul
             CommandEvent::Error(e) => push_capped(&mut last_err, &e),
             CommandEvent::Terminated(payload) => {
                 if payload.code == Some(0) {
+                    if let Some(path) = candidate {
+                        if std::path::Path::new(&path).exists() {
+                            return Ok(path);
+                        }
+                    }
+                    // fallback: final yol yakalanamadıysa eski davranış
                     return Ok("done".to_string());
                 }
                 if last_err.trim().is_empty() {

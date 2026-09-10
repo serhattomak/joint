@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS items (
   local_path TEXT NULL,
   download_status TEXT NOT NULL DEFAULT 'none',
   download_error TEXT NULL,
+  converted_path TEXT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

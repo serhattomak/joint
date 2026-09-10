@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Archive, Download, LayoutGrid, Plus, Search, Settings, SlidersHorizontal, Star, Upload, X } from 'lucide-react';
+import { Archive, Clapperboard, Download, LayoutGrid, Plus, Search, Settings, SlidersHorizontal, Star, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
+import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
+import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
 import { FilterMenu } from '@/components/FilterMenu';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
@@ -16,6 +18,12 @@ import { listCategories, listCollections, listTags } from '@/lib/db/client';
 import type { Category, Collection, Tag } from '@/lib/db/types';
 import { PLATFORM_META } from '@/lib/platform';
 
+// ponytail: no node:path in bundle — basename via string split.
+function basename(p: string): string {
+  const parts = p.split(/[/\\]/);
+  return parts[parts.length - 1] || p;
+}
+
 function App() {
   const [query, setQuery] = useState('');
   const [platform, setPlatform] = useState('all');
@@ -24,6 +32,7 @@ function App() {
   const [tagId, setTagId] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [downloadedOnly, setDownloadedOnly] = useState(false);
+  const [converterOnly, setConverterOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -38,6 +47,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [urlDlOpen, setUrlDlOpen] = useState(false);
   const [formatTarget, setFormatTarget] = useState<FormatTarget | null>(null);
+  const [editorSource, setEditorSource] = useState<EditorSource | null>(null);
 
   const refresh = (): void => setRefreshKey((k) => k + 1);
 
@@ -59,6 +69,7 @@ function App() {
     setTagId('all');
     setFavoritesOnly(false);
     setDownloadedOnly(false);
+    setConverterOnly(false);
   };
 
   const navBtn = (active: boolean): string =>
@@ -69,6 +80,7 @@ function App() {
   const leaveViews = (): void => {
     setFavoritesOnly(false);
     setDownloadedOnly(false);
+    setConverterOnly(false);
   };
   const pickPlatform = (p: string): void => {
     setPlatform(p);
@@ -124,7 +136,7 @@ function App() {
           <span className="font-display text-xl tracking-tight">JointVault</span>
         </div>
         <nav className="flex flex-col gap-0.5">
-          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly && !downloadedOnly)}>
+          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly && !downloadedOnly && !converterOnly)}>
             <LayoutGrid className="size-4" /> Tümü
           </button>
           <button
@@ -136,6 +148,7 @@ function App() {
               setCategoryId('all');
               setTagId('all');
               setDownloadedOnly(false);
+              setConverterOnly(false);
             }}
             className={navBtn(favoritesOnly)}
           >
@@ -150,10 +163,26 @@ function App() {
               setCategoryId('all');
               setTagId('all');
               setFavoritesOnly(false);
+              setConverterOnly(false);
             }}
             className={navBtn(downloadedOnly)}
           >
             <Download className="size-4" /> İndirilenler
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setConverterOnly(true);
+              setPlatform('all');
+              setCollectionId('all');
+              setCategoryId('all');
+              setTagId('all');
+              setFavoritesOnly(false);
+              setDownloadedOnly(false);
+            }}
+            className={navBtn(converterOnly)}
+          >
+            <Clapperboard className="size-4" /> Dönüştürücü
           </button>
         </nav>
         <div className="border-t border-border pt-2">
@@ -203,7 +232,11 @@ function App() {
           </Button>
         </header>
         <main className="px-4 py-4">
-          {chips.length > 0 && (
+          {converterOnly ? (
+            <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
+          ) : (
+            <>
+              {chips.length > 0 && (
             <div className="mb-3 flex flex-wrap items-center gap-1.5">
               {chips.map((chip) => (
                 <span
@@ -247,7 +280,17 @@ function App() {
               setPageSize(n);
             }}
             onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
+            onConvert={(item) => {
+              if (item.local_path)
+                setEditorSource({
+                  label: item.title || basename(item.local_path),
+                  inputPath: item.local_path,
+                  itemId: item.id,
+                });
+            }}
           />
+            </>
+          )}
         </main>
       </div>
 
@@ -262,6 +305,7 @@ function App() {
         }}
       />
       <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
+      <EditorDialog source={editorSource} onClose={() => setEditorSource(null)} onDone={refresh} />
       <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
       <OrganizeDialog open={organizeOpen} onOpenChange={setOrganizeOpen} onChanged={refresh} />
       <SettingsDialog

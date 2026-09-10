@@ -1,7 +1,9 @@
 mod collect;
+mod convert;
 mod download;
 mod pairing;
 mod preview;
+mod preview_media;
 mod settings;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -12,7 +14,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_clipboard_manager::init())
-    .invoke_handler(tauri::generate_handler![preview::fetch_preview, pairing::get_pairing_token, pairing::regenerate_pairing_token, settings::get_download_dir, settings::set_download_dir, download::download_media, download::list_formats])
+    .invoke_handler(tauri::generate_handler![preview::fetch_preview, preview_media::media_probe, preview_media::media_probe_cleanup, pairing::get_pairing_token, pairing::regenerate_pairing_token, settings::get_download_dir, settings::set_download_dir, download::download_media, download::list_formats, convert::convert_media])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

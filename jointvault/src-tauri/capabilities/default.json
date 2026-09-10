@@ -14,7 +14,10 @@
     "clipboard-manager:default",
     {
       "identifier": "shell:allow-execute",
-      "allow": [{ "name": "yt-dlp", "sidecar": true }]
+      "allow": [
+        { "name": "yt-dlp", "sidecar": true },
+        { "name": "ffmpeg", "sidecar": true }
+      ]
     }
   ]
 }

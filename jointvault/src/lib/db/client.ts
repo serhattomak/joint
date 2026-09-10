@@ -20,6 +20,7 @@ async function initDb(): Promise<Database> {
     if (sql) await db.execute(sql);
   }
   await ensureDownloadColumns(db);
+  await ensureConvertedPath(db);
   return db;
 }
 
@@ -37,6 +38,16 @@ async function ensureDownloadColumns(db: Database): Promise<void> {
     } catch (e) {
       if (!/duplicate column name/i.test(String(e))) throw e;
     }
+  }
+}
+
+// ponytail: existing DBs lack converted_path (added later). Same duplicate-column-ignore
+// keeps init green on fresh (column already in CREATE TABLE) and existing DBs.
+async function ensureConvertedPath(db: Database): Promise<void> {
+  try {
+    await db.execute('ALTER TABLE items ADD COLUMN converted_path TEXT');
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e))) throw e;
   }
 }
 
@@ -73,6 +84,7 @@ export async function createItem(input: NewItem): Promise<Item> {
     local_path: null,
     download_status: 'none',
     download_error: null,
+    converted_path: null,
     created_at: now(),
     updated_at: now(),
   };
@@ -91,7 +103,7 @@ export async function listItems(): Promise<Item[]> {
 }
 
 export type ItemPatch = Partial<
-  Pick<Item, 'url' | 'title' | 'note' | 'platform' | 'thumbnail' | 'collection_id' | 'local_path' | 'download_status' | 'download_error'>
+  Pick<Item, 'url' | 'title' | 'note' | 'platform' | 'thumbnail' | 'collection_id' | 'local_path' | 'download_status' | 'download_error' | 'converted_path'>
 >;
 
 export async function updateItem(id: string, patch: ItemPatch): Promise<Item> {
