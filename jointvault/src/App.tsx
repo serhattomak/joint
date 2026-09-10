@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Archive, Clapperboard, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Sun, Upload, X } from 'lucide-react';
+import { Archive, Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Sun, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
-import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
 import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
+import { DuplicatesView } from '@/components/DuplicatesView';
+import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
 import { FilterMenu } from '@/components/FilterMenu';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
@@ -35,6 +36,7 @@ function App() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [downloadedOnly, setDownloadedOnly] = useState(false);
   const [converterOnly, setConverterOnly] = useState(false);
+  const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -84,11 +86,17 @@ function App() {
     setFavoritesOnly(false);
     setDownloadedOnly(false);
     setConverterOnly(false);
+    setDuplicatesOnly(false);
   };
 
   const openConverter = (): void => {
     showAll();
     setConverterOnly(true);
+  };
+
+  const openDuplicates = (): void => {
+    showAll();
+    setDuplicatesOnly(true);
   };
 
   const goFavorites = (): void => {
@@ -99,6 +107,7 @@ function App() {
     setTagId('all');
     setDownloadedOnly(false);
     setConverterOnly(false);
+    setDuplicatesOnly(false);
   };
 
   const goDownloads = (): void => {
@@ -109,6 +118,7 @@ function App() {
     setTagId('all');
     setFavoritesOnly(false);
     setConverterOnly(false);
+    setDuplicatesOnly(false);
   };
 
   const paletteCommands: PaletteCommand[] = [
@@ -116,6 +126,7 @@ function App() {
     { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
     { id: 'converter', label: 'Dönüştürücü', icon: <Clapperboard className="size-4" />, run: openConverter },
+    { id: 'dupes', label: 'Yinelenenler', icon: <Copy className="size-4" />, run: openDuplicates },
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
     { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
     { id: 'dl', label: 'İndirilenler', icon: <Download className="size-4" />, run: goDownloads },
@@ -134,6 +145,7 @@ function App() {
     setFavoritesOnly(false);
     setDownloadedOnly(false);
     setConverterOnly(false);
+    setDuplicatesOnly(false);
   };
   const pickPlatform = (p: string): void => {
     setPlatform(p);
@@ -189,7 +201,7 @@ function App() {
           <span className="font-display text-xl tracking-tight">JointVault</span>
         </div>
         <nav className="flex flex-col gap-0.5">
-          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly && !downloadedOnly && !converterOnly)}>
+          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly && !downloadedOnly && !converterOnly && !duplicatesOnly)}>
             <LayoutGrid className="size-4" /> Tümü
           </button>
           <button
@@ -216,10 +228,18 @@ function App() {
               setTagId('all');
               setFavoritesOnly(false);
               setDownloadedOnly(false);
+              setDuplicatesOnly(false);
             }}
             className={navBtn(converterOnly)}
           >
             <Clapperboard className="size-4" /> Dönüştürücü
+          </button>
+          <button
+            type="button"
+            onClick={openDuplicates}
+            className={navBtn(duplicatesOnly)}
+          >
+            <Copy className="size-4" /> Yinelenenler
           </button>
         </nav>
         <div className="border-t border-border pt-2">
@@ -269,7 +289,9 @@ function App() {
           </Button>
         </header>
         <main className="px-4 py-4">
-          {converterOnly ? (
+          {duplicatesOnly ? (
+            <DuplicatesView onDone={refresh} />
+          ) : converterOnly ? (
             <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
           ) : (
             <>

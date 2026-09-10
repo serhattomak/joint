@@ -1,0 +1,61 @@
+use sha2::{Digest, Sha256};
+use std::io::Read;
+
+#[derive(Clone, serde::Serialize)]
+pub struct DupGroup {
+    pub hash: String,
+    pub size: u64,
+    pub paths: Vec<String>,
+}
+
+// ponytail: boyut-önce-hash-sonra — tek bayt okumadan önce grupla,
+// aynı boyutluların tamamı okunur (parça hash yok, basitlik kazanır).
+#[tauri::command]
+pub async fn scan_files(paths: Vec<String>) -> Result<Vec<DupGroup>, String> {
+    let mut by_size: std::collections::HashMap<u64, Vec<String>> = std::collections::HashMap::new();
+    for p in &paths {
+        match std::fs::metadata(p) {
+            Ok(m) if m.is_file() => by_size.entry(m.len()).or_default().push(p.clone()),
+            _ => {}
+        }
+    }
+    let mut groups = Vec::new();
+    for (size, candidates) in by_size {
+        if candidates.len() < 2 {
+            continue;
+        }
+        let mut by_hash: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        for p in candidates {
+            match hash_file(&p) {
+                Ok(h) => by_hash.entry(h).or_default().push(p),
+                Err(_) => {}
+            }
+        }
+        for (hash, dupes) in by_hash {
+            if dupes.len() > 1 {
+                groups.push(DupGroup { hash, size, paths: dupes });
+            }
+        }
+    }
+    groups.sort_by(|a, b| b.size.cmp(&a.size));
+    Ok(groups)
+}
+
+fn hash_file(path: &str) -> Result<String, String> {
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut h = Sha256::new();
+    let mut buf = [0u8; 1024 * 1024];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", h.finalize()))
+}
+
+#[tauri::command]
+pub async fn delete_file(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| e.to_string())
+}
