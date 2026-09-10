@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { createItem, listItems } from '@/lib/db/client';
+import { startDownload, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
 import { detectPlatform, fetchPreview } from '@/lib/platform';
 import { canonicalizeUrl, isKnownUrl } from '@/lib/urls';
 
@@ -23,6 +24,9 @@ interface XSyncMeta {
 
 interface XSyncPayload {
   items: XSyncMeta[];
+  mode?: string | null;
+  kind?: string | null;
+  quality?: string | null;
 }
 
 interface XSyncRow {
@@ -31,7 +35,10 @@ interface XSyncRow {
   thumbnail: string | null;
   platform: string;
   skipped: boolean;
-  skipReason?: 'db' | 'batch';
+  skipReason?: 'db' | 'batch' | 'done';
+  wantDownload: boolean;
+  kind: DownloadKind;
+  quality: DownloadQuality;
   state: 'pending' | 'ok' | 'fail';
   reason?: string;
 }
@@ -48,14 +55,23 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
-    void listen<XSyncPayload>('x-sync-collect', async (event) => {
-      const raw = event.payload?.items ?? [];
+    let unlistenDl: (() => void) | null = null;
+
+    const buildRows = async (payload: XSyncPayload): Promise<void> => {
+      const raw = payload.items ?? [];
       const metas = raw.filter((m) => m && typeof m.url === 'string' && m.url.trim());
       if (metas.length === 0) return;
-      // Snapshot existing URLs once — code-level dedupe, no schema migration.
-      let existing: string[] = [];
+      const wantDownload = payload.mode === 'download';
+      const kind: DownloadKind = payload.kind === 'audio' ? 'audio' : 'video';
+      const quality: DownloadQuality = (['360', '480', '720', '1080', '1440', '2160'] as const).includes(
+        payload.quality as DownloadQuality,
+      )
+        ? (payload.quality as DownloadQuality)
+        : '720';
+      // Snapshot existing items once — dedupe + skip-already-downloaded.
+      let existing: { url: string; status: string }[] = [];
       try {
-        existing = (await listItems()).map((i) => i.url);
+        existing = (await listItems()).map((i) => ({ url: i.url, status: i.download_status }));
       } catch {
         existing = [];
       }
@@ -63,7 +79,9 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
       const next: XSyncRow[] = metas.map((m) => {
         const url = m.url.trim();
         const key = canonicalizeUrl(url);
-        const inDb = isKnownUrl(existing, url);
+        const known = existing.find((e) => isKnownUrl([e.url], url));
+        const inDb = Boolean(known);
+        const alreadyDone = wantDownload && known?.status === 'done';
         const inBatch = seen.has(key);
         seen.add(key);
         return {
@@ -71,19 +89,28 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
           title: m.title?.trim() ? m.title.trim() : null,
           thumbnail: m.thumbnail?.trim() ? m.thumbnail.trim() : null,
           platform: detectPlatform(url),
-          skipped: inDb || inBatch,
-          skipReason: inDb ? 'db' : inBatch ? 'batch' : undefined,
+          skipped: inDb || inBatch || alreadyDone,
+          skipReason: alreadyDone ? 'done' : inDb ? 'db' : inBatch ? 'batch' : undefined,
+          wantDownload,
+          kind,
+          quality,
           state: 'pending' as const,
         };
       });
       setRows(next);
       setFinished(false);
       setOpen(true);
-    }).then((fn) => {
+    };
+
+    void listen<XSyncPayload>('x-sync-collect', (event) => buildRows(event.payload)).then((fn) => {
       unlisten = fn;
+    });
+    void listen<XSyncPayload>('x-sync-download', (event) => buildRows(event.payload)).then((fn) => {
+      unlistenDl = fn;
     });
     return () => {
       unlisten?.();
+      unlistenDl?.();
     };
   }, []);
 
@@ -113,7 +140,11 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
           title ??= preview?.title ?? null;
           thumbnail ??= preview?.thumbnail ?? null;
         }
-        await createItem({ url: row.url, platform, title, thumbnail });
+        const item = await createItem({ url: row.url, platform, title, thumbnail });
+        if (row.wantDownload) {
+          // startDownload never throws — failures land in download_error state.
+          await startDownload(item.id, row.url, row.kind, row.quality);
+        }
         setRows((prev) => prev.map((r, j) => (j === i ? { ...r, state: 'ok' } : r)));
       } catch (e) {
         console.error('[x-sync]', e);
@@ -140,9 +171,9 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>X senkronizasyon — önizle ve onayla</DialogTitle>
+          <DialogTitle>Önizle ve onayla</DialogTitle>
           <DialogDescription>
-            {savable.length} yeni, {skippedCount} tekrar atlanacak.
+            {savable.length} yeni, {skippedCount} atlanacak.
           </DialogDescription>
         </DialogHeader>
         <ul className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
@@ -156,8 +187,11 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
                 <span className="truncate text-muted-foreground">{r.url}</span>
               </div>
               <Badge variant="outline">{r.platform}</Badge>
+              {r.wantDownload && <Badge variant="default">İNDİRME</Badge>}
               {r.skipped ? (
-                <Badge variant="secondary">{r.skipReason === 'db' ? 'KAYITLI' : 'ÇİFT'}</Badge>
+                <Badge variant="secondary">
+                  {r.skipReason === 'done' ? 'İNDİ' : r.skipReason === 'db' ? 'KAYITLI' : 'ÇİFT'}
+                </Badge>
               ) : (
                 <Badge
                   variant={r.state === 'ok' ? 'default' : r.state === 'fail' ? 'destructive' : 'secondary'}
@@ -181,7 +215,7 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
           </Button>
           {!finished && (
             <Button onClick={() => void handleConfirm()} disabled={running || savable.length === 0}>
-              {running ? 'Kaydediliyor…' : 'Onayla ve kaydet'}
+              {running ? 'İşleniyor…' : 'Onayla ve kaydet'}
             </Button>
           )}
         </DialogFooter>

@@ -1,4 +1,4 @@
-use axum::{extract::State, http::{HeaderMap, StatusCode}, routing::post, Json, Router};
+use axum::{extract::{Query, State}, http::{HeaderMap, StatusCode}, routing::{get, post}, Json, Router};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
@@ -13,16 +13,69 @@ struct Item {
 #[derive(Deserialize, Serialize)]
 struct CollectBody {
     items: Vec<Item>,
+    mode: Option<String>,
+    kind: Option<String>,
+    quality: Option<String>,
 }
 
 pub async fn run_bridge(app: tauri::AppHandle) {
     let router = Router::new()
         .route("/collect", post(collect))
+        .route("/formats", get(formats))
         .with_state(app);
     let Ok(listener) = tokio::net::TcpListener::bind("127.0.0.1:48120").await else {
         return;
     };
     let _ = axum::serve(listener, router).await;
+}
+
+// GET /formats?url=... — linkin gerçek video yükseklikleri (eklenti kalite menüsü).
+// Aynı Bearer token kontrolü; yt-dlp -J çıktısından yükseklikleri ayıklar.
+async fn formats(
+    State(app): State<tauri::AppHandle>,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let expected = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|d| std::fs::read_to_string(d.join("bridge_token")).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let got = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|s| s.trim().to_string());
+    if expected.is_none() || expected != got {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "unauthorized" })),
+        );
+    }
+    let Some(url) = params.get("url").cloned() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "missing url" })),
+        );
+    };
+    match crate::download::list_formats(app, serde_json::json!({ "url": url })).await {
+        Ok(opts) => {
+            let mut heights: Vec<u32> = opts
+                .iter()
+                .filter(|o| o.vcodec != "none")
+                .filter_map(|o| o.height)
+                .collect();
+            heights.sort_unstable();
+            heights.dedup();
+            (StatusCode::OK, Json(serde_json::json!({ "heights": heights })))
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        ),
+    }
 }
 
 async fn collect(
@@ -46,7 +99,11 @@ async fn collect(
     match (expected, got) {
         (Some(e), Some(g)) if e == g => {
             let n = body.items.len();
-            let _ = app.emit("x-sync-collect", &body);
+            if body.mode.as_deref() == Some("download") {
+                let _ = app.emit("x-sync-download", &body);
+            } else {
+                let _ = app.emit("x-sync-collect", &body);
+            }
             (
                 StatusCode::ACCEPTED,
                 Json(serde_json::json!({ "accepted": n })),
