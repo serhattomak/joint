@@ -2,11 +2,16 @@ mod collect;
 mod convert;
 mod download;
 mod dupes;
+mod gif;
+mod health;
+mod merge;
 mod pairing;
 mod preview;
 mod preview_media;
 mod settings;
+mod silence;
 mod tray;
+mod whisper;
 
 use tauri::Manager;
 
@@ -25,7 +30,7 @@ pub fn run() {
         let _ = w.set_focus();
       }
     }))
-    .invoke_handler(tauri::generate_handler![preview::fetch_preview, preview_media::media_probe, preview_media::media_probe_cleanup, pairing::get_pairing_token, pairing::regenerate_pairing_token, settings::get_download_dir, settings::set_download_dir, settings::write_text_file, settings::get_close_behavior, settings::set_close_behavior, download::download_media, download::list_formats, convert::convert_media, dupes::scan_files, dupes::delete_file, dupes::scan_dir])
+    .invoke_handler(tauri::generate_handler![preview::fetch_preview, preview_media::media_probe, preview_media::media_probe_cleanup, pairing::get_pairing_token, pairing::regenerate_pairing_token, settings::get_download_dir, settings::set_download_dir, settings::write_text_file, settings::get_close_behavior, settings::set_close_behavior, download::download_media, download::list_formats, convert::convert_media, merge::merge_media, gif::make_gif, silence::trim_silence, whisper::whisper_status, whisper::download_model, whisper::download_whisper_engine, whisper::transcribe, whisper::embed_subtitle, whisper::extract_subtitle, health::health_check, dupes::scan_files, dupes::delete_file, dupes::scan_dir])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

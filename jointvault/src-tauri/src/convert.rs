@@ -21,6 +21,41 @@ pub(crate) fn push_capped(buf: &mut String, chunk: &str) {
     }
 }
 
+// Ham ffmpeg log'unu kullanıcı-dostu kısa mesaja indirger: bilinen kalıba TR ipucu + son ~300 karakter.
+// ponytail: kalıp listesi kısa tutuldu — yeni desen gerekirse buraya tek dal eklenir.
+pub(crate) fn short_ffmpeg_error(raw: &str) -> String {
+    let raw = raw.trim();
+    let hint = if raw.contains("Decode error rate")
+        || raw.contains("corrupt")
+        || raw.contains("Invalid data found when processing input")
+    {
+        "kaynak dosya bozuk görünüyor"
+    } else if raw.contains("No such file or directory") {
+        "dosya bulunamadı, yolu kontrol et"
+    } else if raw.contains("No space left on device") {
+        "diskte yer kalmadı"
+    } else if raw.contains("Permission denied") {
+        "dosya izni engellendi"
+    } else if raw.contains("matches no streams")
+        || raw.contains("Stream map")
+        || raw.contains("does not contain any stream")
+    {
+        "uygun akış bulunamadı"
+    } else {
+        "teknik ayrıntı"
+    };
+    let tail = if raw.len() > 300 {
+        let mut cut = raw.len() - 300;
+        while !raw.is_char_boundary(cut) {
+            cut += 1;
+        }
+        &raw[cut..]
+    } else {
+        raw
+    };
+    format!("({hint}). …{tail}")
+}
+
 fn emit_convert_progress(app: &AppHandle, job_id: &str, percent: f64) {
     let _ = app.emit(
         "convert-progress",
@@ -99,7 +134,12 @@ pub async fn convert_media(app: AppHandle, payload: Value) -> Result<String, Str
         .unwrap_or(false);
 
     // -y first: never block on an overwrite prompt.
-    let mut args: Vec<String> = vec!["-y".to_string()];
+    // Bozuk kaynaklarda decoder iptal etmesin (input opsiyonu: tüm -i'lerden önce gelir).
+    let mut args: Vec<String> = vec![
+        "-y".to_string(),
+        "-err_detect".to_string(),
+        "ignore_err".to_string(),
+    ];
     match kind {
         "mp4" => {
             if let Some(f) = from {
@@ -255,7 +295,7 @@ pub async fn convert_media(app: AppHandle, payload: Value) -> Result<String, Str
                         None => format!("ffmpeg terminated (signal {:?})", payload.signal),
                     };
                 }
-                return Err(last_err);
+                return Err(format!("Dönüştürme başarısız: {}", short_ffmpeg_error(&last_err)));
             }
             _ => {}
         }

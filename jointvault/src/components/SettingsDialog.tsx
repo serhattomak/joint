@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
@@ -11,10 +11,23 @@ import { Button } from '@/components/ui/button';import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { DiagnosticsPanel } from '@/components/DiagnosticsPanel';
 import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/components/ClipboardWatcher';
 import { QUALITY_OPTIONS, getDefaultQuality, setDefaultQuality, type DownloadQuality } from '@/lib/downloads';
+import {
+  WHISPER_MODELS,
+  downloadModel,
+  downloadWhisperEngine,
+  getWhisperModel,
+  getWhisperStatus,
+  setWhisperModel,
+  useWhisperEngineProgress,
+  useWhisperModelProgress,
+  type WhisperModel,
+  type WhisperStatus,
+} from '@/lib/whisper';
 
-type SettingsTab = 'view' | 'downloads' | 'extension' | 'backup';
+type SettingsTab = 'view' | 'downloads' | 'speech' | 'diagnostics' | 'extension' | 'backup';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -50,13 +63,26 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  // Konuşma (whisper): model seçimi + lazy indirme
+  const [whisperModel, setWhisperModelState] = useState<WhisperModel>(() => getWhisperModel());
+  const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(null);
+  const [dlModel, setDlModel] = useState<WhisperModel | null>(null);
+  const [dlPercent, setDlPercent] = useState(0);
+  const [dlError, setDlError] = useState<string | null>(null);
+  // Konuşma motoru (whisper.cpp CLI, ~4MB, bir kez)
+  const [engDl, setEngDl] = useState(false);
+  const [engPercent, setEngPercent] = useState(0);
+  const [engError, setEngError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDirError(null);
     setTokenError(null);
-    setQuality(getDefaultQuality());
-    setWatch(isWatchEnabled());
+    setDlError(null);
+    setEngError(null);
+    setQuality(getDefaultQuality());    setWatch(isWatchEnabled());
+    setWhisperModelState(getWhisperModel());
+    void getWhisperStatus().then(setWhisperStatus);
     void invoke<string>('get_close_behavior')
       .then((m) => setCloseMode(m === 'quit' ? 'quit' : 'tray'))
       .catch(() => setCloseMode('tray'));
@@ -109,9 +135,61 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
   };
 
+  const dlJobRef = useRef<string | null>(null);
+  useWhisperModelProgress((e) => {
+    if (e.jobId === dlJobRef.current) setDlPercent(Math.round(e.percent));
+  });
+
+  const engJobRef = useRef<string | null>(null);
+  useWhisperEngineProgress((e) => {
+    if (e.jobId === engJobRef.current) setEngPercent(Math.round(e.percent));
+  });
+
+  const refreshWhisper = async (): Promise<void> => {
+    setWhisperStatus(await getWhisperStatus());
+  };
+
+  const startEngineDownload = async (): Promise<void> => {
+    if (engDl || dlModel) return;
+    setEngError(null);
+    setEngDl(true);
+    setEngPercent(0);
+    const jobId = crypto.randomUUID();
+    engJobRef.current = jobId;
+    const res = await downloadWhisperEngine(jobId);
+    if (!res.ok) {
+      setEngError(res.error ?? 'Motor indirilemedi.');
+      setEngDl(false);
+      return;
+    }
+    setEngPercent(100);
+    setEngDl(false);
+    await refreshWhisper();
+  };
+
+  const startModelDownload = async (model: WhisperModel): Promise<void> => {
+    if (dlModel || engDl) return;
+    setDlError(null);
+    setDlModel(model);
+    setDlPercent(0);
+    const jobId = crypto.randomUUID();
+    dlJobRef.current = jobId;
+    const res = await downloadModel(model, jobId);
+    if (!res.ok) {
+      setDlError(res.error ?? 'Model indirilemedi.');
+      setDlModel(null);
+      return;
+    }
+    setDlPercent(100);
+    setDlModel(null);
+    await refreshWhisper();
+  };
+
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'view', label: 'Görünüm' },
     { id: 'downloads', label: 'İndirme' },
+    { id: 'speech', label: 'Konuşma' },
+    { id: 'diagnostics', label: 'Tanılama' },
     { id: 'extension', label: 'Eklenti' },
     { id: 'backup', label: 'Yedekleme' },
   ];
@@ -156,7 +234,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
         <DialogHeader>
           <DialogTitle>Ayarlar</DialogTitle>
         </DialogHeader>
-        <div className="flex gap-1 border-b border-border pb-2">
+        <div className="flex flex-wrap gap-1 border-b border-border pb-2">
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -267,6 +345,124 @@ export function SettingsDialog(props: SettingsDialogProps) {
             </Row>
           </div>
         )}
+
+        {tab === 'speech' && (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted-foreground">
+              Konuşma motoru (~4MB, bir kez) ve model ilk açılışta indirilmez — buradan indirilir, %100
+              yerel çalışır.
+            </p>
+            <div className="flex flex-col gap-1.5 rounded-lg border border-border p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">Konuşma motoru</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[10px] tracking-wide uppercase ${
+                      whisperStatus?.whisper_available
+                        ? 'border-primary/40 text-primary'
+                        : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    {whisperStatus ? (whisperStatus.whisper_available ? 'kurulu' : 'eksik') : '…'}
+                  </span>
+                  {whisperStatus && !whisperStatus.whisper_available && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void startEngineDownload()}
+                      disabled={engDl || dlModel !== null}
+                    >
+                      {engDl ? (engPercent < 0 ? '…' : `%${Math.round(engPercent)}`) : 'Motoru indir (~4MB)'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {engDl && (
+                <div className="h-1.5 overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full rounded bg-primary transition-[width]"
+                    style={{ width: `${engPercent < 0 ? 100 : Math.round(engPercent)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+            {engError && <p className="text-sm text-destructive">{engError}</p>}
+            <Row label="Konuşma modeli">
+              <select
+                value={whisperModel}
+                onChange={(e) => {
+                  const m = e.target.value as WhisperModel;
+                  setWhisperModelState(m);
+                  setWhisperModel(m);
+                }}
+                aria-label="Konuşma modeli"
+                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
+              >
+                {WHISPER_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id} (≈{m.sizeMb} MB)
+                  </option>
+                ))}
+              </select>
+            </Row>
+            {WHISPER_MODELS.map((m) => {
+              const done = whisperStatus?.models[m.id] ?? false;
+              const downloading = dlModel === m.id;
+              return (
+                <div key={m.id} className="flex flex-col gap-1.5 rounded-lg border border-border p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        {m.id} <span className="font-normal text-muted-foreground">≈{m.sizeMb} MB</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">{m.hint}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] tracking-wide uppercase ${
+                          done
+                            ? 'border-primary/40 text-primary'
+                            : 'border-border text-muted-foreground'
+                        }`}
+                      >
+                        {done ? 'indirildi' : 'eksik'}
+                      </span>
+                      {!done && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void startModelDownload(m.id)}
+                          disabled={dlModel !== null || engDl}
+                        >
+                          {downloading ? (dlPercent < 0 ? '…' : `%${Math.round(dlPercent)}`) : 'İndir'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {downloading && (
+                    <div className="h-1.5 overflow-hidden rounded bg-muted">
+                      <div
+                        className="h-full rounded bg-primary transition-[width]"
+                        style={{ width: `${dlPercent < 0 ? 100 : Math.round(dlPercent)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {dlError && <p className="text-sm text-destructive">{dlError}</p>}
+            <p className="truncate font-mono text-xs text-muted-foreground" title={whisperStatus?.models_dir ?? ''}>
+              {whisperStatus ? `Modeller: ${whisperStatus.models_dir}` : 'Model durumu yükleniyor…'}
+            </p>
+            <div>
+              <Button variant="outline" size="sm" onClick={() => void refreshWhisper()}>
+                Durumu yenile
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'diagnostics' && <DiagnosticsPanel />}
 
         {tab === 'extension' && (
           <div className="flex flex-col gap-2">

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { BarChart3, Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, Sparkles, Star, Sun, Upload, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, Rows3, Scissors, Search, Settings, Sparkles, Star, Sun, Upload, Wrench, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
@@ -8,13 +8,19 @@ import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
 import { DuplicatesView } from '@/components/DuplicatesView';
 import { WelcomeDialog, isOnboarded } from '@/components/WelcomeDialog';
+import { OnboardingWizard } from '@/components/OnboardingWizard';
 import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
 import { FilterMenu } from '@/components/FilterMenu';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
+import { MergeTool } from '@/components/MergeTool';
+import { GifTool } from '@/components/GifTool';
 import { OrganizeDialog } from '@/components/OrganizeDialog';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { Sidebar } from '@/components/Sidebar';
+import { SilenceTool } from '@/components/SilenceTool';
+import { SubtitleTool } from '@/components/SubtitleTool';
+import { ToolboxHub } from '@/components/ToolboxHub';
 import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +49,8 @@ function App() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [downloadedOnly, setDownloadedOnly] = useState(false);
   const [converterOnly, setConverterOnly] = useState(false);
+  const [toolboxOnly, setToolboxOnly] = useState(false);
+  const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | null>(null);
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [statsOnly, setStatsOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -61,7 +69,9 @@ function App() {
   const [formatTarget, setFormatTarget] = useState<FormatTarget | null>(null);
   const [editorSource, setEditorSource] = useState<EditorSource | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [tourOpen, setTourOpen] = useState(() => !isOnboarded());
+  const [tourOpen, setTourOpen] = useState(false);
+  // İlk kurulumda tur yerine sihirbaz; mevcut kullanıcıda tur replay yolu aynen durur.
+  const [wizardOpen, setWizardOpen] = useState(() => !isOnboarded());
 
   const refresh = (): void => setRefreshKey((k) => k + 1);
 
@@ -95,6 +105,8 @@ function App() {
     setFavoritesOnly(false);
     setDownloadedOnly(false);
     setConverterOnly(false);
+    setToolboxOnly(false);
+    setToolboxTool(null);
     setDuplicatesOnly(false);
     setStatsOnly(false);
   };
@@ -102,6 +114,35 @@ function App() {
   const openConverter = (): void => {
     showAll();
     setConverterOnly(true);
+  };
+
+  const openToolbox = (): void => {
+    showAll();
+    setToolboxOnly(true);
+  };
+
+  const openMerge = (): void => {
+    showAll();
+    setToolboxOnly(true);
+    setToolboxTool('merge');
+  };
+
+  const openSilence = (): void => {
+    showAll();
+    setToolboxOnly(true);
+    setToolboxTool('silence');
+  };
+
+  const openGif = (): void => {
+    showAll();
+    setToolboxOnly(true);
+    setToolboxTool('gif');
+  };
+
+  const openSubtitle = (): void => {
+    showAll();
+    setToolboxOnly(true);
+    setToolboxTool('subtitle');
   };
 
   const openDuplicates = (): void => {
@@ -122,6 +163,7 @@ function App() {
     setTagId('all');
     setDownloadedOnly(false);
     setConverterOnly(false);
+    setToolboxOnly(false);
     setDuplicatesOnly(false);
     setStatsOnly(false);
   };
@@ -134,6 +176,7 @@ function App() {
     setTagId('all');
     setFavoritesOnly(false);
     setConverterOnly(false);
+    setToolboxOnly(false);
     setDuplicatesOnly(false);
     setStatsOnly(false);
   };
@@ -143,6 +186,11 @@ function App() {
     { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
     { id: 'converter', label: 'Dönüştürücü', icon: <Clapperboard className="size-4" />, run: openConverter },
+    { id: 'toolbox', label: 'Araç Kutusu', icon: <Wrench className="size-4" />, run: openToolbox },
+    { id: 'tool-merge', label: 'Araç: Birleştir', icon: <Combine className="size-4" />, run: openMerge },
+    { id: 'tool-silence', label: 'Araç: Sessizlik Kırpma', icon: <Scissors className="size-4" />, run: openSilence },
+    { id: 'tool-gif', label: 'Araç: GIF/WebM', icon: <Film className="size-4" />, run: openGif },
+    { id: 'tool-subtitle', label: 'Araç: Altyazı', icon: <Captions className="size-4" />, run: openSubtitle },
     { id: 'dupes', label: 'Yinelenenler', icon: <Copy className="size-4" />, run: openDuplicates },
     { id: 'stats', label: 'İstatistikler', icon: <BarChart3 className="size-4" />, run: openStats },
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
@@ -159,6 +207,8 @@ function App() {
     setFavoritesOnly(false);
     setDownloadedOnly(false);
     setConverterOnly(false);
+    setToolboxOnly(false);
+    setToolboxTool(null);
     setDuplicatesOnly(false);
     setStatsOnly(false);
   };
@@ -214,15 +264,17 @@ function App() {
         view={
           converterOnly
             ? 'converter'
-            : duplicatesOnly
-              ? 'duplicates'
-              : statsOnly
-                ? 'stats'
-                : favoritesOnly
-                  ? 'favorites'
-                  : downloadedOnly
-                    ? 'downloads'
-                    : 'all'
+            : toolboxOnly
+              ? 'toolbox'
+              : duplicatesOnly
+                ? 'duplicates'
+                : statsOnly
+                  ? 'stats'
+                  : favoritesOnly
+                    ? 'favorites'
+                    : downloadedOnly
+                      ? 'downloads'
+                      : 'all'
         }
         homeActive={
           platform === 'all' &&
@@ -232,6 +284,7 @@ function App() {
           !favoritesOnly &&
           !downloadedOnly &&
           !converterOnly &&
+          !toolboxOnly &&
           !duplicatesOnly &&
           !statsOnly
         }
@@ -240,6 +293,7 @@ function App() {
           if (v === 'favorites') goFavorites();
           else if (v === 'downloads') goDownloads();
           else if (v === 'converter') openConverter();
+          else if (v === 'toolbox') openToolbox();
           else if (v === 'duplicates') openDuplicates();
           else openStats();
         }}
@@ -292,6 +346,54 @@ function App() {
             <DuplicatesView onDone={refresh} />
           ) : converterOnly ? (
             <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
+          ) : toolboxOnly ? (
+            toolboxTool === 'merge' ? (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                    <ArrowLeft /> Araç Kutusu&apos;na dön
+                  </Button>
+                </div>
+                <MergeTool refreshKey={refreshKey} onDone={refresh} />
+              </div>
+            ) : toolboxTool === 'silence' ? (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                    <ArrowLeft /> Araç Kutusu&apos;na dön
+                  </Button>
+                </div>
+                <SilenceTool refreshKey={refreshKey} onDone={refresh} />
+              </div>
+            ) : toolboxTool === 'gif' ? (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                    <ArrowLeft /> Araç Kutusu&apos;na dön
+                  </Button>
+                </div>
+                <GifTool refreshKey={refreshKey} onDone={refresh} />
+              </div>
+            ) : toolboxTool === 'subtitle' ? (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                    <ArrowLeft /> Araç Kutusu&apos;na dön
+                  </Button>
+                </div>
+                <SubtitleTool refreshKey={refreshKey} onDone={refresh} />
+              </div>
+            ) : (
+              <ToolboxHub
+                onPick={(toolId) => {
+                  if (toolId === 'merge') setToolboxTool('merge');
+                  else if (toolId === 'silence') setToolboxTool('silence');
+                  else if (toolId === 'gif') setToolboxTool('gif');
+                  else if (toolId === 'subtitle') setToolboxTool('subtitle');
+                  else openConverter();
+                }}
+              />
+            )
           ) : (
             <>
               {chips.length > 0 && (
@@ -379,6 +481,11 @@ function App() {
       />
       <XSyncReviewDialog onDone={refresh} />
       <WelcomeDialog open={tourOpen} onOpenChange={setTourOpen} />
+      <OnboardingWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <ClipboardWatcher onDone={refresh} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
     </div>
