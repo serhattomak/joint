@@ -382,3 +382,44 @@ export async function setCategoriesForItem(item_id: string, category_ids: string
     await db.execute('INSERT INTO item_categories (item_id, category_id) VALUES ($1, $2)', [item_id, category_id]);
   }
 }
+
+// --- backup (JSON export/import, merge by id) ---
+
+const BACKUP_TABLES = ['items', 'collections', 'tags', 'categories', 'item_tags', 'item_categories'] as const;
+
+export interface VaultBackup {
+  version: 1;
+  exportedAt: string;
+  tables: Record<string, Record<string, unknown>[]>;
+}
+
+export async function exportVault(): Promise<VaultBackup> {
+  const db = await getDb();
+  const tables: Record<string, Record<string, unknown>[]> = {};
+  for (const t of BACKUP_TABLES) {
+    tables[t] = await db.select<Record<string, unknown>[]>(`SELECT * FROM ${t}`);
+  }
+  return { version: 1, exportedAt: new Date().toISOString(), tables };
+}
+
+const COL_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export async function importVault(data: VaultBackup): Promise<{ added: number }> {
+  if (!data || data.version !== 1 || typeof data.tables !== 'object') {
+    throw new Error('Geçersiz yedek dosyası.');
+  }
+  const db = await getDb();
+  let added = 0;
+  for (const t of BACKUP_TABLES) {
+    const rows = data.tables[t];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const cols = Object.keys(row).filter((c) => COL_RE.test(c));
+      if (cols.length === 0) continue;
+      const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+      const res = await db.execute(`INSERT OR IGNORE INTO ${t} (${cols.join(', ')}) VALUES (${placeholders})`, cols.map((c) => row[c]));
+      added += res.rowsAffected;
+    }
+  }
+  return { added };
+}

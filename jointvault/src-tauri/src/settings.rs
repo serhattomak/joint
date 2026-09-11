@@ -47,3 +47,12 @@ pub fn set_download_dir(app: tauri::AppHandle, path: String) -> Result<String, S
     std::fs::write(dir.join(DIR_FILE), format!("{trimmed}\n")).map_err(|e| e.to_string())?;
     Ok(trimmed)
 }
+
+// ponytail: yedek JSON yazımı için genel metin yazıcı (fs plugini yok, std yeterli).
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    if path.trim().is_empty() {
+        return Err("Dosya yolu boş olamaz.".to_string());
+    }
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { exportVault, importVault } from '@/lib/db/client';
 import { Button } from '@/components/ui/button';import {
   Dialog,
   DialogContent,
@@ -13,7 +14,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/components/ClipboardWatcher';
 import { QUALITY_OPTIONS, getDefaultQuality, setDefaultQuality, type DownloadQuality } from '@/lib/downloads';
 
-type SettingsTab = 'view' | 'downloads' | 'extension';
+type SettingsTab = 'view' | 'downloads' | 'extension' | 'backup';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -35,6 +36,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function SettingsDialog(props: SettingsDialogProps) {
   const { open, onOpenChange, pageSize, pageSizes, onPageSizeChange } = props;
   const [tab, setTab] = useState<SettingsTab>('view');
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
   const [watch, setWatch] = useState(() => isWatchEnabled());
   // İndirme klasörü
   const [dir, setDir] = useState('');
@@ -105,7 +108,42 @@ export function SettingsDialog(props: SettingsDialogProps) {
     { id: 'view', label: 'Görünüm' },
     { id: 'downloads', label: 'İndirme' },
     { id: 'extension', label: 'Eklenti' },
+    { id: 'backup', label: 'Yedekleme' },
   ];
+
+  const doExport = async (): Promise<void> => {
+    setBackupBusy(true);
+    setBackupMsg(null);
+    try {
+      const data = await exportVault();
+      const path = await saveDialog({
+        defaultPath: `jointvault-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (!path) return;
+      await invoke('write_text_file', { path, content: JSON.stringify(data) });
+      const count = Object.values(data.tables).reduce((n, rows) => n + rows.length, 0);
+      setBackupMsg(`${count} satır yedeklendi.`);
+    } catch (e) {
+      setBackupMsg(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Dışa aktarma başarısız.');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const doImport = async (file: File): Promise<void> => {
+    setBackupBusy(true);
+    setBackupMsg(null);
+    try {
+      const data = JSON.parse(await file.text());
+      const { added } = await importVault(data);
+      setBackupMsg(`${added} yeni satır içe aktarıldı (tekrarlar atlandı).`);
+    } catch (e) {
+      setBackupMsg(typeof e === 'string' ? e : e instanceof Error ? e.message : 'İçe aktarma başarısız.');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -222,6 +260,37 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </Button>
             </div>
             {tokenError && <p className="text-sm text-destructive">{tokenError}</p>}
+          </div>
+        )}
+
+        {tab === 'backup' && (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted-foreground">
+              Tüm kayıtlar JSON olarak dışa aktarılır; içe aktarma mevcutla birleşir, tekrarlar atlanır. Medya
+              dosyaları dahil değildir.
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => void doExport()} disabled={backupBusy}>
+                {backupBusy ? '…' : 'Dışa aktar'}
+              </Button>
+              <label
+                className={`inline-flex h-8 cursor-pointer items-center rounded-lg border border-input bg-transparent px-2.5 text-sm transition hover:bg-muted ${backupBusy ? 'pointer-events-none opacity-50' : ''}`}
+              >
+                İçe aktar
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  disabled={backupBusy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (f) void doImport(f);
+                  }}
+                />
+              </label>
+            </div>
+            {backupMsg && <p className="text-sm text-muted-foreground">{backupMsg}</p>}
           </div>
         )}
       </DialogContent>

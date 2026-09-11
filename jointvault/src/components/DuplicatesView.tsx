@@ -4,6 +4,7 @@ import { Copy, ScanSearch, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { listItems, removeItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
+import { formatBytes } from '@/lib/downloads';
 import { canonicalizeUrl } from '@/lib/urls';
 
 interface UrlGroup {
@@ -19,11 +20,6 @@ interface FileGroup {
 
 interface DuplicatesViewProps {
   onDone: () => void;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function DuplicatesView({ onDone }: DuplicatesViewProps) {

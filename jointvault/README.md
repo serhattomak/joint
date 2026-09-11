@@ -1,32 +1,40 @@
-# React + TypeScript + Vite
+# JointVault
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Kişisel medya arşivi: farklı platformlarda kaydedilen post/video/fotoğraflar, X/Instagram/YouTube içe aktarma, IDM tarzı indirme (yt-dlp), ffmpeg dönüştürme/kırpma ve mini video editörü — hepsi tek masaüstü uygulamasında.
 
-Currently, two official plugins are available:
+## Özellikler
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Arşiv**: link kaydetme (tekli/toplu), koleksiyon + kategori + etiket, favoriler, tam-metin arama, kart/satır görünümü, sayfalama
+- **İçe aktarma**: tarayıcı eklentisi (`extension/`) — X yer işaretleri, Instagram kaydedilenler, YouTube playlistleri (otomatik kaydırarak toplar)
+- **İndirme**: yt-dlp sidecar ile mp4/m4a, kalite seçimi (gerçek format listesi), sıralı kuyruk, satır-içi ilerleme, eşleşme anahtarlı localhost köprüsü
+- **Araçlar**: medya dönüştürücü (mp4/mp3/m4a/kırp), timeline'lı kırpma editörü (film şeridi + dalga formu), yinelenen bulucu (URL + dosya hash), pano izleyici, komut paleti (Ctrl+K), tray'de arka plan servisi
 
-## React Compiler
+## Teknoloji
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui. SQLite (`tauri-plugin-sql`), sidecar: yt-dlp + ffmpeg/ffprobe (git-lfs ile repoda).
 
-## Expanding the Oxlint configuration
+## Geliştirme
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+Önkoşullar: Node 20+, Rust stable, Windows'ta WebView2 (hazır gelir).
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```powershell
+cd jointvault
+npm install
+npx tauri dev        # arayüz + backend birlikte
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Doğrulama: `npm run build` (tsc + vite), `cd src-tauri; cargo check`.
+
+## Eklenti
+
+`chrome://extensions` → Geliştirici modu → `jointvault/extension` klasörünü paketlenmemiş yükle. Uygulamada Ayarlar → Eklenti sekmesindeki anahtarı eklentiye yapıştır.
+
+## Paketleme
+
+```powershell
+npx tauri build      # src-tauri/target/release/bundle/ altına MSI/NSIS
+```
+
+## Veri
+
+SQLite: `jointvault.db` (uygulama veri dizini). İndirilenler: `Downloads/JointVault` (Ayarlar'dan değişir). Eşleşme anahtarı ve indirme klasörü uygulama veri dizinindeki dosyalarda saklanır.

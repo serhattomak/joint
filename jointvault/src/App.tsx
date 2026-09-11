@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Archive, Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, SlidersHorizontal, Star, Sun, Upload, X } from 'lucide-react';
+import { Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, Star, Sun, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
@@ -13,6 +13,7 @@ import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
 import { OrganizeDialog } from '@/components/OrganizeDialog';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { Sidebar } from '@/components/Sidebar';
 import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -137,11 +138,6 @@ function App() {
     { id: 'rows', label: 'Satır görünümü', icon: <Rows3 className="size-4" />, run: () => switchView('rows') },
   ];
 
-  const navBtn = (active: boolean): string =>
-    `flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition ${
-      active ? 'bg-secondary font-medium text-secondary-foreground' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
-    }`;
-
   const leaveViews = (): void => {
     setFavoritesOnly(false);
     setDownloadedOnly(false);
@@ -196,62 +192,38 @@ function App() {
   return (
     <TooltipProvider delay={300}>
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border bg-card px-3 py-4 md:flex">
-        <div className="flex items-center gap-2 px-1.5">
-          <Archive className="size-5 text-primary" strokeWidth={2} />
-          <span className="font-display text-xl tracking-tight">JointVault</span>
-        </div>
-        <nav className="flex flex-col gap-0.5">
-          <button type="button" onClick={showAll} className={navBtn(platform === 'all' && collectionId === 'all' && categoryId === 'all' && tagId === 'all' && !favoritesOnly && !downloadedOnly && !converterOnly && !duplicatesOnly)}>
-            <LayoutGrid className="size-4" /> Tümü
-          </button>
-          <button
-            type="button"
-            onClick={goFavorites}
-            className={navBtn(favoritesOnly)}
-          >
-            <Star className="size-4" /> Favoriler
-          </button>
-          <button
-            type="button"
-            onClick={goDownloads}
-            className={navBtn(downloadedOnly)}
-          >
-            <Download className="size-4" /> İndirilenler
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setConverterOnly(true);
-              setPlatform('all');
-              setCollectionId('all');
-              setCategoryId('all');
-              setTagId('all');
-              setFavoritesOnly(false);
-              setDownloadedOnly(false);
-              setDuplicatesOnly(false);
-            }}
-            className={navBtn(converterOnly)}
-          >
-            <Clapperboard className="size-4" /> Dönüştürücü
-          </button>
-          <button
-            type="button"
-            onClick={openDuplicates}
-            className={navBtn(duplicatesOnly)}
-          >
-            <Copy className="size-4" /> Yinelenenler
-          </button>
-        </nav>
-        <div className="border-t border-border pt-2">
-          <button type="button" onClick={() => setOrganizeOpen(true)} className={navBtn(false)}>
-            <SlidersHorizontal className="size-4" /> Koleksiyonlar
-          </button>
-          <button type="button" onClick={() => setSettingsOpen(true)} className={navBtn(false)}>
-            <Settings className="size-4" /> Ayarlar
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        view={
+          converterOnly
+            ? 'converter'
+            : duplicatesOnly
+              ? 'duplicates'
+              : favoritesOnly
+                ? 'favorites'
+                : downloadedOnly
+                  ? 'downloads'
+                  : 'all'
+        }
+        homeActive={
+          platform === 'all' &&
+          collectionId === 'all' &&
+          categoryId === 'all' &&
+          tagId === 'all' &&
+          !favoritesOnly &&
+          !downloadedOnly &&
+          !converterOnly &&
+          !duplicatesOnly
+        }
+        onHome={showAll}
+        onView={(v) => {
+          if (v === 'favorites') goFavorites();
+          else if (v === 'downloads') goDownloads();
+          else if (v === 'converter') openConverter();
+          else openDuplicates();
+        }}
+        onOrganize={() => setOrganizeOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
