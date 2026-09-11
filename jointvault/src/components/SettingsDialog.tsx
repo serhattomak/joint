@@ -22,6 +22,7 @@ interface SettingsDialogProps {
   pageSize: number;
   pageSizes: readonly number[];
   onPageSizeChange: (n: number) => void;
+  onReplayTour: () => void;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -34,7 +35,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
-  const { open, onOpenChange, pageSize, pageSizes, onPageSizeChange } = props;
+  const { open, onOpenChange, pageSize, pageSizes, onPageSizeChange, onReplayTour } = props;
   const [tab, setTab] = useState<SettingsTab>('view');
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
@@ -174,6 +175,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
           <div className="flex flex-col">
             <Row label="Tema">
               <ThemeToggle />
+            </Row>
+            <Row label="Karşılama turu">
+              <Button variant="outline" size="sm" onClick={onReplayTour}>
+                Tekrar göster
+              </Button>
             </Row>
             <Row label="Pano izleme">
               <input

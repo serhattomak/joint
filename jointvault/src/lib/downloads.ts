@@ -31,6 +31,8 @@ export function setDefaultQuality(q: DownloadQuality): void {
 export interface DownloadProgressEvent {
   itemId: string;
   percent: number;
+  speed?: string | null;
+  eta?: string | null;
 }
 
 // Frontend owns queued/active/done/error via setDownloadState. Resolves done,

@@ -56,6 +56,8 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   // Inline progress percents by item id; cleared when the download settles.
   const [progress, setProgress] = useState<Record<string, number>>({});
+  // Hız/ETA metası (ölçüm için de kullanılır).
+  const [dlMeta, setDlMeta] = useState<Record<string, { speed?: string | null; eta?: string | null }>>({});
   // Guards the one-time queued→active DB flip per download (progress events stream in).
   const markedActive = useRef<Set<string>>(new Set());
 
@@ -161,6 +163,11 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         delete next[item.id];
         return next;
       });
+      setDlMeta((m) => {
+        const next = { ...m };
+        delete next[item.id];
+        return next;
+      });
       await refreshAll();
     },
     [refreshAll],
@@ -176,8 +183,9 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   // First progress event flips queued→active in DB (once per download);
   // percents stay local — no SQLite write per tick.
   useDownloadProgress(
-    useCallback((e: { itemId: string; percent: number }) => {
+    useCallback((e: { itemId: string; percent: number; speed?: string | null; eta?: string | null }) => {
       setProgress((p) => ({ ...p, [e.itemId]: e.percent }));
+      setDlMeta((m) => ({ ...m, [e.itemId]: { speed: e.speed, eta: e.eta } }));
       if (!markedActive.current.has(e.itemId)) {
         markedActive.current.add(e.itemId);
         void setDownloadState(e.itemId, { status: 'active' }).then((updated) => {
@@ -341,6 +349,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
               onDelete={handleDelete}
               onEdit={handleEdit}
               progress={progress[item.id]}
+              meta={dlMeta[item.id]}
               onAudio={handleAudioDownload}
               onPickVideo={onPickVideo}
               onConvert={onConvert}
@@ -363,6 +372,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
             onDelete={handleDelete}
             onEdit={handleEdit}
             progress={progress[item.id]}
+            meta={dlMeta[item.id]}
             onAudio={handleAudioDownload}
             onPickVideo={onPickVideo}
             onConvert={onConvert}

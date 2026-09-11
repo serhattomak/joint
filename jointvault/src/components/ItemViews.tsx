@@ -25,6 +25,7 @@ export interface ItemViewProps {
   onDelete: (id: string) => void;
   onEdit: (item: Item) => void;
   progress: number | undefined;
+  meta?: { speed?: string | null; eta?: string | null };
   onAudio: (item: Item, quality: DownloadQuality) => void;
   onPickVideo: (item: Item) => void;
   onConvert: (item: Item) => void;
@@ -72,10 +73,11 @@ function ActionButtons({ item, onFavorite, onDelete, onEdit }: Pick<ItemViewProp
 function DownloadZone({
   item,
   progress,
+  meta,
   onAudio,
   onPickVideo,
   onConvert,
-}: Pick<ItemViewProps, 'item' | 'progress' | 'onAudio' | 'onPickVideo' | 'onConvert'>) {
+}: Pick<ItemViewProps, 'item' | 'progress' | 'meta' | 'onAudio' | 'onPickVideo' | 'onConvert'>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
   const status = item.download_status;
@@ -95,11 +97,20 @@ function DownloadZone({
   if (status === 'queued' || status === 'active') {
     const pct = Math.round(progress ?? 0);
     return (
-      <div className="flex min-w-24 flex-1 items-center gap-1.5" aria-label={`İndiriliyor %{pct}`}>
-        <div className="h-1 flex-1 overflow-hidden rounded bg-muted">
-          <div className="h-full rounded bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+      <div className="flex min-w-24 flex-1 flex-col gap-0.5" aria-label={`İndiriliyor %{pct}`}>
+        <div className="flex items-center gap-1.5">
+          <div className="h-1 flex-1 overflow-hidden rounded bg-muted">
+            <div className="h-full rounded bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="text-[11px] tabular-nums text-muted-foreground">%{pct}</span>
         </div>
-        <span className="text-[11px] tabular-nums text-muted-foreground">%{pct}</span>
+        {(meta?.speed || meta?.eta) && (
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {meta.speed}
+            {meta.speed && meta.eta ? ' · ' : ''}
+            {meta.eta ? `kalan ${meta.eta}` : ''}
+          </span>
+        )}
       </div>
     );
   }
@@ -209,6 +220,7 @@ export const ItemRowView = memo(function ItemRowView({
   onDelete,
   onEdit,
   progress,
+  meta,
   onAudio,
   onPickVideo,
   onConvert,
@@ -253,7 +265,7 @@ export const ItemRowView = memo(function ItemRowView({
                 </p>
         <div className="mt-0.5 flex items-center gap-0.5">
           <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
-          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
+          <DownloadZone item={item} progress={progress} meta={meta} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
         </div>
       </div>
     </div>
@@ -272,6 +284,7 @@ export const ItemCardView = memo(function ItemCardView({
   onDelete,
   onEdit,
   progress,
+  meta,
   onAudio,
   onPickVideo,
   onConvert,
@@ -322,7 +335,7 @@ export const ItemCardView = memo(function ItemCardView({
         </div>
         <div className="mt-1 flex items-center gap-1 border-t border-border pt-2">
           <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
-          <DownloadZone item={item} progress={progress} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
+          <DownloadZone item={item} progress={progress} meta={meta} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
         </div>
       </div>
     </article>

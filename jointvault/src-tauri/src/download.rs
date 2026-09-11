@@ -13,6 +13,34 @@ struct ProgressPayload {
     #[serde(rename = "itemId")]
     item_id: String,
     percent: f64,
+    speed: Option<String>,
+    eta: Option<String>,
+}
+
+// "[download] 12.3% of 45MiB at 1.2MiB/s ETA 00:30" — yüzde+hız+süre,
+// hepsi char-scan (regex yok). Hız/ETA yoksa None.
+fn parse_progress(line: &str) -> Option<(f64, Option<String>, Option<String>)> {
+    let pct = line.find('%')?;
+    let digits: String = line[..pct]
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    if digits.is_empty() {
+        return None;
+    }
+    let percent: f64 = digits.parse().ok()?;
+    let rest = &line[pct + 1..];
+    let speed = rest.find("at ").map(|i| {
+        let s = rest[i + 3..].trim();
+        let end = s.find("ETA").map(|j| j).unwrap_or(s.len());
+        s[..end].trim().to_string()
+    }).filter(|s| !s.is_empty() && *s != "Unknown");
+    let eta = rest.find("ETA").map(|i| rest[i + 3..].trim().to_string()).filter(|s| !s.is_empty());
+    Some((percent, speed, eta))
 }
 
 // ponytail: subtask 05 will extend this with a persisted settings override;
@@ -61,24 +89,6 @@ fn ensure_ffmpeg_tools(download_dir: &std::path::Path) -> Result<std::path::Path
     std::fs::copy(src.join(FFPROBE_BIN), tools.join("ffprobe.exe")).map_err(|e| e.to_string())?;
     Ok(tools)
 }
-fn parse_percent(line: &str) -> Option<f64> {
-    // ponytail: char-based scan of "[download]  12.3%" lines, no regex crate.
-    let pct = line.find('%')?;
-    let digits: String = line[..pct]
-        .chars()
-        .rev()
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    if digits.is_empty() {
-        None
-    } else {
-        digits.parse::<f64>().ok()
-    }
-}
-
 fn push_capped(buf: &mut String, chunk: &str) {
     buf.push_str(chunk);
     if buf.len() > 500 {
@@ -90,12 +100,14 @@ fn push_capped(buf: &mut String, chunk: &str) {
     }
 }
 
-fn emit_progress(app: &AppHandle, item_id: &str, percent: f64) {
+fn emit_progress(app: &AppHandle, item_id: &str, percent: f64, speed: Option<String>, eta: Option<String>) {
     let _ = app.emit(
         "download-progress",
         ProgressPayload {
             item_id: item_id.to_string(),
             percent,
+            speed,
+            eta,
         },
     );
 }
@@ -144,7 +156,7 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
     );
 
     let _guard = QUEUE.lock().await;
-    emit_progress(&app, &item_id, 0.0);
+    emit_progress(&app, &item_id, 0.0, None, None);
 
     let mut args: Vec<String> = vec![
         "--newline".to_string(),
@@ -197,8 +209,8 @@ async fn run_sidecar(app: &AppHandle, item_id: &str, args: Vec<String>) -> Resul
                     {
                         candidate = Some(t.to_string());
                     }
-                    if let Some(p) = parse_percent(part) {
-                        emit_progress(app, item_id, p);
+                    if let Some((p, s, e)) = parse_progress(part) {
+                        emit_progress(&app, &item_id, p, s, e);
                     }
                 }
             }

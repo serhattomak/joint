@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { BarChart3, Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, Star, Sun, Upload, X } from 'lucide-react';
+import { BarChart3, Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, Sparkles, Star, Sun, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
@@ -7,6 +7,7 @@ import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette
 import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
 import { DuplicatesView } from '@/components/DuplicatesView';
+import { WelcomeDialog, isOnboarded } from '@/components/WelcomeDialog';
 import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
 import { FilterMenu } from '@/components/FilterMenu';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
@@ -60,6 +61,7 @@ function App() {
   const [formatTarget, setFormatTarget] = useState<FormatTarget | null>(null);
   const [editorSource, setEditorSource] = useState<EditorSource | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(() => !isOnboarded());
 
   const refresh = (): void => setRefreshKey((k) => k + 1);
 
@@ -147,6 +149,7 @@ function App() {
     { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
     { id: 'dl', label: 'İndirilenler', icon: <Download className="size-4" />, run: goDownloads },
     { id: 'settings', label: 'Ayarlar', icon: <Settings className="size-4" />, run: () => setSettingsOpen(true) },
+    { id: 'tour', label: 'Karşılama turu', icon: <Sparkles className="size-4" />, run: () => setTourOpen(true) },
     { id: 'theme', label: 'Tema değiştir', icon: <Sun className="size-4" />, run: () => cycleTheme() },
     { id: 'grid', label: 'Kart görünümü', icon: <LayoutGrid className="size-4" />, run: () => switchView('grid') },
     { id: 'rows', label: 'Satır görünümü', icon: <Rows3 className="size-4" />, run: () => switchView('rows') },
@@ -372,8 +375,10 @@ function App() {
           window.localStorage.setItem('jv-page-size', String(n));
           setPageSize(n);
         }}
+        onReplayTour={() => setTourOpen(true)}
       />
       <XSyncReviewDialog onDone={refresh} />
+      <WelcomeDialog open={tourOpen} onOpenChange={setTourOpen} />
       <ClipboardWatcher onDone={refresh} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
     </div>

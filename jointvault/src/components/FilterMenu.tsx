@@ -45,6 +45,7 @@ export function FilterMenu(props: FilterMenuProps) {
     allLabel: string,
     allActive: boolean,
     onAll: () => void,
+    emptyHint: string,
     items: { id: string; label: string; active: boolean; onPick: () => void }[],
   ): React.ReactNode =>
     section(
@@ -54,7 +55,7 @@ export function FilterMenu(props: FilterMenuProps) {
           {allLabel}
         </button>
         {items.length === 0 ? (
-          <p className="px-2.5 text-xs text-muted-foreground">Henüz yok.</p>
+          <p className="px-2.5 text-xs text-muted-foreground">{emptyHint}</p>
         ) : (
           items.map((it) => (
             <button key={it.id} type="button" onClick={it.onPick} className={`${row(it.active)} truncate`}>
@@ -110,19 +111,19 @@ export function FilterMenu(props: FilterMenuProps) {
                 ))}
               </>,
             )}
-            {listSection('Koleksiyon', 'Tümü', props.collectionId === 'all', () => props.onCollection('all'), collections.map((c) => ({
+            {listSection('Koleksiyon', 'Tümü', props.collectionId === 'all', () => props.onCollection('all'), 'Henüz yok — kenar çubuğundaki Koleksiyonlar’dan ekle.', collections.map((c) => ({
               id: c.id,
               label: c.name,
               active: props.collectionId === c.id,
               onPick: () => props.onCollection(c.id),
             })))}
-            {listSection('Kategori', 'Tümü', props.categoryId === 'all', () => props.onCategory('all'), categories.map((c) => ({
+            {listSection('Kategori', 'Tümü', props.categoryId === 'all', () => props.onCategory('all'), 'Henüz yok — öğe kaydederken oluşur.', categories.map((c) => ({
               id: c.id,
               label: c.name,
               active: props.categoryId === c.id,
               onPick: () => props.onCategory(c.id),
             })))}
-            {listSection('Etiket', 'Tümü', props.tagId === 'all', () => props.onTag('all'), tags.map((t) => ({
+            {listSection('Etiket', 'Tümü', props.tagId === 'all', () => props.onTag('all'), 'Henüz yok — öğe kaydederken oluşur.', tags.map((t) => ({
               id: t.id,
               label: `#${t.name}`,
               active: props.tagId === t.id,
