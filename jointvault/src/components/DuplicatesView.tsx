@@ -27,6 +27,8 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
   const [scanning, setScanning] = useState(false);
   const [urlGroups, setUrlGroups] = useState<UrlGroup[]>([]);
   const [fileGroups, setFileGroups] = useState<FileGroup[]>([]);
+  const [orphans, setOrphans] = useState<{ path: string; size: number }[]>([]);
+  const [orphanChecked, setOrphanChecked] = useState<Set<string>>(new Set());
   const [keep, setKeep] = useState<Record<string, string>>({});
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +68,18 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
       } else {
         setFileGroups([]);
       }
+      // Yetimler: klasördeki DB-kayıtsız dosyalar.
+      try {
+        const dir = await invoke<string>('get_download_dir');
+        const entries = await invoke<{ path: string; size: number }[]>('scan_dir', { dir });
+        const known = new Set(
+          items.flatMap((it) => [it.local_path, it.converted_path]).filter((p): p is string => Boolean(p)),
+        );
+        setOrphans(entries.filter((e) => !known.has(e.path)));
+      } catch {
+        setOrphans([]);
+      }
+      setOrphanChecked(new Set());
       setKeep({});
       setScanned(true);
     } catch (e) {
@@ -112,8 +126,29 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
     }
   };
 
-  const totalVictims = (() => {
-    const s = new Set<string>();
+  const removeOrphans = async (): Promise<void> => {
+    if (orphanChecked.size === 0) return;
+    if (!window.confirm(`${orphanChecked.size} yetim dosya diskten silinsin mi? Geri alınamaz.`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      for (const p of orphanChecked) {
+        try {
+          await invoke('delete_file', { path: p });
+        } catch {
+          /* kilitli/kayıp dosya atlanır */
+        }
+      }
+      setOrphanChecked(new Set());
+      await scan();
+    } catch (e) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Silme başarısız.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const totalVictims = (() => {    const s = new Set<string>();
     for (const g of urlGroups) {
       const keepId = keep[`u:${g.key}`] ?? g.items[0].id;
       for (const it of g.items) if (it.id !== keepId) s.add(it.id);
@@ -198,6 +233,44 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
         fileGroups.map((g) => ({ key: g.hash.slice(0, 12), items: g.items, meta: `${formatBytes(g.size)} · ${g.hash.slice(0, 12)}…` })),
         'f',
       )}
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            Yetim dosyalar ({orphans.length})
+          </h3>
+          {orphanChecked.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={() => void removeOrphans()} disabled={deleting}>
+              <Trash2 /> {orphanChecked.size} dosyayı sil
+            </Button>
+          )}
+        </div>
+        {scanned && orphans.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Yetim yok.</p>
+        ) : (
+          <ul className="flex flex-col gap-1 rounded-xl border border-border bg-card p-3 shadow-card">
+            {orphans.map((o) => (
+              <li key={o.path} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={orphanChecked.has(o.path)}
+                  onChange={() =>
+                    setOrphanChecked((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(o.path)) next.delete(o.path);
+                      else next.add(o.path);
+                      return next;
+                    })
+                  }
+                  className="size-4 shrink-0 accent-primary"
+                  aria-label="Silinecek yetim dosya"
+                />
+                <p className="min-w-0 flex-1 truncate font-mono text-xs">{o.path}</p>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatBytes(o.size)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

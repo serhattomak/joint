@@ -59,3 +59,34 @@ fn hash_file(path: &str) -> Result<String, String> {
 pub async fn delete_file(path: String) -> Result<(), String> {
     std::fs::remove_file(&path).map_err(|e| e.to_string())
 }
+
+#[derive(Clone, serde::Serialize)]
+pub struct DirEntry {
+    pub path: String,
+    pub size: u64,
+}
+
+// ponytail: üst seviye dosyalar + nokta-dizinler (.tools) hariç, recursive yok.
+#[tauri::command]
+pub async fn scan_dir(dir: String) -> Result<Vec<DirEntry>, String> {
+    let mut out = Vec::new();
+    let rd = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    for entry in rd {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with('.') {
+            continue;
+        }
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        out.push(DirEntry {
+            path: path.to_string_lossy().to_string(),
+            size,
+        });
+    }
+    out.sort_by(|a, b| b.size.cmp(&a.size));
+    Ok(out)
+}
