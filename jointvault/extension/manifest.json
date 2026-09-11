@@ -5,21 +5,6 @@
   "description": "Collect X bookmarks into JointVault for review.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["http://127.0.0.1:48120/*"],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://x.com/*",
-        "https://twitter.com/*",
-        "https://www.instagram.com/*",
-        "https://www.youtube.com/*"
-      ],
-      "js": ["download.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "action": {
     "default_popup": "popup.html"
   }

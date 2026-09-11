@@ -37,6 +37,91 @@ tokenEl.addEventListener("change", () => {
   }).catch(() => setSite("Bilinmeyen sekme", "Desteklenen bir kaydedilenler sayfası aç.", "#a8a29e"));
 })();
 
+// Tekil indir: sekmeye göre tekil URL + gerçek kaliteler (yüzen buton yerine).
+(() => {
+  const kindEl = document.getElementById("dl-kind");
+  const qualityEl = document.getElementById("dl-quality");
+  const btn = document.getElementById("download");
+  const hintEl = document.getElementById("dlHint");
+  let single = null;
+
+  const resolveSingle = (url) => {
+    let m;
+    if ((m = url.match(/\/status\/(\d+)/))) return { url: `https://x.com/i/status/${m[1]}`, site: "x" };
+    if ((m = url.match(/\/(p|reel)\/([A-Za-z0-9_-]+)/))) return { url: `https://www.instagram.com/${m[1]}/${m[2]}/`, site: "instagram" };
+    if ((m = url.match(/[?&]v=([\w-]{11})/))) return { url: `https://www.youtube.com/watch?v=${m[1]}`, site: "youtube" };
+    return null;
+  };
+
+  kindEl.addEventListener("change", () => {
+    qualityEl.disabled = kindEl.value === "audio";
+  });
+
+  chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
+    single = resolveSingle(tab && tab.url ? tab.url : "");
+    if (!single) {
+      hintEl.textContent = "Tekil içerik (tweet, post, video) sayfasında aktif olur.";
+      btn.disabled = true;
+      return;
+    }
+    hintEl.textContent = "Bu sayfadaki içerik review'e düşer.";
+    try {
+      const cfg = await new Promise((res) => chrome.storage.local.get({ endpoint: DEFAULT_ENDPOINT, token: "" }, res));
+      const base = (cfg.endpoint || DEFAULT_ENDPOINT).replace(/\/collect\/?$/, "/formats");
+      const res = await fetch(base + "?url=" + encodeURIComponent(single.url), {
+        headers: { Authorization: "Bearer " + cfg.token },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+      const heights = data.heights || [];
+      qualityEl.innerHTML = heights.length
+        ? heights.map((h) => `<option value="${h}">${h}p</option>`).join("")
+        : `<option value="720">720p</option>`;
+    } catch (e) {
+      qualityEl.innerHTML = `<option value="720">720p</option>`;
+      hintEl.textContent = "Kalite okunamadı, varsayılan 720p: " + (e && e.message ? e.message : e);
+    }
+  }).catch(() => {
+    btn.disabled = true;
+  });
+
+  btn.addEventListener("click", async () => {
+    if (!single) return;
+    const endpoint = endpointEl.value.trim() || DEFAULT_ENDPOINT;
+    const token = tokenEl.value.trim();
+    btn.disabled = true;
+    statusEl.dataset.state = "busy";
+    statusEl.textContent = "Gönderiliyor…";
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          items: [{
+            url: single.url,
+            title: tab && tab.title ? tab.title.slice(0, 200) : null,
+            thumbnail: null,
+            site: single.site,
+          }],
+          mode: "download",
+          kind: kindEl.value,
+          quality: qualityEl.value || "720",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+      statusEl.dataset.state = "ok";
+      statusEl.textContent = "Kuyruğa alındı (" + (data.accepted ?? 1) + ")";
+    } catch (e) {
+      statusEl.dataset.state = "error";
+      statusEl.textContent = "Error: " + (e && e.message ? e.message : e);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+
 document.getElementById("collect").addEventListener("click", async () => {
   const btn = document.getElementById("collect");
   const endpoint = endpointEl.value.trim() || DEFAULT_ENDPOINT;
