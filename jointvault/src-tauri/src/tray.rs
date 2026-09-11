@@ -44,8 +44,11 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
-pub fn on_window_close(window: &tauri::Window, event: &WindowEvent) {
+pub fn on_window_close(app: &tauri::AppHandle, window: &tauri::Window, event: &WindowEvent) {
     if let WindowEvent::CloseRequested { api, .. } = event {
+        if crate::settings::close_is_quit(app) {
+            return; // kapatmaya izin ver — uygulama tamamen çıkar
+        }
         let _ = window.hide();
         api.prevent_close();
     }

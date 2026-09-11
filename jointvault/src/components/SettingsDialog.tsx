@@ -37,6 +37,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function SettingsDialog(props: SettingsDialogProps) {
   const { open, onOpenChange, pageSize, pageSizes, onPageSizeChange, onReplayTour } = props;
   const [tab, setTab] = useState<SettingsTab>('view');
+  const [closeMode, setCloseMode] = useState('tray');
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [watch, setWatch] = useState(() => isWatchEnabled());
@@ -56,6 +57,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setTokenError(null);
     setQuality(getDefaultQuality());
     setWatch(isWatchEnabled());
+    void invoke<string>('get_close_behavior')
+      .then((m) => setCloseMode(m === 'quit' ? 'quit' : 'tray'))
+      .catch(() => setCloseMode('tray'));
     void invoke<string>('get_download_dir')
       .then(setDir)
       .catch((e: unknown) => setDirError(String(e)));
@@ -193,6 +197,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 className="size-4 accent-primary"
                 aria-label="Pano izleme"
               />
+            </Row>
+            <Row label="Kapatma tuşu">
+              <select
+                value={closeMode}
+                onChange={(e) => {
+                  const mode = e.target.value;
+                  setCloseMode(mode);
+                  void invoke<string>('set_close_behavior', { mode }).catch((err: unknown) =>
+                    setDirError(String(err)),
+                  );
+                }}
+                aria-label="Kapatma davranışı"
+                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
+              >
+                <option value="tray">Tepside çalışmaya devam et</option>
+                <option value="quit">Tamamen kapat</option>
+              </select>
             </Row>
             <Row label="Sayfa başına">
               <select
