@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, Star, Sun, Upload, X } from 'lucide-react';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { BarChart3, Clapperboard, Copy, Download, LayoutGrid, Plus, Rows3, Search, Settings, Star, Sun, Upload, X } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
@@ -23,6 +23,10 @@ import type { Category, Collection, Tag } from '@/lib/db/types';
 import { PLATFORM_META } from '@/lib/platform';
 import { cycleTheme } from '@/lib/theme';
 
+const StatsView = lazy(() =>
+  import('@/components/StatsView').then((m) => ({ default: m.StatsView })),
+);
+
 // ponytail: no node:path in bundle — basename via string split.
 function basename(p: string): string {
   const parts = p.split(/[/\\]/);
@@ -39,6 +43,7 @@ function App() {
   const [downloadedOnly, setDownloadedOnly] = useState(false);
   const [converterOnly, setConverterOnly] = useState(false);
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
+  const [statsOnly, setStatsOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -89,6 +94,7 @@ function App() {
     setDownloadedOnly(false);
     setConverterOnly(false);
     setDuplicatesOnly(false);
+    setStatsOnly(false);
   };
 
   const openConverter = (): void => {
@@ -101,6 +107,11 @@ function App() {
     setDuplicatesOnly(true);
   };
 
+  const openStats = (): void => {
+    showAll();
+    setStatsOnly(true);
+  };
+
   const goFavorites = (): void => {
     setFavoritesOnly(true);
     setPlatform('all');
@@ -110,6 +121,7 @@ function App() {
     setDownloadedOnly(false);
     setConverterOnly(false);
     setDuplicatesOnly(false);
+    setStatsOnly(false);
   };
 
   const goDownloads = (): void => {
@@ -121,6 +133,7 @@ function App() {
     setFavoritesOnly(false);
     setConverterOnly(false);
     setDuplicatesOnly(false);
+    setStatsOnly(false);
   };
 
   const paletteCommands: PaletteCommand[] = [
@@ -129,6 +142,7 @@ function App() {
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
     { id: 'converter', label: 'Dönüştürücü', icon: <Clapperboard className="size-4" />, run: openConverter },
     { id: 'dupes', label: 'Yinelenenler', icon: <Copy className="size-4" />, run: openDuplicates },
+    { id: 'stats', label: 'İstatistikler', icon: <BarChart3 className="size-4" />, run: openStats },
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
     { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
     { id: 'dl', label: 'İndirilenler', icon: <Download className="size-4" />, run: goDownloads },
@@ -143,6 +157,7 @@ function App() {
     setDownloadedOnly(false);
     setConverterOnly(false);
     setDuplicatesOnly(false);
+    setStatsOnly(false);
   };
   const pickPlatform = (p: string): void => {
     setPlatform(p);
@@ -198,11 +213,13 @@ function App() {
             ? 'converter'
             : duplicatesOnly
               ? 'duplicates'
-              : favoritesOnly
-                ? 'favorites'
-                : downloadedOnly
-                  ? 'downloads'
-                  : 'all'
+              : statsOnly
+                ? 'stats'
+                : favoritesOnly
+                  ? 'favorites'
+                  : downloadedOnly
+                    ? 'downloads'
+                    : 'all'
         }
         homeActive={
           platform === 'all' &&
@@ -212,14 +229,16 @@ function App() {
           !favoritesOnly &&
           !downloadedOnly &&
           !converterOnly &&
-          !duplicatesOnly
+          !duplicatesOnly &&
+          !statsOnly
         }
         onHome={showAll}
         onView={(v) => {
           if (v === 'favorites') goFavorites();
           else if (v === 'downloads') goDownloads();
           else if (v === 'converter') openConverter();
-          else openDuplicates();
+          else if (v === 'duplicates') openDuplicates();
+          else openStats();
         }}
         onOrganize={() => setOrganizeOpen(true)}
         onSettings={() => setSettingsOpen(true)}
@@ -262,7 +281,11 @@ function App() {
           </Button>
         </header>
         <main className="px-4 py-4">
-          {duplicatesOnly ? (
+          {statsOnly ? (
+            <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
+              <StatsView refreshKey={refreshKey} />
+            </Suspense>
+          ) : duplicatesOnly ? (
             <DuplicatesView onDone={refresh} />
           ) : converterOnly ? (
             <ConverterStudio refreshKey={refreshKey} onDone={refresh} />

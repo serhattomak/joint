@@ -1,6 +1,6 @@
-import { Archive, Clapperboard, Copy, Download, LayoutGrid, Settings, SlidersHorizontal, Star } from 'lucide-react';
+import { Archive, BarChart3, Clapperboard, Copy, Download, LayoutGrid, Settings, SlidersHorizontal, Star } from 'lucide-react';
 
-export type SidebarView = 'all' | 'favorites' | 'downloads' | 'converter' | 'duplicates';
+export type SidebarView = 'all' | 'favorites' | 'downloads' | 'converter' | 'duplicates' | 'stats';
 
 interface SidebarProps {
   view: SidebarView;
@@ -44,6 +44,7 @@ export function Sidebar(props: SidebarProps) {
         {viewBtn('downloads', <Download className="size-4" />, 'İndirilenler')}
         {viewBtn('converter', <Clapperboard className="size-4" />, 'Dönüştürücü')}
         {viewBtn('duplicates', <Copy className="size-4" />, 'Yinelenenler')}
+        {viewBtn('stats', <BarChart3 className="size-4" />, 'İstatistikler')}
       </nav>
       <div className="border-t border-border pt-2">
         <button type="button" onClick={props.onOrganize} className={navBtn(false)}>
