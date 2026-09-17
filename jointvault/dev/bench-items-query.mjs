@@ -118,25 +118,39 @@ const joinQuery = (sort, where = '', offset = 0) => ({
   page: `SELECT DISTINCT i.* ${FROM_JOIN} ${where} ORDER BY ${SORT_SQL[sort]} LIMIT 48 OFFSET ${offset}`,
 });
 
-const TAG_EXISTS = "EXISTS (SELECT 1 FROM item_tags it WHERE it.item_id = i.id AND it.tag_id = 'tag-3')";
-
-/* 3. sürüm: katılım yoksa katılma; filtre varsa EXISTS ile süz. */
+/* Doğrudan katılımsız okuma: taksonomi filtresi yokken üretimde gönderilen şekil. */
 const shapedQuery = (sort, where = '', offset = 0) => ({
   count: `SELECT COUNT(*) AS n FROM items i ${where}`,
   page: `SELECT i.* FROM items i ${where} ORDER BY ${SORT_SQL[sort]} LIMIT 48 OFFSET ${offset}`,
 });
 
 const LIKE_WHERE = "WHERE (i.title LIKE '%okuma%' OR i.note LIKE '%okuma%' OR i.url LIKE '%okuma%')";
+const CAT_WHERE = "WHERE ic.category_id = 'cat-4'";
 
+/*
+ * 3. sürüm = ÜRETİMDE GÖNDERİLEN şekil. Etiket/kategori süzmesinde katılım
+ * KORUNUR (ölçümde EXISTS'ten hızlı); katılım yalnızca taksonomi filtresi
+ * yokken kalkar. Betik üretimi modellemeli, varsayımı değil.
+ */
 const scenarios = [
-  { key: 'A', name: 'varsayılan görünüm (filtre yok, sort new)', q: () => joinQuery('new'), s: () => shapedQuery('new') },
-  { key: 'B', name: 'başlığa göre sırala (COLLATE NOCASE)', q: () => joinQuery('title'), s: () => shapedQuery('title') },
+  { key: 'A', name: 'varsayılan görünüm (filtre yok, sort new)',
+    q: () => joinQuery('new'), s: () => shapedQuery('new') },
+  { key: 'B', name: 'başlığa göre sırala (COLLATE NOCASE)',
+    q: () => joinQuery('title'), s: () => shapedQuery('title') },
   { key: 'C', name: "etikete göre süz (tag_id = 'tag-3')",
     q: () => joinQuery('new', "WHERE it.tag_id = 'tag-3'"),
-    s: () => shapedQuery('new', `WHERE ${TAG_EXISTS}`) },
-  { key: 'D', name: 'derin sayfa (OFFSET 1920)', q: () => joinQuery('new', '', 1920), s: () => shapedQuery('new', '', 1920) },
-  { key: 'E', name: 'arama (LIKE %okuma%)', q: () => joinQuery('new', LIKE_WHERE), s: () => shapedQuery('new', LIKE_WHERE) },
+    s: () => joinQuery('new', "WHERE it.tag_id = 'tag-3'") },
+  { key: 'D', name: 'derin sayfa (OFFSET 1920)',
+    q: () => joinQuery('new', '', 1920), s: () => shapedQuery('new', '', 1920) },
+  { key: 'E', name: 'arama (LIKE %okuma%)',
+    q: () => joinQuery('new', LIKE_WHERE), s: () => shapedQuery('new', LIKE_WHERE) },
+  { key: 'F', name: "kategoriye göre süz (category_id = 'cat-4')",
+    q: () => joinQuery('new', CAT_WHERE), s: () => joinQuery('new', CAT_WHERE) },
 ];
+
+function idsOf(db, sql) {
+  return db.prepare(sql).all().map((r) => r.id);
+}
 
 function total(db, spec) {
   return timeIt(db, spec.count) + timeIt(db, spec.page);
@@ -173,7 +187,14 @@ const grid = scenarios.map((s) => ({
   shaped: total(indexed, s.s()),
   planToday: planOf(plain, s.q().page),
   planShaped: planOf(indexed, s.s().page),
+  /* Doğruluk: optimizasyon sonucu değiştirmemeli. */
+  idsOld: idsOf(plain, s.q().page),
+  idsNew: idsOf(indexed, s.s().page),
+  cntOld: plain.prepare(s.q().count).get().n,
+  cntNew: indexed.prepare(s.s().count).get().n,
 }));
+
+const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
 
 const f = (n) => n.toFixed(2).padStart(8);
 if (BRIEF) {
@@ -187,7 +208,9 @@ if (BRIEF) {
     console.log(`   2 bugün + indeks   ${g.todayIdx.toFixed(2)} ms`);
     console.log(`   3 öneri + indeks   ${g.shaped.toFixed(2)} ms`);
     console.log(`   plan 1:\n      ${g.planToday}`);
-    console.log(`   plan 3:\n      ${g.planShaped}\n`);
+    console.log(`   plan 3:\n      ${g.planShaped}`);
+    const ok = sameSet(g.idsOld, g.idsNew) && g.cntOld === g.cntNew;
+    console.log(`   DOĞRULUK: ${ok ? 'PASS' : 'FAIL'}  aynı satır kümesi · sayım ${g.cntOld} -> ${g.cntNew}\n`);
   }
   console.log('--- indeks envanteri: bugün (sqlite_master) ---');
   for (const r of plain.prepare("SELECT name, tbl_name FROM sqlite_master WHERE type='index' ORDER BY tbl_name, name").all()) {

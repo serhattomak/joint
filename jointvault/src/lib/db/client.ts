@@ -198,16 +198,28 @@ export async function listItemsPage(
   }
   if (f.favoritesOnly) conds.push('i.favorite = 1');
   if (f.downloadedOnly) conds.push("i.download_status = 'done'");
-  const from =
-    'FROM items i LEFT JOIN item_categories ic ON ic.item_id = i.id LEFT JOIN item_tags it ON it.item_id = i.id';
+  /*
+   * Taksonomi katılımı yalnızca gerçekten gerektiğinde yapılır. LEFT JOIN
+   * bire-çok olduğu için satırları çoğaltır, DISTINCT de bunları geri toplar;
+   * filtresiz görünümde bu tamamen boşuna. Ölçüm (dev/bench-items-query.mjs):
+   * katılımsız + indeksli yol LIMIT'i tablo boyutundan bağımsız kılar.
+   * Etiket/kategori süzmesinde ise katılım korunur — ölçümde EXISTS'ten hızlı.
+   */
+  const joinsTaxonomy = Boolean(f.categoryId && f.categoryId !== 'all') || Boolean(f.tagId && f.tagId !== 'all');
+  const from = joinsTaxonomy
+    ? 'FROM items i LEFT JOIN item_categories ic ON ic.item_id = i.id LEFT JOIN item_tags it ON it.item_id = i.id'
+    : 'FROM items i';
   const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
   const [countRows] = [
-    await db.select<{ n: number }[]>(`SELECT COUNT(DISTINCT i.id) AS n ${from} ${where}`, params),
+    await db.select<{ n: number }[]>(
+      `SELECT COUNT(${joinsTaxonomy ? 'DISTINCT i.id' : '*'}) AS n ${from} ${where}`,
+      params,
+    ),
   ];
   const total = countRows[0]?.n ?? 0;
   if (total === 0) return { rows: [], total };
   const rows = await db.select<ItemRow[]>(
-    `SELECT DISTINCT i.* ${from} ${where} ORDER BY ${SORT_SQL[f.sort ?? 'new']} LIMIT ? OFFSET ?`,
+    `SELECT ${joinsTaxonomy ? 'DISTINCT i.*' : 'i.*'} ${from} ${where} ORDER BY ${SORT_SQL[f.sort ?? 'new']} LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
   return { rows: rows.map(toItem), total };
