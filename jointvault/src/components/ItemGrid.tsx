@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LayoutGrid, PackageOpen, Rows3 } from 'lucide-react';
-import { AddItemDialog } from '@/components/AddItemDialog';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackageOpen } from 'lucide-react';
 import { BulkActions } from '@/components/BulkActions';
+import { RuleStrip } from '@/components/RuleStrip';
+import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { ItemCardView, ItemRowView } from '@/components/ItemViews';
 import {
   getAllCategoriesByItem,
   getAllTagsByItem,
-  listCollections,
   listItemsPage,
   removeItem,
   setDownloadState,
   toggleFavorite,
+  type ItemSort,
 } from '@/lib/db/client';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { startDownload, useDownloadProgress, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
@@ -26,9 +28,21 @@ interface ItemGridProps {
   downloadedOnly: boolean;
   refreshKey: number;
   view: 'grid' | 'rows';
+  sort: ItemSort;
   pageSize: number;
+  /** Kural şeridi bu üç listeyi doğrudan kullanır; App tek yerden yükler. */
+  collections: Collection[];
+  categories: Category[];
+  tags: Tag[];
   onPageSizeChange: (n: number) => void;
   onViewChange: (next: 'grid' | 'rows') => void;
+  onSortChange: (next: ItemSort) => void;
+  onPlatform: (p: string) => void;
+  onCollection: (id: string) => void;
+  onCategory: (id: string) => void;
+  onTag: (id: string) => void;
+  onOpen: (item: Item) => void;
+  onClearFilters: () => void;
 }
 
 // İlk boyamada sadece ilk dilim kurulur, gerisi boş karelerde büyür.
@@ -40,18 +54,43 @@ export function readPageSize(): number {
   return (PAGE_SIZES as readonly number[]).includes(v) ? v : 48;
 }
 
-export function ItemGrid({ query, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, refreshKey, view, pageSize, onPageSizeChange, onViewChange, onPickVideo, onConvert }: ItemGridProps & { onPickVideo: (item: Item) => void; onConvert: (item: Item) => void }) {
+export function ItemGrid({
+  query,
+  platform,
+  collectionId,
+  categoryId,
+  tagId,
+  favoritesOnly,
+  downloadedOnly,
+  refreshKey,
+  view,
+  sort,
+  pageSize,
+  collections,
+  categories,
+  tags,
+  onPageSizeChange,
+  onViewChange,
+  onSortChange,
+  onPlatform,
+  onCollection,
+  onCategory,
+  onTag,
+  onOpen,
+  onClearFilters,
+  onPickVideo,
+  onConvert,
+}: ItemGridProps & { onPickVideo: (item: Item) => void; onConvert: (item: Item) => void }) {
   // Sayfa verisi: filtre+arama SQL'de (LIMIT/OFFSET), ekrana tek sayfa gelir.
   const [rows, setRows] = useState<Item[]>([]);
   const [total, setTotal] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   const [page, setPage] = useState(0);
   const [bump, setBump] = useState(0);
   const [goto, setGoto] = useState<string | null>(null);
   const [tagsByItem, setTagsByItem] = useState<Record<string, Tag[]>>({});
   const [catsByItem, setCatsByItem] = useState<Record<string, Category[]>>({});
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [editing, setEditing] = useState<Item | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   // Inline progress percents by item id; cleared when the download settles.
@@ -67,7 +106,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     return () => clearTimeout(t);
   }, [query]);
 
-  // Sayfa çekimi: arama+filtre+sayfa+boyut+refresh değişince tek tur.
+  // Sayfa çekimi: arama+filtre+sayfa+boyut+sıralama+refresh değişince tek tur.
   const fetchPage = useCallback(
     async (p: number, size: number): Promise<void> => {
       const res = await listItemsPage(size, p * size, {
@@ -78,6 +117,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         tagId,
         favoritesOnly,
         downloadedOnly,
+        sort,
       });
       if (res.total <= p * size && p > 0) {
         setPage(p - 1); // son sayfa boşaldıysa geri adım
@@ -85,25 +125,21 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
       }
       setRows(res.rows);
       setTotal(res.total);
+      setLoaded(true);
     },
-    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly],
+    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, sort],
   );
 
   useEffect(() => {
     void fetchPage(page, pageSize);
   }, [fetchPage, page, pageSize, refreshKey, bump]);
 
-  // Eşleşmeler: refresh değişince tek tur (3 IPC), filtre tıklamasında YOK.
+  // Eşleşmeler: refresh değişince tek tur (2 IPC), filtre tıklamasında YOK.
   useEffect(() => {
     let live = true;
     void (async () => {
-      const [cols, tagMap, catMap] = await Promise.all([
-        listCollections(),
-        getAllTagsByItem(),
-        getAllCategoriesByItem(),
-      ]);
+      const [tagMap, catMap] = await Promise.all([getAllTagsByItem(), getAllCategoriesByItem()]);
       if (!live) return;
-      setCollections(cols as Collection[]);
       setTagsByItem(tagMap);
       setCatsByItem(catMap);
     })();
@@ -122,7 +158,7 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
   useEffect(() => {
     setPage(0);
     setSelected(new Set());
-  }, [platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, debouncedQuery]);
+  }, [platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, debouncedQuery, sort]);
 
   const toggleSelect = useCallback((id: string): void => {
     setSelected((prev) => {
@@ -143,15 +179,13 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     setRows((prev) => prev.map((it) => (it.id === id ? updated : it)));
   }, []);
 
-  const handleDelete = useCallback(
-    async (id: string): Promise<void> => {
-      if (!window.confirm('Bu öğeyi silmek istiyor musun?')) return;
-      // ponytail: downloaded file stays on disk (orphan cleanup later).
-      await removeItem(id);
-      await refreshAll();
-    },
-    [refreshAll],
-  );
+  const confirmDelete = useCallback(async (): Promise<void> => {
+    if (!pendingDelete) return;
+    // ponytail: downloaded file stays on disk (orphan cleanup later).
+    await removeItem(pendingDelete.id);
+    setPendingDelete(null);
+    await refreshAll();
+  }, [pendingDelete, refreshAll]);
 
   const runDownload = useCallback(
     async (item: Item, kind: DownloadKind, quality: DownloadQuality): Promise<void> => {
@@ -195,33 +229,17 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     }, []),
   );
 
-  const handleEdit = useCallback((item: Item): void => {
-    setEditing(item);
-    setEditOpen(true);
-  }, []);
-
-  if (rows.length === 0) {
-    const isFiltering =
-      query.trim() !== '' ||
-      platform !== 'all' ||
-      collectionId !== 'all' ||
-      categoryId !== 'all' ||
-      tagId !== 'all' ||
-      favoritesOnly ||
-      downloadedOnly;
-    return (
-      <div className="animate-rise flex flex-col items-center gap-2 py-16 text-center">
-        <PackageOpen className="size-8 text-muted-foreground" strokeWidth={1.5} />
-        <p className="font-display text-lg">{isFiltering ? 'Sonuç yok' : 'Arşiv boş'}</p>
-        <p className="max-w-60 text-sm text-muted-foreground">
-          {isFiltering ? 'Filtreleri gevşetmeyi dene.' : 'İlk linkini kaydet, önizlemesiyle burada dursun.'}
-        </p>
-      </div>
-    );
-  }
-
   const collectionLabel = (id: string | null): string | null =>
     collections.find((c) => c.id === id)?.name ?? null;
+
+  const isFiltering =
+    query.trim() !== '' ||
+    platform !== 'all' ||
+    collectionId !== 'all' ||
+    categoryId !== 'all' ||
+    tagId !== 'all' ||
+    favoritesOnly ||
+    downloadedOnly;
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const from = total === 0 ? 0 : page * pageSize + 1;
@@ -235,157 +253,177 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
     setPage(Math.min(pages - 1, Math.max(0, n - 1)));
   };
 
-  const pager = total > Math.min(...PAGE_SIZES) && (
-    <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-      <span className="flex items-center gap-2">
-        <span className="tabular-nums">
-          {from}–{to} / {total}
-        </span>
-        <select
-          value={pageSize}
-          onChange={(e) => {
-            onPageSizeChange(Number.parseInt(e.target.value, 10));
-            setPage(0);
-          }}
-          aria-label="Sayfa başına"
-          className="h-7 rounded-md border border-border bg-transparent px-1 text-xs outline-none focus:border-input"
-        >
-          {PAGE_SIZES.map((n) => (
-            <option key={n} value={n}>
-              {n}/sayfa
-            </option>
-          ))}
-        </select>
-      </span>
-      <div className="flex items-center gap-1">
-        <div className="flex items-center rounded-lg border border-border p-0.5" role="group" aria-label="Görünüm">
-          <button
-            type="button"
-            onClick={() => onViewChange('grid')}
-            aria-pressed={view === 'grid'}
-            aria-label="Kart görünümü"
-            className={`rounded-md p-1.5 transition ${view === 'grid' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <LayoutGrid className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewChange('rows')}
-            aria-pressed={view === 'rows'}
-            aria-label="Satır görünümü"
-            className={`rounded-md p-1.5 transition ${view === 'rows' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <Rows3 className="size-4" />
-          </button>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setPage(0)}
-          disabled={page === 0}
-          aria-label="İlk sayfa"
-        >
-          <ChevronsLeft />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setPage((p) => Math.max(0, p - 1))}
-          disabled={page === 0}
-          aria-label="Önceki sayfa"
-        >
-          <ChevronLeft />
-        </Button>
-        <input
-          value={goto ?? String(page + 1)}
-          onChange={(e) => setGoto(e.target.value)}
-          onBlur={commitGoto}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
-          inputMode="numeric"
-          aria-label="Sayfaya git"
-          className="h-7 w-12 rounded-md border border-border bg-transparent px-1 text-center text-xs tabular-nums outline-none focus:border-input"
-        />
-        <span className="tabular-nums">/{pages}</span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setPage((p) => Math.min(pages - 1, p + 1))}
-          disabled={page >= pages - 1}
-          aria-label="Sonraki sayfa"
-        >
-          <ChevronRight />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setPage(pages - 1)}
-          disabled={page >= pages - 1}
-          aria-label="Son sayfa"
-        >
-          <ChevronsRight />
-        </Button>
-      </div>
-    </div>
+  const strip = (
+    <RuleStrip
+      platform={platform}
+      collectionId={collectionId}
+      categoryId={categoryId}
+      tagId={tagId}
+      collections={collections}
+      categories={categories}
+      tags={tags}
+      onPlatform={onPlatform}
+      onCollection={onCollection}
+      onCategory={onCategory}
+      onTag={onTag}
+      onClear={onClearFilters}
+      sort={sort}
+      onSort={onSortChange}
+      view={view}
+      onViewChange={onViewChange}
+      total={total}
+    />
   );
 
   return (
     <>
-      {pager}
-      {view === 'rows' ? (
-        <div className="animate-rise divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-card">
-          {rows.map((item) => (
-            <ItemRowView
-              key={item.id}
-              item={item}
-              tags={tagsByItem[item.id] ?? []}
-              categories={catsByItem[item.id] ?? []}
-              collectionLabel={collectionLabel(item.collection_id)}
-              selected={selected.has(item.id)}
-              index={0}
-              onToggle={toggleSelect}
-              onFavorite={handleFavorite}
-              onDelete={handleDelete}
-              onEdit={handleEdit}
-              progress={progress[item.id]}
-              meta={dlMeta[item.id]}
-              onAudio={handleAudioDownload}
-              onPickVideo={onPickVideo}
-              onConvert={onConvert}
-            />
-          ))}
-        </div>
-      ) : (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {rows.map((item, i) => (
-          <ItemCardView
-            key={item.id}
-            item={item}
-            tags={tagsByItem[item.id] ?? []}
-            categories={catsByItem[item.id] ?? []}
-            collectionLabel={collectionLabel(item.collection_id)}
-            selected={selected.has(item.id)}
-            index={i}
-            onToggle={toggleSelect}
-            onFavorite={handleFavorite}
-            onDelete={handleDelete}
-            onEdit={handleEdit}
-            progress={progress[item.id]}
-            meta={dlMeta[item.id]}
-            onAudio={handleAudioDownload}
-            onPickVideo={onPickVideo}
-            onConvert={onConvert}
-          />
-        ))}
+      {strip}
+      <div className="min-h-0 flex-1 px-4 py-4">
+        {!loaded ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex flex-col overflow-hidden border border-border bg-card">
+                <div className="h-0.5 w-full bg-border" />
+                <div className="record-band skeleton-paper" />
+                <div className="skeleton-paper h-36 w-full" />
+                <div className="flex flex-col gap-2 p-3">
+                  <div className="skeleton-paper h-4 w-3/4 rounded-xs" />
+                  <div className="skeleton-paper h-3 w-1/2 rounded-xs" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="animate-rise flex flex-col items-center gap-3 py-20 text-center">
+            <PackageOpen className="size-7 text-muted-foreground" strokeWidth={1.5} />
+            <div className="flex flex-col gap-1">
+              <p className="text-title">{isFiltering ? 'Bu kurallara uyan fiş yok' : 'Kasa boş'}</p>
+              <p className="max-w-[46ch] text-sm text-muted-foreground">
+                {isFiltering
+                  ? 'Kural şeridinden bir filtreyi gevşet ya da temizle.'
+                  : 'Yukarıdaki yakala çubuğuna bir link yapıştır ve Enter’a bas. Önizleme sonra çekilir.'}
+              </p>
+            </div>
+            {isFiltering && (
+              <Button variant="outline" size="sm" onClick={onClearFilters}>
+                Filtreleri temizle
+              </Button>
+            )}
+          </div>
+        ) : view === 'rows' ? (
+          <div className="animate-rise divide-y divide-border overflow-hidden border border-border bg-card">
+            {rows.map((item) => (
+              <ItemRowView
+                key={item.id}
+                item={item}
+                tags={tagsByItem[item.id] ?? []}
+                categories={catsByItem[item.id] ?? []}
+                collectionLabel={collectionLabel(item.collection_id)}
+                selected={selected.has(item.id)}
+                index={0}
+                onToggle={toggleSelect}
+                onFavorite={handleFavorite}
+                onDelete={(id) => setPendingDelete(rows.find((r) => r.id === id) ?? null)}
+                onOpen={onOpen}
+                progress={progress[item.id]}
+                meta={dlMeta[item.id]}
+                onAudio={handleAudioDownload}
+                onPickVideo={onPickVideo}
+                onConvert={onConvert}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {rows.map((item, i) => (
+              <ItemCardView
+                key={item.id}
+                item={item}
+                tags={tagsByItem[item.id] ?? []}
+                categories={catsByItem[item.id] ?? []}
+                collectionLabel={collectionLabel(item.collection_id)}
+                selected={selected.has(item.id)}
+                index={i}
+                onToggle={toggleSelect}
+                onFavorite={handleFavorite}
+                onDelete={(id) => setPendingDelete(rows.find((r) => r.id === id) ?? null)}
+                onOpen={onOpen}
+                progress={progress[item.id]}
+                meta={dlMeta[item.id]}
+                onAudio={handleAudioDownload}
+                onPickVideo={onPickVideo}
+                onConvert={onConvert}
+              />
+            ))}
+          </div>
+        )}
+
+        {total > Math.min(...PAGE_SIZES) && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-3">
+              <span data-num>
+                {from}–{to} / {total}
+              </span>
+              <Select
+                label="Sayfa başına"
+                size="sm"
+                className="w-[7.5rem]"
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  onPageSizeChange(Number.parseInt(v, 10));
+                  setPage(0);
+                }}
+                options={PAGE_SIZES.map((n) => ({ value: String(n), label: `${n}/sayfa` }))}
+              />
+            </span>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" onClick={() => setPage(0)} disabled={page === 0} aria-label="İlk sayfa">
+                <ChevronsLeft />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                aria-label="Önceki sayfa"
+              >
+                <ChevronLeft />
+              </Button>
+              <input
+                value={goto ?? String(page + 1)}
+                onChange={(e) => setGoto(e.target.value)}
+                onBlur={commitGoto}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                }}
+                inputMode="numeric"
+                aria-label="Sayfaya git"
+                className="h-7 w-12 rounded-sm border border-input bg-transparent px-1 text-center text-xs outline-none transition-colors focus:border-primary"
+              />
+              <span data-num>/{pages}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPage((p) => Math.min(pages - 1, p + 1))}
+                disabled={page >= pages - 1}
+                aria-label="Sonraki sayfa"
+              >
+                <ChevronRight />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPage(pages - 1)}
+                disabled={page >= pages - 1}
+                aria-label="Son sayfa"
+              >
+                <ChevronsRight />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
-      )}
-      <AddItemDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        onSaved={() => refreshAll()}
-        initial={editing}
-      />
+
       <BulkActions
         ids={[...selected]}
         total={rows.length}
@@ -393,6 +431,16 @@ export function ItemGrid({ query, platform, collectionId, categoryId, tagId, fav
         onSelectAll={selectAll}
         onClear={() => setSelected(new Set())}
         onDone={() => refreshAll()}
+      />
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDelete(null);
+        }}
+        title="Bu fiş silinsin mi?"
+        description={pendingDelete?.title ?? pendingDelete?.url ?? undefined}
+        confirmLabel="Sil"
+        onConfirm={() => void confirmDelete()}
       />
     </>
   );

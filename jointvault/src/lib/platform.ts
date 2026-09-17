@@ -32,13 +32,14 @@ export function detectPlatform(raw: string): Platform {
 }
 
 // ponytail: dot classes must stay literal so Tailwind picks them up.
+// Kartoteks mürekkep kodu: platform rengi mürekkebe batırılmış hâliyle kullanılır.
 export const PLATFORM_META: Record<Platform, { label: string; dot: string }> = {
-  instagram: { label: 'Instagram', dot: 'bg-pink-500' },
-  tiktok: { label: 'TikTok', dot: 'bg-cyan-400' },
-  x: { label: 'X', dot: 'bg-stone-500' },
-  pinterest: { label: 'Pinterest', dot: 'bg-red-700' },
-  youtube: { label: 'YouTube', dot: 'bg-red-500' },
-  other: { label: 'Diğer', dot: 'bg-stone-400' },
+  instagram: { label: 'Instagram', dot: 'bg-src-instagram' },
+  tiktok: { label: 'TikTok', dot: 'bg-src-tiktok' },
+  x: { label: 'X', dot: 'bg-src-x' },
+  pinterest: { label: 'Pinterest', dot: 'bg-src-pinterest' },
+  youtube: { label: 'YouTube', dot: 'bg-src-youtube' },
+  other: { label: 'Diğer', dot: 'bg-src-other' },
 };
 
 export const PLATFORM_ORDER: Platform[] = ['instagram', 'tiktok', 'x', 'pinterest', 'youtube', 'other'];

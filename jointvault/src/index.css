@@ -1,81 +1,256 @@
 @import "tailwindcss";
 
+/*
+ * JointVault · Kartoteks
+ * Dünya: kütüphane fiş katalogları / arşiv çekmeceleri.
+ * Malzeme dokunun kendisiyle değil üç araçla kurulur: sabit künye bandı + altındaki
+ * hairline, ray'de sekme çentiği, yalnızca durum taşıyan perfore delik.
+ * Gölge yok; bölme hairline'ı ve kart kenarı var. Kesilmiş kâğıt köşesi: 2-6px.
+ */
+
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
-  --font-display: Georgia, "Iowan Old Style", "Times New Roman", serif;
-  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
-
-  --color-background: #faf7f1;
-  --color-foreground: #1c1917;
-  --color-card: #fffdf8;
-  --color-card-foreground: #1c1917;
-  --color-popover: #fffdf8;
-  --color-popover-foreground: #1c1917;
-  --color-muted: #ece5d2;
-  --color-muted-foreground: #78716c;
-  --color-border: #e0d7c0;
-  --color-input: #d3c8ab;
-  --color-primary: #9a3412;
-  --color-primary-foreground: #fff7ed;
-  --color-secondary: #e9e0cb;
-  --color-secondary-foreground: #44403c;
-  --color-destructive: #b91c1c;
-  --color-ring: #9a3412;
-
-  --radius-xs: 0.25rem;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-
-  --shadow-card: 0 1px 2px rgb(28 25 23 / 0.07);
-  --shadow-lift: 0 8px 24px -8px rgb(28 25 23 / 0.25);
+/* --- Yazı tipleri: yerelden servis edilir, çalışma anında uzak kaynak yok --- */
+/* Google Fonts değişken (variable) font servis ediyor: tek dosya, 100-900 ağırlık aralığı. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/archivo-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/archivo-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-.dark {
-  --color-background: #1c1917;
-  --color-foreground: #e9e2d4;
-  --color-card: #24211d;
-  --color-card-foreground: #e9e2d4;
-  --color-popover: #24211d;
-  --color-popover-foreground: #e9e2d4;
-  --color-muted: #2e2a25;
-  --color-muted-foreground: #a8a29e;
-  --color-border: #403a32;
-  --color-input: #57504a;
-  --color-primary: #e08a3c;
-  --color-primary-foreground: #1c1917;
-  --color-secondary: #33302b;
-  --color-secondary-foreground: #d6d3d1;
-  --color-destructive: #f87171;
-  --color-ring: #e08a3c;
+@theme {
+  /* --- Tipografi: tek yüz (Archivo) + veri yüzü (JetBrains Mono).
+     Rütbe boyutla kurulur, ağırlık karışımıyla değil. --- */
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Archivo', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-lift: 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  /* Tam sayı adımlı ölçek merdiveni (sabit rem, akışkan değil). */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.5;
+  --text-2xs--letter-spacing: 0.04em;
+  --text-micro: 0.75rem;
+  --text-micro--line-height: 1.45;
+  --text-title: 1.3125rem;
+  --text-title--line-height: 1.15;
+  --text-title--font-weight: 600;
+  --text-title--letter-spacing: -0.012em;
+  --text-display: 1.625rem;
+  --text-display--line-height: 1.08;
+  --text-display--font-weight: 600;
+  --text-display--letter-spacing: -0.018em;
+
+  /* --- Gündüz: çekmece açıkken --- */
+  --color-background: #eceae4;
+  --color-foreground: #15171a;
+  --color-card: #f7f5f0;
+  --color-card-foreground: #15171a;
+  --color-popover: #fdfcf9;
+  --color-popover-foreground: #15171a;
+  --color-muted: #e2dfd6;
+  --color-muted-foreground: #63615c;
+  --color-border: #d5d2c8;
+  --color-input: #c9c5b9;
+  --color-primary: #2a3fd0;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e2dfd6;
+  --color-secondary-foreground: #33363b;
+  --color-destructive: #b3352a;
+  --color-destructive-foreground: #ffffff;
+  --color-ring: #2a3fd0;
+
+  --color-rail: #e4e1d9;
+  --color-rail-foreground: #15171a;
+  --color-rail-border: #d0ccc1;
+
+  --color-overlay: rgb(20 21 23 / 0.55);
+
+  /* Platform mürekkep kodu: kütüphane sınıflandırması, süs değil. */
+  --color-src-instagram: #c33f76;
+  --color-src-tiktok: #1f9c9c;
+  --color-src-x: #5c5a55;
+  --color-src-pinterest: #a52f28;
+  --color-src-youtube: #bc3a30;
+  --color-src-other: #7a776f;
+
+  --color-state-queued: #8b8880;
+  --color-state-active: #2a3fd0;
+  --color-state-acquired: #2f7d55;
+  --color-state-error: #b3352a;
+
+  /* --- Kesilmiş kâğıt köşesi --- */
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.3125rem;
+  --radius-xl: 0.375rem;
+  --radius-2xl: 0.5rem;
+
+  /* Fiş gölgesi yok — kart kenarı ve hairline taşır. Yalnızca üstte duran
+     katmanlar yükselir: gerçek ofset + yumuşak blur. */
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-lift: 0 18px 40px -18px rgb(20 21 23 / 0.45), 0 3px 10px -4px rgb(20 21 23 / 0.3);
+
+  --ease-paper: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-rise: rise 0.22s var(--ease-paper) both;
+  --animate-stamp: stamp 0.18s var(--ease-paper) both;
+  --animate-sweep: sweep 1.2s linear infinite;
+}
+
+/* --- Gece: okuma odası, tek çalışma lambası --- */
+.dark {
+  --color-background: #0f1113;
+  --color-foreground: #e8e5dd;
+  --color-card: #171a1d;
+  --color-card-foreground: #e8e5dd;
+  --color-popover: #1b1f23;
+  --color-popover-foreground: #e8e5dd;
+  --color-muted: #1f2428;
+  --color-muted-foreground: #8f8c83;
+  --color-border: #262a2e;
+  --color-input: #3a4045;
+  --color-primary: #3d5afe;
+  --color-primary-foreground: #f2f4ff;
+  --color-secondary: #21262b;
+  --color-secondary-foreground: #cfd3d6;
+  --color-destructive: #d9483b;
+  --color-destructive-foreground: #1a0f0d;
+  --color-ring: #6a7cff;
+
+  --color-rail: #0b0d0f;
+  --color-rail-foreground: #e8e5dd;
+  --color-rail-border: #23272b;
+
+  --color-overlay: rgb(4 5 6 / 0.72);
+
+  --color-src-instagram: #d94f8a;
+  --color-src-tiktok: #35c4c4;
+  --color-src-x: #8f8c83;
+  --color-src-pinterest: #b8352f;
+  --color-src-youtube: #d0443a;
+  --color-src-other: #6f6c65;
+
+  --color-state-queued: #8f8c83;
+  --color-state-active: #3d5afe;
+  --color-state-acquired: #4f9a72;
+  --color-state-error: #d9483b;
+
+  --shadow-lift: 0 22px 48px -20px rgb(0 0 0 / 0.75), 0 4px 12px -4px rgb(0 0 0 / 0.6);
 }
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
     background: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-wrap: break-word;
   }
+
+  /* Tarayıcının kendi yüzeyleri de bu dünyaya ait. */
   ::selection {
     background: var(--color-primary);
     color: var(--color-primary-foreground);
   }
+  :root {
+    caret-color: var(--color-primary);
+    accent-color: var(--color-primary);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 1px;
+  }
+  a,
+  button,
+  summary {
+    text-underline-offset: 3px;
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+  /* Sayı taşıyan her şey tabular: yüzde, süre, adet, yol. */
+  [data-num] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-border) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-input);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -83,17 +258,77 @@
   }
 }
 
-@utility animate-rise {
-  animation: rise 0.35s ease-out both;
+/* Damga basılıyor: arşive giren fişin tek orkestralı hareketi. */
+@keyframes stamp {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-/* Ekran dışı satır/kartların layout+paint maliyetini atla. */
+@keyframes sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Ekran dışı satır/kartların layout+paint maliyetini atla (1000+ öğe bütçesi). */
 @utility cv-row {
   content-visibility: auto;
-  contain-intrinsic-size: auto 76px;
+  contain-intrinsic-size: auto 64px;
 }
 
 @utility cv-card {
   content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
+  contain-intrinsic-size: auto 292px;
+}
+
+/* Künye bandı: fişin üstündeki sabit yükseklikte seri + altında hairline cetvel.
+   Doku taklidi değil; fişin kendi yapısı. */
+@utility record-band {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 1.75rem;
+  padding-inline: 0.625rem;
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Yükleniyor durumu: dönen çark değil, kâğıdın üstünden geçen tarama. */
+@utility skeleton-paper {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--color-muted) 80%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-sweep);
 }

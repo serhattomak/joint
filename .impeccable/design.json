@@ -1,0 +1,490 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-17T00:00:00.000Z",
+  "title": "Design System: JointVault",
+  "extensions": {
+    "colorMeta": {
+      "graphite-rail": {
+        "role": "neutral",
+        "displayName": "Grafit Ray",
+        "purpose": "Sol Ã§ekmece rayÄ±; iÃ§erik zemininden bir ton koyu.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#20262c",
+          "#38424d",
+          "#526170",
+          "#6c8093",
+          "#8f9ead",
+          "#b3bdc7",
+          "#d6dbe1",
+          "#f0f2f4"
+        ]
+      },
+      "graphite-ground": {
+        "role": "neutral",
+        "displayName": "Grafit Zemin",
+        "purpose": "Ä°Ã§erik zemini (koyu tema).",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#22262b",
+          "#3b424a",
+          "#56616c",
+          "#71808f",
+          "#939eaa",
+          "#b5bdc4",
+          "#d7dbe0",
+          "#f1f2f4"
+        ]
+      },
+      "card-stock": {
+        "role": "neutral",
+        "displayName": "Karton FiÅŸ",
+        "purpose": "Kart, satÄ±r ve panel yÃ¼zeyi.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#22262b",
+          "#3b424a",
+          "#56616c",
+          "#71808e",
+          "#939ea9",
+          "#b5bdc4",
+          "#d7dbdf",
+          "#f1f2f4"
+        ]
+      },
+      "bone-ink": {
+        "role": "neutral",
+        "displayName": "Kemik MÃ¼rekkep",
+        "purpose": "GÃ¶vde metni ve birincil ikon.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#2e2a1f",
+          "#4f4836",
+          "#74694e",
+          "#988b67",
+          "#b1a78b",
+          "#c9c3b0",
+          "#e2ded4",
+          "#f5f3f0"
+        ]
+      },
+      "faded-ink": {
+        "role": "neutral",
+        "displayName": "Soluk MÃ¼rekkep",
+        "purpose": "Ä°kincil metin, yardÄ±m satÄ±rÄ±.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#282724",
+          "#46443f",
+          "#66635c",
+          "#868379",
+          "#a3a199",
+          "#c0beb9",
+          "#dddcd9",
+          "#f3f3f2"
+        ]
+      },
+      "hairline-rule": {
+        "role": "neutral",
+        "displayName": "Hairline Cetvel",
+        "purpose": "TÃ¼m bÃ¶lmeler; gÃ¶lge yerine Ã§izgi.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#23262a",
+          "#3c4249",
+          "#58616a",
+          "#73808c",
+          "#959ea7",
+          "#b6bdc3",
+          "#d8dbdf",
+          "#f1f2f3"
+        ]
+      },
+      "stamp-ultramarine": {
+        "role": "primary",
+        "displayName": "Damga Ultramarini",
+        "purpose": "Tek aksan: birincil eylem, aktif Ã¶lÃ§Ã¼m, odak.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#040e49",
+          "#07197e",
+          "#0a24b8",
+          "#0d2ff2",
+          "#4761f5",
+          "#8193f8",
+          "#bbc5fb",
+          "#e7eafe"
+        ]
+      },
+      "archive-verdigris": {
+        "role": "secondary",
+        "displayName": "ArÅŸiv YeÅŸili",
+        "purpose": "YalnÄ±zca \"arÅŸive girdi\" anlamÄ±.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#1a3325",
+          "#2d5841",
+          "#42805f",
+          "#56a97d",
+          "#7fbd9c",
+          "#a7d2bb",
+          "#d0e7db",
+          "#eef6f2"
+        ]
+      },
+      "stamp-red": {
+        "role": "tertiary",
+        "displayName": "Damga KÄ±rmÄ±zÄ±sÄ±",
+        "purpose": "YalnÄ±zca hata ve yÄ±kÄ±cÄ± eylem.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#40110c",
+          "#6f1d16",
+          "#a22a1f",
+          "#d63829",
+          "#e0675d",
+          "#e99790",
+          "#f3c7c3",
+          "#fbebea"
+        ]
+      },
+      "bone-ground": {
+        "role": "neutral",
+        "displayName": "Kemik Zemin",
+        "purpose": "Ä°Ã§erik zemini (aÃ§Ä±k tema).",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#2d2a20",
+          "#4e4837",
+          "#726950",
+          "#968b69",
+          "#afa78d",
+          "#c8c2b1",
+          "#e2ded5",
+          "#f4f3f0"
+        ]
+      },
+      "bone-card": {
+        "role": "neutral",
+        "displayName": "Kemik Kart",
+        "purpose": "Kart yÃ¼zeyi (aÃ§Ä±k tema).",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#322b1b",
+          "#564b2e",
+          "#7e6e43",
+          "#a69059",
+          "#bcab81",
+          "#d1c5a9",
+          "#e6e0d0",
+          "#f6f4ee"
+        ]
+      },
+      "ink-black": {
+        "role": "neutral",
+        "displayName": "MÃ¼rekkep SiyahÄ±",
+        "purpose": "AÃ§Ä±k temada gÃ¶vde metni.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#22252a",
+          "#3b4149",
+          "#575f6b",
+          "#727d8d",
+          "#949ca8",
+          "#b6bbc4",
+          "#d8dbdf",
+          "#f1f2f4"
+        ]
+      },
+      "src-instagram": {
+        "role": "neutral",
+        "displayName": "Instagram MÃ¼rekkebi",
+        "purpose": "SÄ±nÄ±flandÄ±rma kuralÄ±; etiketsiz kullanÄ±lmaz.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#3f0e23",
+          "#6d183c",
+          "#9f2258",
+          "#d22d74",
+          "#dd6095",
+          "#e792b7",
+          "#f2c4d8",
+          "#faeaf1"
+        ]
+      },
+      "src-tiktok": {
+        "role": "neutral",
+        "displayName": "TikTok MÃ¼rekkebi",
+        "purpose": "SÄ±nÄ±flandÄ±rma kuralÄ±.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#103c3c",
+          "#1c6868",
+          "#299999",
+          "#36c9c9",
+          "#66d6d6",
+          "#97e3e3",
+          "#c7f0f0",
+          "#ebfafa"
+        ]
+      },
+      "src-pinterest": {
+        "role": "neutral",
+        "displayName": "Pinterest MÃ¼rekkebi",
+        "purpose": "SÄ±nÄ±flandÄ±rma kuralÄ±.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#3d1210",
+          "#6a1e1b",
+          "#9a2c27",
+          "#cb3b34",
+          "#d86a65",
+          "#e49995",
+          "#f0c8c6",
+          "#faebeb"
+        ]
+      },
+      "src-youtube": {
+        "role": "neutral",
+        "displayName": "YouTube MÃ¼rekkebi",
+        "purpose": "SÄ±nÄ±flandÄ±rma kuralÄ±.",
+        "canonical": "oklch(...)",
+        "tonalRamp": [
+          "#3e120f",
+          "#6b1f1a",
+          "#9c2d25",
+          "#ce3c31",
+          "#da6a63",
+          "#e59994",
+          "#f1c8c5",
+          "#faebea"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "GÃ¶rÃ¼nÃ¼m baÅŸlÄ±ÄŸÄ± ve uygulama adÄ±; sayfada bir kez."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel, fiÅŸ detayÄ±, boÅŸ durum ve diyalog baÅŸlÄ±ÄŸÄ±."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "GÃ¶vde metni ve kontrol etiketleri."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Alan etiketleri ve yardÄ±m metni; bÃ¼yÃ¼k harf yok."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "KÃ¼nye bandÄ±, damga, tarih, yÃ¼zde, hÄ±z, sayÄ±m, dosya yolu."
+      }
+    },
+    "shadows": [
+      {
+        "name": "yaprak-yukselmesi",
+        "value": "0 18px 40px -18px rgb(20 21 23 / 0.45), 0 3px 10px -4px rgb(20 21 23 / 0.3)",
+        "purpose": "YalnÄ±zca Ã¼stte duran yapraklar: aÃ§Ä±lÄ±r panel, menÃ¼, diyalog, bildirim. FiÅŸ, kart ve satÄ±r dinlenme hÃ¢linde gÃ¶lge taÅŸÄ±maz."
+      },
+      {
+        "name": "yaprak-yukselmesi-koyu",
+        "value": "0 22px 48px -20px rgb(0 0 0 / 0.75), 0 4px 12px -4px rgb(0 0 0 / 0.6)",
+        "purpose": "AynÄ± yÃ¼kselme, koyu temada."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-paper",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "TÃ¼m durum geÃ§iÅŸlerinin varsayÄ±lan eÄŸrisi."
+      },
+      {
+        "name": "sure-hizli",
+        "value": "150ms",
+        "purpose": "Renk, kenar ve opaklÄ±k geÃ§iÅŸleri."
+      },
+      {
+        "name": "sure-damga",
+        "value": "180ms",
+        "purpose": "Yeni fiÅŸin damgasÄ±nÄ± basma anÄ±; tek orkestralÄ± hareket."
+      },
+      {
+        "name": "animate-rise",
+        "value": "rise 220ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        "purpose": "Panel ve bildirim giriÅŸi."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Birincil eylem: dÃ¼z ultramarin mÃ¼rekkep bloÄŸu, kÃ¢ÄŸÄ±t beyazÄ± metin.",
+      "html": "<button class=\"ds-btn-primary\">Kaydet</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid transparent;background:var(--color-primary);color:var(--color-primary-foreground);font:500 14px/1.5 var(--font-sans);white-space:nowrap;cursor:pointer;transition:background-color 150ms cubic-bezier(0.22,1,0.36,1),transform 150ms cubic-bezier(0.22,1,0.36,1)}.ds-btn-primary:hover{background:color-mix(in oklab,var(--color-primary) 85%,transparent)}.ds-btn-primary:focus-visible{outline:2px solid var(--color-ring);outline-offset:1px}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:disabled{opacity:.45;pointer-events:none}"
+    },
+    {
+      "name": "Stamp Button",
+      "kind": "button",
+      "refersTo": "button-stamp",
+      "description": "Yakala Ã§ubuÄŸunun kayÄ±t eylemi: ÅŸeffaf zemin, ultramarin kenar ve metin.",
+      "html": "<button class=\"ds-btn-stamp\">Kaydet</button>",
+      "css": ".ds-btn-stamp{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--color-primary);background:transparent;color:var(--color-primary);font:500 14px/1.5 var(--font-sans);cursor:pointer;transition:background-color 150ms cubic-bezier(0.22,1,0.36,1),color 150ms cubic-bezier(0.22,1,0.36,1),transform 150ms cubic-bezier(0.22,1,0.36,1)}.ds-btn-stamp:hover{background:var(--color-primary);color:var(--color-primary-foreground)}.ds-btn-stamp:focus-visible{outline:2px solid var(--color-ring);outline-offset:1px}.ds-btn-stamp:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Ä°kincil eylem: hairline kenar, hoverâ€™da mÃ¼rekkep yÃ¼zeyi.",
+      "html": "<button class=\"ds-btn-outline\">AyrÄ±ntÄ±lÄ±</button>",
+      "css": ".ds-btn-outline{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--color-input);background:transparent;color:var(--color-foreground);font:500 14px/1.5 var(--font-sans);cursor:pointer;transition:background-color 150ms cubic-bezier(0.22,1,0.36,1),transform 150ms cubic-bezier(0.22,1,0.36,1)}.ds-btn-outline:hover{background:var(--color-muted)}.ds-btn-outline:focus-visible{outline:2px solid var(--color-ring);outline-offset:1px}.ds-btn-outline:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "KÃ¢ÄŸÄ±da yazÄ±lan satÄ±r: ÅŸeffaf zemin, hairline kenar, 3px kÃ¶ÅŸe.",
+      "html": "<input class=\"ds-input\" placeholder=\"ArÅŸivde ara: baÅŸlÄ±k Â· not Â· URL\" />",
+      "css": ".ds-input{width:100%;height:32px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--color-input);background:transparent;color:var(--color-foreground);font:400 14px/1.5 var(--font-sans);transition:border-color 150ms cubic-bezier(0.22,1,0.36,1)}.ds-input::placeholder{color:color-mix(in oklab,var(--color-muted-foreground) 85%,transparent)}.ds-input:focus-visible{outline:2px solid var(--color-ring);outline-offset:1px}.ds-input:disabled{background:var(--color-muted);opacity:.55;cursor:not-allowed}.ds-input[aria-invalid=\"true\"]{border-color:var(--color-destructive)}"
+    },
+    {
+      "name": "Record Card",
+      "kind": "card",
+      "refersTo": "record-card",
+      "description": "FiÅŸ: platform kuralÄ±, sabit kÃ¼nye bandÄ±, kapak, baÅŸlÄ±k, damga satÄ±rÄ±.",
+      "html": "<article class=\"ds-record-card\"><span class=\"ds-record-rule\"></span><div class=\"ds-record-band\"><span>Instagram</span><span class=\"ds-record-band-end\">17.09.2026</span></div><div class=\"ds-record-cover\">kapak yok</div><div class=\"ds-record-body\"><h3>Sentetik kayÄ±t â€” arÅŸiv fiÅŸi baÅŸlÄ±ÄŸÄ±</h3><div class=\"ds-record-foot\"><span class=\"ds-stamp ds-stamp-local\">âœ“ yerel</span></div></div></article>",
+      "css": ".ds-record-card{display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-card);color:var(--color-card-foreground);transition:transform 200ms cubic-bezier(0.22,1,0.36,1),border-color 200ms}.ds-record-card:hover{transform:translateY(-2px);border-color:var(--color-input)}.ds-record-rule{display:block;height:2px;background:var(--color-src-instagram)}.ds-record-band{display:flex;align-items:center;height:28px;padding:0 10px;border-bottom:1px solid var(--color-border);font:400 11px/1.5 var(--font-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted-foreground)}.ds-record-band-end{margin-left:auto}.ds-record-cover{display:flex;height:144px;align-items:center;justify-content:center;border-bottom:1px solid var(--color-border);background:color-mix(in oklab,var(--color-muted) 40%,transparent);font:400 11px/1.5 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--color-muted-foreground)}.ds-record-body{display:flex;flex-direction:column;gap:8px;padding:12px}.ds-record-body h3{margin:0;font:500 15px/1.35 var(--font-sans)}.ds-record-foot{display:flex;align-items:center;gap:4px;border-top:1px solid var(--color-border);padding-top:8px}"
+    },
+    {
+      "name": "Stamp â€” Acquired",
+      "kind": "chip",
+      "refersTo": "stamp-acquired",
+      "description": "KazanÄ±lmÄ±ÅŸ durum damgasÄ±: ikon + sÃ¶zcÃ¼k, arÅŸiv yeÅŸili.",
+      "html": "<span class=\"ds-stamp ds-stamp-local\">âœ“ yerel</span>",
+      "css": ".ds-stamp{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border:1px solid transparent;border-radius:var(--radius-xs);font:500 11px/1.5 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}.ds-stamp-local{border-color:color-mix(in oklab,var(--color-state-acquired) 45%,transparent);background:color-mix(in oklab,var(--color-state-acquired) 10%,transparent);color:var(--color-state-acquired)}"
+    },
+    {
+      "name": "Stamp â€” Error",
+      "kind": "chip",
+      "refersTo": "stamp-error",
+      "description": "Hata damgasÄ±: damga kÄ±rmÄ±zÄ±sÄ±; uyarÄ± iÃ§in ayrÄ± sarÄ± yoktur.",
+      "html": "<span class=\"ds-stamp ds-stamp-error\">âœ• hata</span>",
+      "css": ".ds-stamp{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border:1px solid transparent;border-radius:var(--radius-xs);font:500 11px/1.5 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}.ds-stamp-error{border-color:color-mix(in oklab,var(--color-state-error) 45%,transparent);background:color-mix(in oklab,var(--color-state-error) 10%,transparent);color:var(--color-state-error)}"
+    },
+    {
+      "name": "Capture Bar",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Ä°mza bileÅŸen: tek satÄ±r, Ã§ift kiÅŸilik. Arama modunda bÃ¼yÃ¼teÃ§ + Ctrl K ipucu; kayÄ±t modunda baÄŸlantÄ± ikonu + platform damgasÄ± + Kaydet.",
+      "html": "<div class=\"ds-capture\"><span class=\"ds-capture-icon\"></span><input class=\"ds-capture-input\" placeholder=\"ArÅŸivde ara: baÅŸlÄ±k Â· not Â· URL\" /><span class=\"ds-capture-hint\">Ctrl K palet</span></div>",
+      "css": ".ds-capture{display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;border-bottom:1px solid var(--color-border);background:var(--color-background)}.ds-capture-icon{width:16px;height:16px;flex-shrink:0;border-radius:999px;border:2px solid var(--color-muted-foreground)}.ds-capture-input{flex:1;min-width:0;height:38px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--color-input);background:transparent;color:var(--color-foreground);font:400 15px/1.5 var(--font-sans)}.ds-capture-input:focus-visible{outline:2px solid var(--color-ring);outline-offset:1px}.ds-capture-hint{flex-shrink:0;font:400 11px/1.5 var(--font-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted-foreground)}"
+    },
+    {
+      "name": "Rail Item â€” Active",
+      "kind": "nav",
+      "refersTo": "rail-item-active",
+      "description": "Aktif Ã§ekmece sekmesi: kart yÃ¼zeyini alÄ±r ve saÄŸ kenara Ã§entik taÅŸarÄ±r; renkli sol ÅŸerit yoktur.",
+      "html": "<button class=\"ds-rail-item\">TÃ¼mÃ¼</button>",
+      "css": ".ds-rail-item{position:relative;display:flex;width:100%;align-items:center;gap:10px;height:30px;padding:0 8px;border:0;border-radius:var(--radius-sm);background:var(--color-card);color:var(--color-foreground);font:500 14px/1.5 var(--font-sans);text-align:left;cursor:pointer}.ds-rail-item::after{content:\"\";position:absolute;top:50%;right:-1px;width:4px;height:16px;transform:translateY(-50%);background:var(--color-card)}.ds-rail-item:hover{background:color-mix(in oklab,var(--color-card) 80%,var(--color-rail))}.ds-rail-item:focus-visible{outline:2px solid var(--color-ring);outline-offset:1px}"
+    },
+    {
+      "name": "Select Trigger",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Kural ÅŸeridinin sÄ±ralama kontrolÃ¼; yerel <select> yerine tek sÃ¶zlÃ¼k.",
+      "html": "<button class=\"ds-select-trigger\"><span>Yeni â†’ eski</span><span class=\"ds-select-caret\"></span></button>",
+      "css": ".ds-select-trigger{display:inline-flex;width:100%;align-items:center;justify-content:space-between;gap:8px;height:28px;padding:0 8px;border:1px solid var(--color-input);border-radius:var(--radius-sm);background:transparent;color:var(--color-foreground);font:400 12px/1.5 var(--font-sans);cursor:pointer}.ds-select-trigger:focus-visible{outline:2px solid var(--color-ring);outline-offset:1px}.ds-select-caret{width:6px;height:6px;flex-shrink:0;border-right:1.5px solid var(--color-muted-foreground);border-bottom:1.5px solid var(--color-muted-foreground);transform:rotate(45deg)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Gece Okuma OdasÄ±",
+    "overview": "JointVault bir kiÅŸisel medya arÅŸividir, yani kataloÄŸun kendisidir. ArayÃ¼z bu yÃ¼zden arÅŸivin fiziksel mantÄ±ÄŸÄ±nÄ± Ã¶dÃ¼nÃ§ alÄ±r: Ã§ekmece â†’ fiÅŸ â†’ fiÅŸin arkasÄ±. Sol rayda Ã§ekmeceler gruplanÄ±r, ortada fiÅŸ Ä±zgarasÄ± durur, bir fiÅŸin tam kaydÄ± saÄŸdaki kayÄ±t panelinde aÃ§Ä±lÄ±r; kayÄ±t dÃ¼zenlemek iÃ§in ekranÄ± kaplayan bir modal yoktur. DÃ¼nya koyu aÃ§Ä±lÄ±r ve gerekÃ§esi kategori deÄŸil sahnedir: gece, tek Ã§alÄ±ÅŸma lambasÄ±, arka planda inen bir kuyruk. Malzeme doku resmiyle deÄŸil Ã¼Ã§ yapÄ±sal araÃ§la kurulur: sabit yÃ¼kseklikte mono kÃ¼nye bandÄ±, ray sekmesi Ã§entiÄŸi ve yalnÄ±zca durum taÅŸÄ±yan perfore delik. GÃ¶lge, gradyan, cam ve parlama yoktur; derinlik yalnÄ±zca Ã¼stte duran yapraklara aittir.",
+    "keyCharacteristics": [
+      "DÃ¼z mÃ¼rekkep disiplini: tek aksan (ultramarin damga mÃ¼rekkebi), tek hata rengi, tek arÅŸiv yeÅŸili.",
+      "Durum renkle deÄŸil damgayla bildirilir; her damga ikon ve sÃ¶zcÃ¼k taÅŸÄ±r.",
+      "Tek yÃ¼z (Archivo) tÃ¼m yapÄ±sal metni taÅŸÄ±r; rÃ¼tbe boyutla kurulur.",
+      "Mono (JetBrains Mono) yalnÄ±zca Ã¶lÃ§Ã¼m ve yol taÅŸÄ±r; etiket sÃ¼sÃ¼ deÄŸildir.",
+      "Radius 2â€“6px: kesilmiÅŸ kÃ¢ÄŸÄ±t kÃ¶ÅŸesi.",
+      "KalÄ±cÄ± kural ÅŸeridi: filtre, sÄ±ralama ve sayÄ±m gizli popoverâ€™da deÄŸil, okunur bantta."
+    ],
+    "rules": [
+      {
+        "name": "The Tek Damga KuralÄ±",
+        "body": "Ekranda tek bir doygun aksan vardÄ±r: ultramarin. Ä°kinci bir doygun renk eklemek dÃ¼nyayÄ± panoya Ã§evirir. YeÅŸil ve kÄ±rmÄ±zÄ± aksan deÄŸil, anlam rengidir; yalnÄ±zca kazanÄ±lmÄ±ÅŸ durumlarda ve yalnÄ±zca ikon + sÃ¶zcÃ¼kle gÃ¶rÃ¼nÃ¼r.",
+        "section": "colors"
+      },
+      {
+        "name": "The Asla-Gri-Ä°kincil KuralÄ±",
+        "body": "Renkli bir yÃ¼zeyde (ray) ikincil metin gri tonlanmaz; o yÃ¼zeyin mÃ¼rekkebinden saydamlÄ±kla tÃ¼retilir.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tek YÃ¼z KuralÄ±",
+        "body": "YapÄ±sal hiÃ§bir metin ikinci bir yÃ¼z kullanmaz. Vurgu gerekiyorsa boyut basamaÄŸÄ± deÄŸiÅŸir (11 â†’ 12 â†’ 14 â†’ 15 â†’ 21 â†’ 26); aÄŸÄ±rlÄ±k karÄ±ÅŸÄ±mÄ± ya da ikinci bir aile eklenmez. Display serif yasaktÄ±r.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono-Veridir KuralÄ±",
+        "body": "Mono yalnÄ±zca Ã¶lÃ§Ã¼lebilir ÅŸeyler iÃ§indir: tarih, yÃ¼zde, hÄ±z, sÃ¼re, adet, kimlik, dosya yolu. Bir bÃ¶lÃ¼m baÅŸlÄ±ÄŸÄ±nÄ± mono ve bÃ¼yÃ¼k harfle yazmak \"teknik gÃ¶rÃ¼nsÃ¼n\" kostÃ¼mÃ¼dÃ¼r.",
+        "section": "typography"
+      },
+      {
+        "name": "The BÃ¼yÃ¼k-Harf-KÃ¼nye KuralÄ±",
+        "body": "BÃ¼yÃ¼k harf ve harf aralÄ±ÄŸÄ± yalnÄ±zca kÃ¼nye bandÄ± ve damga gibi veri yÃ¼zeylerinde gÃ¶rÃ¼nÃ¼r. Bir baÅŸlÄ±ÄŸÄ±n Ã¼stÃ¼ne etiket (eyebrow/kicker) koymak yasaktÄ±r.",
+        "section": "typography"
+      },
+      {
+        "name": "The DÃ¼z-FiÅŸ KuralÄ±",
+        "body": "Dinlenme hÃ¢linde hiÃ§bir iÃ§erik yÃ¼zeyi gÃ¶lge taÅŸÄ±maz. Kart hoverâ€™Ä± gÃ¶lge deÄŸil, kenar rengi ve 2pxâ€™lik kalkmadÄ±r.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Tek-Kaydet KuralÄ±",
+        "body": "Sayfada ikinci bir \"kaydet\" eylemi yoktur; birincil kayÄ±t yakala Ã§ubuÄŸunundur.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Her durumu damgayla ve mutlaka ikon + sÃ¶zcÃ¼kle bildir.",
+      "data-num kullan: tarih, yÃ¼zde, hÄ±z, sÃ¼re, adet, kimlik, dosya yolu.",
+      "Ã–lÃ§Ã¼lebilir alanlarÄ± tabular rakamlarla hizala.",
+      "Yeni yÃ¼zey eklerken mevcut primitifi kullan; yeni bir sÃ¶zlÃ¼k icat etme.",
+      "KayÄ±t dÃ¼zenlemeyi kayÄ±t panelinde tut; modalÄ± kesinti veya korunmuÅŸ odak iÃ§in sakla.",
+      "YÃ¼kleniyor durumunu iskeletle, boÅŸ durumu Ã¶ÄŸretici metinle gÃ¶ster.",
+      "Dar pencereyi birinci sÄ±nÄ±f tut: gezinme ÅŸeride iner, iÃ§erik yeniden akar."
+    ],
+    "donts": [
+      "Ä°kinci bir doygun aksan ekleme.",
+      "Ä°kincil metni gri yapma; renkli yÃ¼zeyde o yÃ¼zeyin mÃ¼rekkebinden tÃ¼ret.",
+      "Bir yÃ¼zeyin soluna kalÄ±n renkli ÅŸerit koyma.",
+      "Kart ya da butonu hap biÃ§iminde yapma.",
+      "FiÅŸ, kart ve satÄ±rlara gÃ¶lge ekleme.",
+      "BÃ¼yÃ¼k harf + harf aralÄ±ÄŸÄ±nÄ± gÃ¶vde metnine ya da bÃ¶lÃ¼m baÅŸlÄ±ÄŸÄ±na uygulama.",
+      "Mono yazÄ±yÄ± etiket sÃ¼sÃ¼ olarak kullanma.",
+      "Gradyan metin, cam/blur dekoru, sert ofset gÃ¶lge veya glif-ikon kullanma.",
+      "Sayfaya ikinci bir \"kaydet\" eylemi koyma."
+    ]
+  }
+}

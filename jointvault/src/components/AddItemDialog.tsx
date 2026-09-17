@@ -10,7 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { Input, Textarea } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { TagPicker } from '@/components/TagPicker';
 import {
   createItem,
@@ -34,9 +36,17 @@ interface AddItemDialogProps {
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
   initial?: Item | null;
+  /** Yakala çubuğundan gelen ön dolgu: "Ayrıntılı" yolu. */
+  initialUrl?: string;
 }
 
-export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: AddItemDialogProps) {
+export function AddItemDialog({
+  open,
+  onOpenChange,
+  onSaved,
+  initial = null,
+  initialUrl = '',
+}: AddItemDialogProps) {
   const editing = initial !== null;
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
@@ -54,7 +64,7 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
   useEffect(() => {
     if (!open) return;
     setError(null);
-    setUrl(initial?.url ?? '');
+    setUrl(initial?.url ?? initialUrl);
     setTitle(initial?.title ?? '');
     setNote(initial?.note ?? '');
     setThumbnail(initial?.thumbnail ?? null);
@@ -67,7 +77,7 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
       void getTagsForItem(initial.id).then((ts) => setTags(ts.map((t) => t.name)));
       void getCategoriesForItem(initial.id).then((cs) => setCategories(cs.map((c) => c.name)));
     }
-  }, [open, initial]);
+  }, [open, initial, initialUrl]);
 
   const platform = detectPlatform(url);
 
@@ -139,38 +149,56 @@ export function AddItemDialog({ open, onOpenChange, onSaved, initial = null }: A
           </div>
           {url.trim() && (
             <div className="flex items-center gap-2">
-              <Badge variant="secondary">{platform}</Badge>
-              {thumbnail && <img src={thumbnail} alt="" className="h-10 w-10 rounded object-cover" />}
+              <Badge variant="outline">{platform}</Badge>
+              {thumbnail && <img src={thumbnail} alt="" className="h-10 w-10 rounded-xs border border-border object-cover" />}
             </div>
           )}
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Başlık" />
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Not (opsiyonel)" />
-          <div className="flex gap-2">
-            <select
-              value={collectionId}
-              onChange={(e) => setCollectionId(e.target.value)}
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-            >
-              <option value="">Koleksiyon yok</option>
-              {collections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+          <Field label="Başlık" htmlFor="add-title">
+            <Input id="add-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Başlık" />
+          </Field>
+          <Field label="Not" htmlFor="add-note">
+            <Textarea
+              id="add-note"
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Opsiyonel"
+            />
+          </Field>
+          <div className="flex items-end gap-2">
+            <Field label="Koleksiyon" className="flex-1">
+              <Select
+                label="Koleksiyon"
+                value={collectionId || 'none'}
+                onValueChange={(v) => setCollectionId(v === 'none' ? '' : v)}
+                options={[
+                  { value: 'none', label: 'Koleksiyon yok' },
+                  ...collections.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+            </Field>
             <Button
-              variant={favorite ? 'default' : 'outline'}
+              variant={favorite ? 'stamp' : 'outline'}
               size="icon"
               onClick={() => setFavorite((f) => !f)}
-              aria-label="Favori"
+              aria-label={favorite ? 'Favoriden çıkar' : 'Favoriye ekle'}
               aria-pressed={favorite}
             >
               <Star className={favorite ? 'fill-current' : ''} />
             </Button>
           </div>
-          <TagPicker selected={tags} onChange={setTags} loadNames={listTags} placeholder="Etiket seç veya yaz" />
-          <TagPicker selected={categories} onChange={setCategories} loadNames={listCategories} placeholder="Kategori seç veya yaz (Teknoloji, Spor…)" />
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Field label="Etiketler">
+            <TagPicker selected={tags} onChange={setTags} loadNames={listTags} placeholder="Etiket seç veya yaz" />
+          </Field>
+          <Field label="Kategoriler">
+            <TagPicker
+              selected={categories}
+              onChange={setCategories}
+              loadNames={listCategories}
+              placeholder="Kategori seç veya yaz (Teknoloji, Spor…)"
+            />
+          </Field>
+          {error && <p className="text-micro text-state-error">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>

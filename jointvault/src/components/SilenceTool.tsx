@@ -106,12 +106,12 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <Scissors className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="font-display text-xl tracking-tight">Sessizlik Kırpma</h2>
+        <h2 className="text-title">Sessizlik Kırpma</h2>
       </div>
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <section className="flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-card">
           <div className="flex items-center justify-between">
-            <h3 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Kaynak</h3>
+            <h3 className="text-micro font-medium text-muted-foreground">Kaynak</h3>
             <Button variant="ghost" size="sm" onClick={() => void pickExternal()}>
               <FilePlus2 /> Dosya seç
             </Button>
@@ -150,7 +150,7 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
             </p>
           ) : (
             <>
-              <h3 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+              <h3 className="text-micro font-medium text-muted-foreground">
                 Hazırlık seviyesi
               </h3>
               <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Sessizlik kırpma hazırlığı">
@@ -203,7 +203,7 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
               )}
               {outputs.length > 0 && (
                 <div className="flex flex-col gap-1 border-t border-border pt-3">
-                  <h4 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                  <h4 className="text-micro font-medium text-muted-foreground">
                     Bu oturumda üretilenler
                   </h4>
                   <ul className="flex flex-col gap-1">

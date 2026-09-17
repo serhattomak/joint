@@ -25,8 +25,31 @@ interface StatsViewProps {
   refreshKey: number;
 }
 
-const BAR_COLORS = ['#9a3412', '#b45309', '#a16207', '#4d7c0f', '#0f766e', '#57534e'];
-const PIE_COLORS = ['#9a3412', '#d6d3d1', '#b91c1c', '#a8a29e'];
+/*
+ * Grafik mürekkebi de dünyanın sözlüğünden gelir: platformlar sınıflandırma
+ * mürekkebini, indirme durumları damga sözlüğünü kullanır. Eski kiremit/amber
+ * paleti bilerek kaldırıldı — terk edilen dünyanın rengi buraya sızamaz.
+ */
+const SRC_INK: Record<string, string> = {
+  instagram: 'var(--color-src-instagram)',
+  tiktok: 'var(--color-src-tiktok)',
+  x: 'var(--color-src-x)',
+  pinterest: 'var(--color-src-pinterest)',
+  youtube: 'var(--color-src-youtube)',
+  other: 'var(--color-src-other)',
+};
+const PLATFORM_INK: Record<string, string> = Object.fromEntries(
+  PLATFORM_ORDER.map((p) => [PLATFORM_META[p].label, SRC_INK[p]]),
+);
+const platformInk = (name: string): string => PLATFORM_INK[name] ?? 'var(--color-muted-foreground)';
+
+const STATUS_INK: Record<string, string> = {
+  İndi: 'var(--color-state-acquired)',
+  Arşiv: 'var(--color-state-queued)',
+  Sırada: 'var(--color-state-active)',
+  Hatalı: 'var(--color-state-error)',
+};
+const statusInk = (name: string): string => STATUS_INK[name] ?? 'var(--color-muted-foreground)';
 
 function countBy(rows: Item[], pick: (it: Item) => string[]): { name: string; value: number }[] {
   const map = new Map<string, number>();
@@ -96,8 +119,8 @@ export function StatsView({ refreshKey }: StatsViewProps) {
   ];
 
   const bar = (data: { name: string; value: number }[], title: string): React.ReactNode => (
-    <section className="rounded-xl border border-border bg-card p-4 shadow-card">
-      <h3 className="mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">{title}</h3>
+    <section className="rounded-md border border-border bg-card p-3">
+      <h3 className="mb-2 flex h-6 items-center border-b border-border pb-1 text-micro font-medium text-muted-foreground">{title}</h3>
       {data.length === 0 ? (
         <p className="text-xs text-muted-foreground">Veri yok.</p>
       ) : (
@@ -117,7 +140,7 @@ export function StatsView({ refreshKey }: StatsViewProps) {
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                 {data.map((_, i) => (
-                  <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+                  <Cell key={i} fill={platformInk(data[i]?.name ?? '')} />
                 ))}
               </Bar>
             </BarChart>
@@ -130,21 +153,24 @@ export function StatsView({ refreshKey }: StatsViewProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <BarChart3 className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="font-display text-xl tracking-tight">İstatistikler</h2>
+        <BarChart3 className="size-[18px] text-primary" strokeWidth={2} />
+        <h2 className="text-title">İstatistikler</h2>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="max-w-2xl divide-y divide-border border border-border bg-card">
+        <h3 className="px-3 py-1.5 text-micro font-medium text-muted-foreground">Kasa özeti</h3>
         {stats.map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-border bg-card p-4 shadow-card">
-            <p className="font-display text-2xl tabular-nums">{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
+          <div key={label} className="flex items-baseline justify-between gap-4 px-3 py-2">
+            <span className="text-sm">{label}</span>
+            <span data-num className="text-sm tabular-nums">
+              {value}
+            </span>
           </div>
         ))}
-      </div>
+      </section>
       <div className="grid gap-4 lg:grid-cols-2">
         {bar(platformData, 'Platform dağılımı')}
-        <section className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h3 className="mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">İndirme durumu</h3>
+        <section className="rounded-md border border-border bg-card p-3">
+          <h3 className="mb-2 flex h-6 items-center border-b border-border pb-1 text-micro font-medium text-muted-foreground">İndirme durumu</h3>
           {dlData.length === 0 ? (
             <p className="text-xs text-muted-foreground">Veri yok.</p>
           ) : (
@@ -153,7 +179,7 @@ export function StatsView({ refreshKey }: StatsViewProps) {
                 <PieChart>
                   <Pie data={dlData} dataKey="value" nameKey="name" outerRadius={80} label={{ fontSize: 11 }}>
                     {dlData.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      <Cell key={i} fill={statusInk(dlData[i]?.name ?? '')} />
                     ))}
                   </Pie>
                   <Tooltip

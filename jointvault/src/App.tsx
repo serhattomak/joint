@@ -1,7 +1,8 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, Rows3, Scissors, Search, Settings, Sparkles, Star, Sun, Upload, Wrench, X } from 'lucide-react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
+import { CaptureBar } from '@/components/CaptureBar';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
 import { ConverterStudio } from '@/components/ConverterStudio';
@@ -10,24 +11,24 @@ import { DuplicatesView } from '@/components/DuplicatesView';
 import { WelcomeDialog, isOnboarded } from '@/components/WelcomeDialog';
 import { OnboardingWizard } from '@/components/OnboardingWizard';
 import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
-import { FilterMenu } from '@/components/FilterMenu';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
+import { ItemRecord } from '@/components/ItemRecord';
 import { MergeTool } from '@/components/MergeTool';
 import { GifTool } from '@/components/GifTool';
 import { OrganizeDialog } from '@/components/OrganizeDialog';
 import { SettingsDialog } from '@/components/SettingsDialog';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar, SidebarStrip } from '@/components/Sidebar';
 import { SilenceTool } from '@/components/SilenceTool';
 import { SubtitleTool } from '@/components/SubtitleTool';
 import { ToolboxHub } from '@/components/ToolboxHub';
 import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { NoticeProvider } from '@/components/ui/notice';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { listCategories, listCollections, listTags } from '@/lib/db/client';
-import type { Category, Collection, Tag } from '@/lib/db/types';
-import { PLATFORM_META } from '@/lib/platform';
+import { listCategories, listCollections, listTags, type ItemSort } from '@/lib/db/client';
+import type { Category, Collection, Item, Tag } from '@/lib/db/types';
+import { startDownload, type DownloadQuality } from '@/lib/downloads';
 import { cycleTheme } from '@/lib/theme';
 
 const StatsView = lazy(() =>
@@ -38,6 +39,11 @@ const StatsView = lazy(() =>
 function basename(p: string): string {
   const parts = p.split(/[/\\]/);
   return parts[parts.length - 1] || p;
+}
+
+function readSort(): ItemSort {
+  const v = window.localStorage.getItem('jv-sort');
+  return v === 'old' || v === 'title' || v === 'title-desc' ? v : 'new';
 }
 
 function App() {
@@ -59,9 +65,11 @@ function App() {
   const [view, setView] = useState<'grid' | 'rows'>(() =>
     window.localStorage.getItem('jv-view') === 'rows' ? 'rows' : 'grid',
   );
+  const [sort, setSort] = useState<ItemSort>(readSort);
   const [pageSize, setPageSize] = useState<number>(() => readPageSize());
   const [refreshKey, setRefreshKey] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
+  const [addUrl, setAddUrl] = useState('');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -70,14 +78,29 @@ function App() {
   const [editorSource, setEditorSource] = useState<EditorSource | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [record, setRecord] = useState<Item | null>(null);
   // İlk kurulumda tur yerine sihirbaz; mevcut kullanıcıda tur replay yolu aynen durur.
   const [wizardOpen, setWizardOpen] = useState(() => !isOnboarded());
 
-  const refresh = (): void => setRefreshKey((k) => k + 1);
+  const refresh = useCallback((): void => setRefreshKey((k) => k + 1), []);
+
+  // Kayıt panelinden başlatılan indirme: satır içi ilerleme ızgarada belirir,
+  // bu yüzden burada yalnızca kuyruğa verilir ve liste tazelenir.
+  const startAudio = useCallback(
+    (item: Item, quality: DownloadQuality): void => {
+      void startDownload(item.id, item.url, 'audio', quality).then(refresh);
+    },
+    [refresh],
+  );
 
   const switchView = (next: 'grid' | 'rows'): void => {
     setView(next);
     window.localStorage.setItem('jv-view', next);
+  };
+
+  const switchSort = (next: ItemSort): void => {
+    setSort(next);
+    window.localStorage.setItem('jv-sort', next);
   };
 
   useEffect(() => {
@@ -96,6 +119,8 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  const isVault = !converterOnly && !toolboxOnly && !duplicatesOnly && !statsOnly;
 
   const showAll = (): void => {
     setPlatform('all');
@@ -164,6 +189,7 @@ function App() {
     setDownloadedOnly(false);
     setConverterOnly(false);
     setToolboxOnly(false);
+    setToolboxTool(null);
     setDuplicatesOnly(false);
     setStatsOnly(false);
   };
@@ -177,12 +203,20 @@ function App() {
     setFavoritesOnly(false);
     setConverterOnly(false);
     setToolboxOnly(false);
+    setToolboxTool(null);
     setDuplicatesOnly(false);
     setStatsOnly(false);
   };
 
+  // Yakala çubuğu her ekranda durur. Bir araç yüzeyindeyken yazmaya başlamak
+  // kasayı açar; aksi hâlde yazılan şeyin karşılığı görünmez olurdu.
+  const handleQuery = (next: string): void => {
+    setQuery(next);
+    if (next.trim() !== '' && !isVault) showAll();
+  };
+
   const paletteCommands: PaletteCommand[] = [
-    { id: 'add', label: 'Yeni öğe ekle', icon: <Plus className="size-4" />, run: () => setAddOpen(true) },
+    { id: 'add', label: 'Yeni öğe ekle', icon: <Plus className="size-4" />, run: () => { setAddUrl(''); setAddOpen(true); } },
     { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
     { id: 'converter', label: 'Dönüştürücü', icon: <Clapperboard className="size-4" />, run: openConverter },
@@ -196,6 +230,7 @@ function App() {
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
     { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
     { id: 'dl', label: 'İndirilenler', icon: <Download className="size-4" />, run: goDownloads },
+    { id: 'organize', label: 'Koleksiyonlar', icon: <SlidersHorizontal className="size-4" />, run: () => setOrganizeOpen(true) },
     { id: 'settings', label: 'Ayarlar', icon: <Settings className="size-4" />, run: () => setSettingsOpen(true) },
     { id: 'tour', label: 'Karşılama turu', icon: <Sparkles className="size-4" />, run: () => setTourOpen(true) },
     { id: 'theme', label: 'Tema değiştir', icon: <Sun className="size-4" />, run: () => cycleTheme() },
@@ -229,267 +264,227 @@ function App() {
     leaveViews();
   };
 
-  const activeCount = [platform, collectionId, categoryId, tagId].filter((v) => v !== 'all').length;
-
-  const chips: { key: string; label: string; clear: () => void }[] = [];
-  if (platform !== 'all')
-    chips.push({
-      key: 'platform',
-      label: (PLATFORM_META as Record<string, { label: string }>)[platform]?.label ?? platform,
-      clear: () => setPlatform('all'),
-    });
-  if (collectionId !== 'all')
-    chips.push({
-      key: 'collection',
-      label: collections.find((c) => c.id === collectionId)?.name ?? 'Koleksiyon',
-      clear: () => setCollectionId('all'),
-    });
-  if (categoryId !== 'all')
-    chips.push({
-      key: 'category',
-      label: categories.find((c) => c.id === categoryId)?.name ?? 'Kategori',
-      clear: () => setCategoryId('all'),
-    });
-  if (tagId !== 'all')
-    chips.push({
-      key: 'tag',
-      label: `#${tags.find((t) => t.id === tagId)?.name ?? ''}`,
-      clear: () => setTagId('all'),
-    });
+  const sidebarProps = {
+    view: (converterOnly
+      ? 'converter'
+      : toolboxOnly
+        ? 'toolbox'
+        : duplicatesOnly
+          ? 'duplicates'
+          : statsOnly
+            ? 'stats'
+            : favoritesOnly
+              ? 'favorites'
+              : downloadedOnly
+                ? 'downloads'
+                : 'all') as 'all' | 'favorites' | 'downloads' | 'converter' | 'toolbox' | 'duplicates' | 'stats',
+    homeActive:
+      platform === 'all' &&
+      collectionId === 'all' &&
+      categoryId === 'all' &&
+      tagId === 'all' &&
+      !favoritesOnly &&
+      !downloadedOnly &&
+      !converterOnly &&
+      !toolboxOnly &&
+      !duplicatesOnly &&
+      !statsOnly,
+    onHome: showAll,
+    onView: (v: Exclude<'all' | 'favorites' | 'downloads' | 'converter' | 'toolbox' | 'duplicates' | 'stats', 'all'>) => {
+      if (v === 'favorites') goFavorites();
+      else if (v === 'downloads') goDownloads();
+      else if (v === 'converter') openConverter();
+      else if (v === 'toolbox') openToolbox();
+      else if (v === 'duplicates') openDuplicates();
+      else openStats();
+    },
+    onOrganize: () => setOrganizeOpen(true),
+    onSettings: () => setSettingsOpen(true),
+  };
 
   return (
-    <TooltipProvider delay={300}>
-    <div className="flex min-h-screen bg-background text-foreground">
-      <Sidebar
-        view={
-          converterOnly
-            ? 'converter'
-            : toolboxOnly
-              ? 'toolbox'
-              : duplicatesOnly
-                ? 'duplicates'
-                : statsOnly
-                  ? 'stats'
-                  : favoritesOnly
-                    ? 'favorites'
-                    : downloadedOnly
-                      ? 'downloads'
-                      : 'all'
-        }
-        homeActive={
-          platform === 'all' &&
-          collectionId === 'all' &&
-          categoryId === 'all' &&
-          tagId === 'all' &&
-          !favoritesOnly &&
-          !downloadedOnly &&
-          !converterOnly &&
-          !toolboxOnly &&
-          !duplicatesOnly &&
-          !statsOnly
-        }
-        onHome={showAll}
-        onView={(v) => {
-          if (v === 'favorites') goFavorites();
-          else if (v === 'downloads') goDownloads();
-          else if (v === 'converter') openConverter();
-          else if (v === 'toolbox') openToolbox();
-          else if (v === 'duplicates') openDuplicates();
-          else openStats();
-        }}
-        onOrganize={() => setOrganizeOpen(true)}
-        onSettings={() => setSettingsOpen(true)}
-      />
+    <NoticeProvider>
+      <TooltipProvider delay={300}>
+        <div className="flex min-h-screen bg-background text-foreground">
+          <Sidebar {...sidebarProps} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-          <div className="relative min-w-40 flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ara: başlık, not, URL…  (Ctrl+K palet)"
-              className="pl-8"
+          <div className="flex min-w-0 flex-1 flex-col">
+            <SidebarStrip {...sidebarProps} />
+            <CaptureBar
+              onQuery={handleQuery}
+              onSaved={refresh}
+              onDetailed={(url) => {
+                setAddUrl(url);
+                setAddOpen(true);
+              }}
             />
+
+            <main className="flex min-h-0 flex-1">
+              {isVault ? (
+                <>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <ItemGrid
+                      query={query}
+                      platform={platform}
+                      collectionId={collectionId}
+                      categoryId={categoryId}
+                      tagId={tagId}
+                      favoritesOnly={favoritesOnly}
+                      downloadedOnly={downloadedOnly}
+                      refreshKey={refreshKey}
+                      view={view}
+                      sort={sort}
+                      pageSize={pageSize}
+                      collections={collections}
+                      categories={categories}
+                      tags={tags}
+                      onPageSizeChange={(n) => {
+                        window.localStorage.setItem('jv-page-size', String(n));
+                        setPageSize(n);
+                      }}
+                      onViewChange={switchView}
+                      onSortChange={switchSort}
+                      onPlatform={pickPlatform}
+                      onCollection={pickCollection}
+                      onCategory={pickCategory}
+                      onTag={pickTag}
+                      onOpen={setRecord}
+                      onClearFilters={showAll}
+                      onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
+                      onConvert={(item) => {
+                        if (item.local_path)
+                          setEditorSource({
+                            label: item.title || basename(item.local_path),
+                            inputPath: item.local_path,
+                            itemId: item.id,
+                          });
+                      }}
+                    />
+                  </div>
+                  {record && (
+                    <aside className="fixed inset-0 z-40 flex flex-col border-border bg-background lg:sticky lg:top-14 lg:z-auto lg:h-[calc(100vh-3.5rem)] lg:w-[360px] lg:shrink-0 lg:border-l">
+                      <ItemRecord
+                        item={record}
+                        onClose={() => setRecord(null)}
+                        onChanged={refresh}
+                        onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
+                        onConvert={(item) => {
+                          if (item.local_path)
+                            setEditorSource({
+                              label: item.title || basename(item.local_path),
+                              inputPath: item.local_path,
+                              itemId: item.id,
+                            });
+                        }}
+                        onAudio={startAudio}
+                      />
+                    </aside>
+                  )}
+                </>
+              ) : (
+                <div className="min-w-0 flex-1 px-4 py-5">
+                  {statsOnly ? (
+                    <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
+                      <StatsView refreshKey={refreshKey} />
+                    </Suspense>
+                  ) : duplicatesOnly ? (
+                    <DuplicatesView onDone={refresh} />
+                  ) : converterOnly ? (
+                    <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
+                  ) : toolboxTool === 'merge' ? (
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                          <ArrowLeft /> Araç Kutusu&apos;na dön
+                        </Button>
+                      </div>
+                      <MergeTool refreshKey={refreshKey} onDone={refresh} />
+                    </div>
+                  ) : toolboxTool === 'silence' ? (
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                          <ArrowLeft /> Araç Kutusu&apos;na dön
+                        </Button>
+                      </div>
+                      <SilenceTool refreshKey={refreshKey} onDone={refresh} />
+                    </div>
+                  ) : toolboxTool === 'gif' ? (
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                          <ArrowLeft /> Araç Kutusu&apos;na dön
+                        </Button>
+                      </div>
+                      <GifTool refreshKey={refreshKey} onDone={refresh} />
+                    </div>
+                  ) : toolboxTool === 'subtitle' ? (
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                          <ArrowLeft /> Araç Kutusu&apos;na dön
+                        </Button>
+                      </div>
+                      <SubtitleTool refreshKey={refreshKey} onDone={refresh} />
+                    </div>
+                  ) : (
+                    <ToolboxHub
+                      onPick={(toolId) => {
+                        if (toolId === 'merge') setToolboxTool('merge');
+                        else if (toolId === 'silence') setToolboxTool('silence');
+                        else if (toolId === 'gif') setToolboxTool('gif');
+                        else if (toolId === 'subtitle') setToolboxTool('subtitle');
+                        else openConverter();
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </main>
           </div>
-          <FilterMenu
-            platform={platform}
-            collectionId={collectionId}
-            categoryId={categoryId}
-            tagId={tagId}
-            collections={collections}
-            categories={categories}
-            tags={tags}
-            onPlatform={pickPlatform}
-            onCollection={pickCollection}
-            onCategory={pickCategory}
-            onTag={pickTag}
-            onClear={showAll}
-            activeCount={activeCount}
+
+          <AddItemDialog
+            open={addOpen}
+            onOpenChange={setAddOpen}
+            onSaved={refresh}
+            initialUrl={addUrl}
           />
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus /> Yeni öğe
-          </Button>
-          <Button variant="outline" onClick={() => setBulkOpen(true)}>
-            <Upload /> Toplu aktar
-          </Button>
-          <Button variant="outline" onClick={() => setUrlDlOpen(true)}>
-            <Download /> URL&apos;den indir
-          </Button>
-        </header>
-        <main className="px-4 py-4">
-          {statsOnly ? (
-            <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
-              <StatsView refreshKey={refreshKey} />
-            </Suspense>
-          ) : duplicatesOnly ? (
-            <DuplicatesView onDone={refresh} />
-          ) : converterOnly ? (
-            <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
-          ) : toolboxOnly ? (
-            toolboxTool === 'merge' ? (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                    <ArrowLeft /> Araç Kutusu&apos;na dön
-                  </Button>
-                </div>
-                <MergeTool refreshKey={refreshKey} onDone={refresh} />
-              </div>
-            ) : toolboxTool === 'silence' ? (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                    <ArrowLeft /> Araç Kutusu&apos;na dön
-                  </Button>
-                </div>
-                <SilenceTool refreshKey={refreshKey} onDone={refresh} />
-              </div>
-            ) : toolboxTool === 'gif' ? (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                    <ArrowLeft /> Araç Kutusu&apos;na dön
-                  </Button>
-                </div>
-                <GifTool refreshKey={refreshKey} onDone={refresh} />
-              </div>
-            ) : toolboxTool === 'subtitle' ? (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                    <ArrowLeft /> Araç Kutusu&apos;na dön
-                  </Button>
-                </div>
-                <SubtitleTool refreshKey={refreshKey} onDone={refresh} />
-              </div>
-            ) : (
-              <ToolboxHub
-                onPick={(toolId) => {
-                  if (toolId === 'merge') setToolboxTool('merge');
-                  else if (toolId === 'silence') setToolboxTool('silence');
-                  else if (toolId === 'gif') setToolboxTool('gif');
-                  else if (toolId === 'subtitle') setToolboxTool('subtitle');
-                  else openConverter();
-                }}
-              />
-            )
-          ) : (
-            <>
-              {chips.length > 0 && (
-            <div className="mb-3 flex flex-wrap items-center gap-1.5">
-              {chips.map((chip) => (
-                <span
-                  key={chip.key}
-                  className="inline-flex items-center gap-1 rounded-full border border-border bg-card py-0.5 pr-1 pl-2.5 text-xs"
-                >
-                  {chip.label}
-                  <button
-                    type="button"
-                    onClick={chip.clear}
-                    aria-label={`${chip.label} filtresini kaldır`}
-                    className="rounded-full p-0.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              ))}
-              <button
-                type="button"
-                onClick={showAll}
-                className="text-xs text-muted-foreground transition hover:text-foreground"
-              >
-                Temizle
-              </button>
-            </div>
-          )}
-          <ItemGrid
-            query={query}
-            platform={platform}
-            collectionId={collectionId}
-            categoryId={categoryId}
-            tagId={tagId}
-            favoritesOnly={favoritesOnly}
-            downloadedOnly={downloadedOnly}
-            refreshKey={refreshKey}
-            view={view}
-            onViewChange={switchView}
+          <DownloadDialog
+            open={urlDlOpen}
+            onOpenChange={setUrlDlOpen}
+            onDone={refresh}
+            onPickVideo={(t) => {
+              setUrlDlOpen(false);
+              setFormatTarget(t);
+            }}
+          />
+          <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
+          <EditorDialog source={editorSource} onClose={() => setEditorSource(null)} onDone={refresh} />
+          <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
+          <OrganizeDialog open={organizeOpen} onOpenChange={setOrganizeOpen} onChanged={refresh} />
+          <SettingsDialog
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
             pageSize={pageSize}
+            pageSizes={PAGE_SIZES}
             onPageSizeChange={(n) => {
               window.localStorage.setItem('jv-page-size', String(n));
               setPageSize(n);
             }}
-            onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
-            onConvert={(item) => {
-              if (item.local_path)
-                setEditorSource({
-                  label: item.title || basename(item.local_path),
-                  inputPath: item.local_path,
-                  itemId: item.id,
-                });
-            }}
+            onReplayTour={() => setTourOpen(true)}
           />
-            </>
-          )}
-        </main>
-      </div>
-
-      <AddItemDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />
-      <DownloadDialog
-        open={urlDlOpen}
-        onOpenChange={setUrlDlOpen}
-        onDone={refresh}
-        onPickVideo={(t) => {
-          setUrlDlOpen(false);
-          setFormatTarget(t);
-        }}
-      />
-      <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
-      <EditorDialog source={editorSource} onClose={() => setEditorSource(null)} onDone={refresh} />
-      <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
-      <OrganizeDialog open={organizeOpen} onOpenChange={setOrganizeOpen} onChanged={refresh} />
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        pageSize={pageSize}
-        pageSizes={PAGE_SIZES}
-        onPageSizeChange={(n) => {
-          window.localStorage.setItem('jv-page-size', String(n));
-          setPageSize(n);
-        }}
-        onReplayTour={() => setTourOpen(true)}
-      />
-      <XSyncReviewDialog onDone={refresh} />
-      <WelcomeDialog open={tourOpen} onOpenChange={setTourOpen} />
-      <OnboardingWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-      <ClipboardWatcher onDone={refresh} />
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
-    </div>
-    </TooltipProvider>
+          <XSyncReviewDialog onDone={refresh} />
+          <WelcomeDialog open={tourOpen} onOpenChange={setTourOpen} />
+          <OnboardingWizard
+            open={wizardOpen}
+            onOpenChange={setWizardOpen}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+          <ClipboardWatcher onDone={refresh} />
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
+        </div>
+      </TooltipProvider>
+    </NoticeProvider>
   );
 }
 

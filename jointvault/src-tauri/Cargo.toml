@@ -35,3 +35,10 @@ uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10.9"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-single-instance = "2.4.4"
+
+[profile.dev]
+# Keep line-number backtraces without full debugger symbols.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

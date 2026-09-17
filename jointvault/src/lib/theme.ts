@@ -12,7 +12,10 @@ export const THEME_LABELS: Record<Theme, string> = {
 
 export function getTheme(): Theme {
   const v = localStorage.getItem(KEY);
-  return v === 'dark' || v === 'light' ? v : 'system';
+  if (v === 'dark' || v === 'light' || v === 'system') return v;
+  // Kullanıcı kararı: koyu varsayılan. Sahne: gece, tek çalışma lambası, arka planda
+  // inen bir kuyruk. Sistem tercihi yalnızca elle seçilirse geçerli olur.
+  return 'dark';
 }
 
 export function applyTheme(theme: Theme): void {

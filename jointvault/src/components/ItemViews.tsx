@@ -1,7 +1,17 @@
 import { memo, useState } from 'react';
-import { Download, Pencil, RotateCcw, Scissors, Star, Trash2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Download, ImageOff, Music, Pencil, RotateCcw, Scissors, Star, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuContent,
+  MenuGroupLabel,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+} from '@/components/ui/menu';
+import { Progress } from '@/components/ui/progress';
+import { Stamp, PlatformRule } from '@/components/ui/stamp';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   QUALITY_OPTIONS,
@@ -23,13 +33,22 @@ export interface ItemViewProps {
   onToggle: (id: string) => void;
   onFavorite: (id: string) => void;
   onDelete: (id: string) => void;
-  onEdit: (item: Item) => void;
+  /** Fişi aç: kaydın tamamı sağdaki kayıt panelinde görünür. */
+  onOpen: (item: Item) => void;
   progress: number | undefined;
   meta?: { speed?: string | null; eta?: string | null };
   onAudio: (item: Item, quality: DownloadQuality) => void;
   onPickVideo: (item: Item) => void;
   onConvert: (item: Item) => void;
 }
+
+const platformLabel = (p: string): string =>
+  PLATFORM_META[p as Platform]?.label ?? p;
+
+const platformDot = (p: string): string =>
+  PLATFORM_META[p as Platform]?.dot ?? PLATFORM_META.other.dot;
+
+const formatDate = (iso: string): string => new Date(iso).toLocaleDateString('tr-TR');
 
 // 06: Tauri opener plugin — falls back to window.open in dev-browser mode.
 // block + w-full: içindeki truncate/line-clamp zincirinin çalışması için
@@ -46,31 +65,59 @@ function OpenLink({ url, children }: { url: string; children: React.ReactNode })
   );
 }
 
-function ActionButtons({ item, onFavorite, onDelete, onEdit }: Pick<ItemViewProps, 'item' | 'onFavorite' | 'onDelete' | 'onEdit'>) {  return (
+function ActionButtons({
+  item,
+  onFavorite,
+  onDelete,
+  onOpen,
+}: Pick<ItemViewProps, 'item' | 'onFavorite' | 'onDelete' | 'onOpen'>) {
+  return (
     <>
-      <Button
-        variant={item.favorite ? 'default' : 'ghost'}
-        size="icon-sm"
-        onClick={() => onFavorite(item.id)}
-        aria-label="Favori"
-        aria-pressed={item.favorite}
-      >
-        <Star className={item.favorite ? 'fill-current' : ''} />
-      </Button>
-      <Button variant="ghost" size="icon-sm" onClick={() => onEdit(item)} aria-label="Düzenle">
-        <Pencil />
-      </Button>
-      <Button variant="ghost" size="icon-sm" onClick={() => onDelete(item.id)} aria-label="Sil">
-        <Trash2 />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant={item.favorite ? 'stamp' : 'ghost'}
+              size="icon-sm"
+              onClick={() => onFavorite(item.id)}
+              aria-label={item.favorite ? 'Favoriden çıkar' : 'Favoriye ekle'}
+              aria-pressed={item.favorite}
+            />
+          }
+        >
+          <Star className={item.favorite ? 'fill-current' : ''} />
+        </TooltipTrigger>
+        <TooltipContent>{item.favorite ? 'Favoriden çıkar' : 'Favoriye ekle'}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button variant="ghost" size="icon-sm" onClick={() => onOpen(item)} aria-label="Fişi aç" />
+          }
+        >
+          <Pencil />
+        </TooltipTrigger>
+        <TooltipContent>Fişi aç</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button variant="ghost" size="icon-sm" onClick={() => onDelete(item.id)} aria-label="Sil" />
+          }
+        >
+          <Trash2 />
+        </TooltipTrigger>
+        <TooltipContent>Sil</TooltipContent>
+      </Tooltip>
     </>
   );
 }
 
-// Per-item download state: done → badge, queued/active → inline progress bar,
-// error → message + retry menu, none → Download button with Video/Ses mini-menu.
-// ponytail: badge only on done — opening local files needs an opener bridge (later).
-function DownloadZone({
+/*
+ * İndirme bölgesi — durum damgası ya da ölçüm. Kalite seçimi artık elle kurulmuş
+ * absolute panel değil gerçek bir menü: portala taşınır, klavyeyle gezilir.
+ */
+function DownloadControl({
   item,
   progress,
   meta,
@@ -78,34 +125,37 @@ function DownloadZone({
   onPickVideo,
   onConvert,
 }: Pick<ItemViewProps, 'item' | 'progress' | 'meta' | 'onAudio' | 'onPickVideo' | 'onConvert'>) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
   const status = item.download_status;
 
-  if (status === 'done')
+  if (status === 'done') {
     return (
-      <span className="flex items-center gap-0.5">
-        <Badge variant="secondary">Yerel</Badge>
+      <span className="flex items-center gap-1">
+        <Stamp state="local" />
+        {item.converted_path && <Stamp state="none">dönüştürüldü</Stamp>}
         {item.local_path && (
-          <Button variant="ghost" size="icon-sm" onClick={() => onConvert(item)} aria-label="Dönüştür">
-            <Scissors />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button variant="ghost" size="icon-sm" onClick={() => onConvert(item)} aria-label="Dönüştür" />
+              }
+            >
+              <Scissors />
+            </TooltipTrigger>
+            <TooltipContent>Dönüştür / kırp</TooltipContent>
+          </Tooltip>
         )}
       </span>
     );
+  }
 
   if (status === 'queued' || status === 'active') {
-    const pct = Math.round(progress ?? 0);
     return (
-      <div className="flex min-w-24 flex-1 flex-col gap-0.5" aria-label={`İndiriliyor %{pct}`}>
-        <div className="flex items-center gap-1.5">
-          <div className="h-1 flex-1 overflow-hidden rounded bg-muted">
-            <div className="h-full rounded bg-primary transition-[width]" style={{ width: `${pct}%` }} />
-          </div>
-          <span className="text-[11px] tabular-nums text-muted-foreground">%{pct}</span>
-        </div>
+      <div className="flex min-w-32 flex-1 flex-col gap-1" aria-label={`İndiriliyor %${Math.round(progress ?? 0)}`}>
+        {status === 'queued' ? <Stamp state="queued" /> : null}
+        <Progress value={progress ?? 0} />
         {(meta?.speed || meta?.eta) && (
-          <span className="text-[10px] tabular-nums text-muted-foreground">
+          <span data-num className="text-2xs text-muted-foreground">
             {meta.speed}
             {meta.speed && meta.eta ? ' · ' : ''}
             {meta.eta ? `kalan ${meta.eta}` : ''}
@@ -115,70 +165,52 @@ function DownloadZone({
     );
   }
 
+  const failing = status === 'error';
+
   return (
-    <div className="relative">
-      {status === 'error' ? (
-        <div className="flex min-w-0 items-center gap-1">
-          <span className="max-w-40 truncate text-[11px] text-destructive" title={item.download_error ?? 'Hata'}>
-            {item.download_error ?? 'Hata'}
-          </span>
-          <Button variant="ghost" size="icon-sm" onClick={() => setMenuOpen((o) => !o)} aria-label="Tekrar indir">
-            <RotateCcw />
-          </Button>
-        </div>
-      ) : (
-        <Button variant="ghost" size="icon-sm" onClick={() => setMenuOpen((o) => !o)} aria-label="İndir">
-          <Download />
-        </Button>
+    <div className="flex min-w-0 items-center gap-1">
+      {failing && (
+        <span className="max-w-40 truncate text-2xs text-state-error" title={item.download_error ?? 'Hata'}>
+          {item.download_error ?? 'Hata'}
+        </span>
       )}
-      {menuOpen && (
-        <>
-          <button
-            type="button"
-            aria-hidden
-            tabIndex={-1}
-            className="fixed inset-0 z-10 cursor-default"
-            onClick={() => setMenuOpen(false)}
-          />
-          <div className="absolute bottom-full left-0 z-20 mb-1 flex min-w-28 flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
-            <select
-              value={quality}
-              onChange={(e) => setQuality(e.target.value as DownloadQuality)}
-              className="border-b border-border bg-transparent px-2.5 py-1.5 text-xs outline-none"
-              aria-label="Kalite"
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              variant={failing ? 'destructive' : 'ghost'}
+              size="icon-sm"
+              aria-label={failing ? 'Tekrar indir' : 'İndir'}
+            />
+          }
+        >
+          {failing ? <RotateCcw /> : <Download />}
+        </MenuTrigger>
+        <MenuContent align="end" className="min-w-44">
+          <MenuGroupLabel>Kalite</MenuGroupLabel>
+          {QUALITY_OPTIONS.map((o) => (
+            <MenuCheckboxItem
+              key={o.value}
+              checked={quality === o.value}
+              onClick={() => setQuality(o.value)}
             >
-              {QUALITY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <div className="flex">
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onPickVideo(item);
-                }}
-                className="flex-1 px-2.5 py-1.5 text-xs hover:bg-muted"
-              >
-                Video…
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setDefaultQuality(quality);
-                  onAudio(item, quality);
-                }}
-                className="flex-1 px-2.5 py-1.5 text-xs hover:bg-muted"
-              >
-                Ses
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+              {o.label}
+            </MenuCheckboxItem>
+          ))}
+          <MenuSeparator />
+          <MenuItem onClick={() => onPickVideo(item)}>
+            <Download /> Video…
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setDefaultQuality(quality);
+              onAudio(item, quality);
+            }}
+          >
+            <Music /> Ses
+          </MenuItem>
+        </MenuContent>
+      </Menu>
     </div>
   );
 }
@@ -208,6 +240,34 @@ const Thumb = memo(function Thumb({
   );
 });
 
+/* Kayıt künyesi: platform · koleksiyon · kategoriler · etiketler · tarih. Mono veri.
+   Kart görünümünde platform ve tarih zaten künye bandındadır; burada tekrarlanmaz. */
+function Accession({
+  item,
+  tags,
+  categories,
+  collectionLabel,
+  variant,
+}: Pick<ItemViewProps, 'item' | 'tags' | 'categories' | 'collectionLabel'> & { variant: 'card' | 'row' }) {
+  const hasTaxonomy = Boolean(collectionLabel) || categories.length > 0 || tags.length > 0;
+  if (variant === 'card' && !hasTaxonomy) return null;
+  return (
+    <p data-num className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
+      {variant === 'row' && <span>{platformLabel(item.platform)}</span>}
+      {collectionLabel && <span>· {collectionLabel}</span>}
+      {categories.map((c) => (
+        <span key={c.id}>· {c.name}</span>
+      ))}
+      {tags.map((t) => (
+        <span key={t.id} className="text-primary">
+          #{t.name}
+        </span>
+      ))}
+      <span className="ml-auto">{formatDate(item.created_at)}</span>
+    </p>
+  );
+}
+
 // memo: seçim değişiminde sadece dokunulan satır render edilir.
 export const ItemRowView = memo(function ItemRowView({
   item,
@@ -218,7 +278,7 @@ export const ItemRowView = memo(function ItemRowView({
   onToggle,
   onFavorite,
   onDelete,
-  onEdit,
+  onOpen,
   progress,
   meta,
   onAudio,
@@ -226,29 +286,35 @@ export const ItemRowView = memo(function ItemRowView({
   onConvert,
 }: ItemViewProps) {
   return (
-    <div className="cv-row group flex items-center gap-3 px-3 py-2 transition hover:bg-muted/60">
+    <div
+      className={`cv-row group flex items-center gap-3 px-3 py-2 transition-colors duration-150 ease-paper ${
+        selected ? 'bg-primary/5' : 'hover:bg-muted/50'
+      }`}
+      data-selected={selected || undefined}
+    >
       <input
         type="checkbox"
         checked={selected}
         onChange={() => onToggle(item.id)}
-        className="size-4 shrink-0 accent-primary"
+        className="size-3.5 shrink-0"
         aria-label="Öğeyi seç"
       />
+      <span aria-hidden className={`h-6 w-0.5 shrink-0 ${platformDot(item.platform)}`} />
       <Thumb
         src={item.thumbnail}
-        className="size-11 shrink-0 rounded-lg object-cover"
+        className="size-9 shrink-0 rounded-xs border border-border object-cover"
         fallback={
-          <span
-            className={`size-2.5 shrink-0 rounded-full ${PLATFORM_META[(item.platform as Platform)]?.dot ?? PLATFORM_META.other.dot}`}
-          />
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xs border border-dashed border-border font-mono text-2xs text-muted-foreground">
+            —
+          </span>
         }
       />
-      <div className="min-w-0 max-w-xl flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <OpenLink url={item.url}>
           <Tooltip>
             <TooltipTrigger
               render={
-                <p className="truncate font-display text-[15px] leading-snug hover:underline">
+                <p className="truncate text-sm leading-snug font-medium group-hover:underline">
                   {item.title || item.url}
                 </p>
               }
@@ -256,17 +322,18 @@ export const ItemRowView = memo(function ItemRowView({
             <TooltipContent>{item.title || item.url}</TooltipContent>
           </Tooltip>
         </OpenLink>
-                <p className="truncate text-xs text-muted-foreground">
-                  {PLATFORM_META[(item.platform as Platform)]?.label ?? item.platform}
-                  {collectionLabel && ` · ${collectionLabel}`}
-                  {categories.map((c) => ` ${c.name}`).join('')}
-                  {tags.map((t) => ` #${t.name}`).join('')}
-                  {` · ${new Date(item.created_at).toLocaleDateString('tr-TR')}`}
-                </p>
-        <div className="mt-0.5 flex items-center gap-0.5">
-          <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
-          <DownloadZone item={item} progress={progress} meta={meta} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
-        </div>
+        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} variant="row" />
+      </div>
+      <DownloadControl
+        item={item}
+        progress={progress}
+        meta={meta}
+        onAudio={onAudio}
+        onPickVideo={onPickVideo}
+        onConvert={onConvert}
+      />
+      <div className="flex shrink-0 items-center gap-0.5 transition-opacity duration-150 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+        <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onOpen={onOpen} />
       </div>
     </div>
   );
@@ -282,7 +349,7 @@ export const ItemCardView = memo(function ItemCardView({
   onToggle,
   onFavorite,
   onDelete,
-  onEdit,
+  onOpen,
   progress,
   meta,
   onAudio,
@@ -291,51 +358,61 @@ export const ItemCardView = memo(function ItemCardView({
 }: ItemViewProps) {
   return (
     <article
-      className="group animate-rise cv-card relative flex flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-lift"
-      style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
+      className={`group animate-rise cv-card relative flex flex-col overflow-hidden border bg-card text-card-foreground transition-all duration-200 ease-paper hover:-translate-y-0.5 ${
+        selected ? 'border-primary' : 'border-border hover:border-input'
+      }`}
+      style={{ animationDelay: `${Math.min(index * 30, 240)}ms` }}
+      data-selected={selected || undefined}
     >
+      <PlatformRule platform={item.platform} />
+      <div className="record-band text-muted-foreground">
+        <span>{platformLabel(item.platform)}</span>
+        <span className="ml-auto">{formatDate(item.created_at)}</span>
+      </div>
+
       <input
         type="checkbox"
         checked={selected}
         onChange={() => onToggle(item.id)}
         aria-label="Öğeyi seç"
-        className={`absolute top-2 left-2 z-10 size-4 accent-primary transition ${
-          selected ? '' : 'opacity-0 group-hover:opacity-100'
+        className={`absolute top-8 left-2 z-10 size-3.5 transition-opacity duration-150 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100 ${
+          selected ? 'lg:opacity-100' : ''
         }`}
       />
+
       <Thumb
         src={item.thumbnail}
-        className="h-36 w-full object-cover"
+        className="h-36 w-full border-b border-border object-cover"
         fallback={
-          <div className="flex h-36 w-full items-center justify-center bg-muted text-sm text-muted-foreground">
-            Önizleme yok
+          <div className="flex h-36 w-full flex-col items-center justify-center gap-1.5 border-b border-border bg-muted/40 px-4">
+            <ImageOff className="size-4 text-muted-foreground" strokeWidth={1.5} aria-hidden />
+            <p className="font-mono text-2xs tracking-[0.06em] text-muted-foreground uppercase">kapak yok</p>
+            <p className="max-w-[30ch] text-center text-2xs text-muted-foreground/85">
+              Önizleme bulunamadı; başlık ve bağlantı yine de kayıtlı.
+            </p>
           </div>
         }
       />
-      <div className="flex flex-col gap-2 p-3">
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
         <OpenLink url={item.url}>
-          <h3 className="line-clamp-2 font-display text-[15px] leading-snug hover:underline">
+          <h3 className="line-clamp-2 text-[15px] leading-snug font-medium group-hover:underline">
             {item.title || item.url}
           </h3>
         </OpenLink>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              className={`size-2 rounded-full ${PLATFORM_META[(item.platform as Platform)]?.dot ?? PLATFORM_META.other.dot}`}
-            />
-            {PLATFORM_META[(item.platform as Platform)]?.label ?? item.platform}
-          </span>
-                  {collectionLabel && <span>{collectionLabel}</span>}
-                  {categories.map((c) => (
-                    <span key={c.id}>{c.name}</span>
-                  ))}
-                  {tags.map((t) => (
-                    <span key={t.id}>#{t.name}</span>
-                  ))}
-        </div>
-        <div className="mt-1 flex items-center gap-1 border-t border-border pt-2">
-          <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onEdit={onEdit} />
-          <DownloadZone item={item} progress={progress} meta={meta} onAudio={onAudio} onPickVideo={onPickVideo} onConvert={onConvert} />
+        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} variant="card" />
+        <div className="mt-auto flex items-center gap-1 border-t border-border pt-2">
+          <DownloadControl
+            item={item}
+            progress={progress}
+            meta={meta}
+            onAudio={onAudio}
+            onPickVideo={onPickVideo}
+            onConvert={onConvert}
+          />
+          <div className="ml-auto flex shrink-0 items-center gap-0.5">
+            <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onOpen={onOpen} />
+          </div>
         </div>
       </div>
     </article>

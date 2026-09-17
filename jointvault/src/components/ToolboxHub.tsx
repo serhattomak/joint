@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { Captions, Combine, Film, Scissors, Wrench } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Captions, ChevronRight, Combine, Film, Scissors, Wrench } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export type ToolboxToolId = 'merge' | 'silence' | 'gif' | 'subtitle';
 
@@ -8,109 +7,71 @@ interface ToolboxHubProps {
   onPick: (toolId: ToolboxToolId) => void;
 }
 
-const TOOLS: { id: ToolboxToolId; icon: React.ReactNode; title: string; desc: string; ready: boolean }[] = [
+const TOOLS: { id: ToolboxToolId; icon: React.ReactNode; title: string; desc: string }[] = [
   {
     id: 'merge',
-    icon: <Combine className="size-5 text-primary" strokeWidth={2} />,
+    icon: <Combine className="size-4" />,
     title: 'Birleştir',
     desc: 'Birden çok videoyu tek dosyada topla.',
-    ready: true,
   },
   {
     id: 'silence',
-    icon: <Scissors className="size-5 text-primary" strokeWidth={2} />,
+    icon: <Scissors className="size-4" />,
     title: 'Sessizlik Kırpma',
     desc: 'Sessiz bölümleri otomatik temizle.',
-    ready: true,
   },
   {
     id: 'gif',
-    icon: <Film className="size-5 text-primary" strokeWidth={2} />,
+    icon: <Film className="size-4" />,
     title: 'GIF / WebM',
     desc: 'Kısa kliplerden paylaşımlık döngüler yap.',
-    ready: true,
   },
   {
     id: 'subtitle',
-    icon: <Captions className="size-5 text-primary" strokeWidth={2} />,
+    icon: <Captions className="size-4" />,
     title: 'Altyazı',
     desc: 'Altyazı göm, çıkar veya otomatik üret.',
-    ready: true,
   },
 ];
 
-// Araç Kutusu hub: kartlı grid. Hazır araçlar doğrudan açılır;
-// hazır olmayanlar placeholder not + "Dönüştürücü'ye git" gösterir.
+/*
+ * Araç Kutusu — kart ızgarası değil, çekmece dizini: cetvelle ayrılmış satırlar,
+ * solda araç mührü, sağda açılış oku. Araç seçilince doğrudan açılır; arada
+ * ikinci bir "aç" adımı yok.
+ */
 export function ToolboxHub({ onPick }: ToolboxHubProps) {
-  const [selected, setSelected] = useState<ToolboxToolId | null>(null);
-  const active = TOOLS.find((t) => t.id === selected) ?? null;
-
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Wrench className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="font-display text-xl tracking-tight">Araç Kutusu</h2>
+      <header className="flex items-center gap-2.5">
+        <Wrench className="size-[18px] text-primary" strokeWidth={2} aria-hidden />
+        <h2 className="text-title">Araç Kutusu</h2>
+      </header>
+
+      <div className="flex max-w-2xl flex-col divide-y divide-border border border-border bg-card">
+        {TOOLS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onPick(t.id)}
+            className="group flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 ease-paper hover:bg-muted/50"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center border border-border text-primary">
+              {t.icon}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-sm font-medium">{t.title}</span>
+              <span className="text-micro text-muted-foreground">{t.desc}</span>
+            </span>
+            <Badge variant="outline" className="shrink-0">
+              hazır
+            </Badge>
+            <ChevronRight
+              className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-paper group-hover:translate-x-0.5"
+              aria-hidden
+            />
+          </button>
+        ))}
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {TOOLS.map((t) => {
-          const isActive = selected === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setSelected(t.id)}
-              aria-pressed={isActive}
-              className={`flex flex-col gap-2 rounded-xl border bg-card p-4 text-left shadow-card transition ${
-                isActive
-                  ? 'border-primary/40 bg-primary/5'
-                  : 'border-border hover:border-primary/30'
-              }`}
-            >
-              <span className="flex items-center justify-between">
-                {t.icon}
-                {!t.ready && (
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">
-                    yakında
-                  </span>
-                )}
-              </span>
-              <span className="font-display text-[15px]">{t.title}</span>
-              <span className="text-sm text-muted-foreground">{t.desc}</span>
-            </button>
-          );
-        })}
-      </div>
-      {active && (
-        <section className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-card">
-          {active.ready ? (
-            <>
-              <p className="text-sm">
-                <span className="font-medium">{active.title}</span>{' '}
-                <span className="text-muted-foreground">hazır — açıp kullanmaya başlayabilirsin.</span>
-              </p>
-              <div>
-                <Button size="sm" onClick={() => onPick(active.id)}>
-                  {active.title} aracını aç
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-sm">
-                <span className="font-medium">{active.title}</span>{' '}
-                <span className="text-muted-foreground">
-                  henüz hazır değil — şimdilik Dönüştürücü ile devam edebilirsin.
-                </span>
-              </p>
-              <div>
-                <Button size="sm" onClick={() => onPick(active.id)}>
-                  Dönüştürücü&apos;ye git
-                </Button>
-              </div>
-            </>
-          )}
-        </section>
-      )}
     </div>
   );
 }

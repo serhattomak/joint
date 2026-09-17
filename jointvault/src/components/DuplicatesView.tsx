@@ -166,7 +166,7 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
     prefix: string,
   ): React.ReactNode => (
     <section className="flex flex-col gap-2">
-      <h3 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+      <h3 className="text-micro font-medium text-muted-foreground">
         {title} ({groups.length})
       </h3>
       {groups.length === 0 ? (
@@ -205,7 +205,7 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <Copy className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="font-display text-xl tracking-tight">Yinelenenler</h2>
+        <h2 className="text-title">Yinelenenler</h2>
         <div className="ml-auto flex items-center gap-2">
           {totalVictims > 0 && (
             <Button variant="destructive" size="sm" onClick={() => void removeSelected()} disabled={deleting}>
@@ -235,7 +235,7 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
       )}
       <section className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+          <h3 className="text-micro font-medium text-muted-foreground">
             Yetim dosyalar ({orphans.length})
           </h3>
           {orphanChecked.size > 0 && (

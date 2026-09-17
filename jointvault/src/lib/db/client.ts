@@ -149,7 +149,20 @@ export interface ItemFilters {
   tagId?: string; // 'all' or id
   favoritesOnly?: boolean;
   downloadedOnly?: boolean;
+  sort?: ItemSort;
 }
+
+/* Sıralama beyaz listesi: SQL'e yalnızca bu sabitler girer, kullanıcı girdisi asla. */
+export type ItemSort = 'new' | 'old' | 'title' | 'title-desc';
+
+export const ITEM_SORTS: readonly ItemSort[] = ['new', 'old', 'title', 'title-desc'];
+
+const SORT_SQL: Record<ItemSort, string> = {
+  new: 'i.created_at DESC',
+  old: 'i.created_at ASC',
+  title: 'i.title COLLATE NOCASE ASC',
+  'title-desc': 'i.title COLLATE NOCASE DESC',
+};
 
 // Sayfalı okuma: filtre SQL'de, sayım DISTINCT ile, satır çekimi LIMIT/OFFSET.
 // Arama tüm tabloya karşı LIKE ile çalışır; ekrana sadece sayfa gelir.
@@ -194,7 +207,7 @@ export async function listItemsPage(
   const total = countRows[0]?.n ?? 0;
   if (total === 0) return { rows: [], total };
   const rows = await db.select<ItemRow[]>(
-    `SELECT DISTINCT i.* ${from} ${where} ORDER BY i.created_at DESC LIMIT ? OFFSET ?`,
+    `SELECT DISTINCT i.* ${from} ${where} ORDER BY ${SORT_SQL[f.sort ?? 'new']} LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
   return { rows: rows.map(toItem), total };
