@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FilePlus2, Play, RotateCcw, Scissors, Sparkles } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
@@ -214,9 +215,7 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
                           <p className="truncate font-mono text-xs text-muted-foreground">{o.path}</p>
                         </div>
                         {o.preview && (
-                          <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">
-                            önizleme
-                          </span>
+                          <Badge variant="outline">önizleme</Badge>
                         )}
                       </li>
                     ))}

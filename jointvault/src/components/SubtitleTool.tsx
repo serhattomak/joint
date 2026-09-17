@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Captions, FilePlus2, RotateCcw, Sparkles } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { listItems, updateItem } from '@/lib/db/client';
@@ -371,9 +372,7 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
                             <p className="truncate text-sm">{o.label}</p>
                             <p className="truncate font-mono text-xs text-muted-foreground">{o.path}</p>
                           </div>
-                          <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">
-                            {o.kind}
-                          </span>
+                          <Badge variant="outline">{o.kind}</Badge>
                         </li>
                       ))}
                     </ul>

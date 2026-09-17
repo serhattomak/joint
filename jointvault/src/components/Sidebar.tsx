@@ -85,7 +85,7 @@ function NavButton({ entry }: { entry: NavEntry }) {
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-2 pt-3 pb-1 font-mono text-2xs tracking-[0.08em] text-rail-foreground/45 uppercase">
+    <p className="px-2 pt-3 pb-1 text-2xs text-rail-foreground/45">
       {children}
     </p>
   );

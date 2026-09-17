@@ -65,7 +65,7 @@ export function OnboardingWizard({ open, onOpenChange, onOpenSettings }: Onboard
           <DialogTitle>Kurulum kontrolü</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-2">
-          <p className="font-display text-lg">{STEPS[step]}</p>
+          <p className="text-title">{STEPS[step]}</p>
 
           {step === 0 && (
             <>

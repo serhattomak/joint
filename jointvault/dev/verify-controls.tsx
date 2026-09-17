@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, type SelectOption } from '@/components/ui/select';
+import { SettingsDialog } from '@/components/SettingsDialog';
 
 declare global {
   interface Window {
@@ -141,4 +142,24 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+/*
+ * Yüzey dumanı: Batch A (damga/etiket) + Batch D (SettingRow) gerçekten çiziliyor mu,
+ * ve satırlar büyüdüğü için diyalog pencereden taşıyor mu?
+ */
+function SurfacesApp() {
+  const [open, setOpen] = useState(true);
+  return (
+    <SettingsDialog
+      open={open}
+      onOpenChange={setOpen}
+      pageSize={48}
+      pageSizes={[24, 48, 96]}
+      onPageSizeChange={noop}
+      onReplayTour={noop}
+    />
+  );
+}
+
+const surfaceMode = window.location.hash === '#surfaces';
+
+createRoot(document.getElementById('root')!).render(surfaceMode ? <SurfacesApp /> : <App />);

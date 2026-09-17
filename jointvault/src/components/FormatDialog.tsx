@@ -85,7 +85,7 @@ export function FormatDialog({ target, onClose, onDone }: FormatDialogProps) {
         )}
         {videos.length > 0 && (
           <div className="flex flex-col gap-1">
-            <h4 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Video</h4>
+            <h4 className="text-micro font-medium text-muted-foreground">Video</h4>
             <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
               {videos.map((f) => (
                 <li key={f.id}>
@@ -105,7 +105,7 @@ export function FormatDialog({ target, onClose, onDone }: FormatDialogProps) {
         )}
         {audios.length > 0 && (
           <div className="flex flex-col gap-1">
-            <h4 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Ses</h4>
+            <h4 className="text-micro font-medium text-muted-foreground">Ses</h4>
             <ul className="flex max-h-32 flex-col gap-1 overflow-y-auto">
               {audios.map((f) => (
                 <li key={f.id}>

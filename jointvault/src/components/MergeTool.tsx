@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Combine, FilePlus2, GripVertical, Plus, RotateCcw, X } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
@@ -199,7 +200,7 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
                     className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-sm"
                   >
                     <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" />
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-medium text-secondary-foreground">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-secondary text-2xs font-medium text-secondary-foreground">
                       {i + 1}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -209,7 +210,7 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
                       </span>
                     </span>
                     {!q.itemId && (
-                      <span className="shrink-0 text-[10px] tracking-wide uppercase opacity-70">harici</span>
+                      <Badge variant="outline">harici</Badge>
                     )}
                     <button
                       type="button"

@@ -11,8 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { SettingRow } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
+import { Stamp } from '@/components/ui/stamp';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { DiagnosticsPanel } from '@/components/DiagnosticsPanel';
 import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/components/ClipboardWatcher';
@@ -46,15 +48,6 @@ const CLOSE_MODES: readonly SelectOption[] = [
   { value: 'tray', label: 'Tepside çalışmaya devam et' },
   { value: 'quit', label: 'Tamamen kapat' },
 ];
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-1">
-      <span className="text-sm">{label}</span>
-      <div className="flex items-center gap-2">{children}</div>
-    </div>
-  );
-}
 
 export function SettingsDialog(props: SettingsDialogProps) {
   const { open, onOpenChange, pageSize, pageSizes, onPageSizeChange, onReplayTour } = props;
@@ -264,15 +257,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
         {tab === 'view' && (
           <div className="flex flex-col">
-            <Row label="Tema">
+            <SettingRow label="Tema">
               <ThemeToggle />
-            </Row>
-            <Row label="Karşılama turu">
+            </SettingRow>
+            <SettingRow label="Karşılama turu">
               <Button variant="outline" size="sm" onClick={onReplayTour}>
                 Tekrar göster
               </Button>
-            </Row>
-            <Row label="Pano izleme">
+            </SettingRow>
+            <SettingRow label="Pano izleme">
               <input
                 type="checkbox"
                 checked={watch}
@@ -284,8 +277,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 className="size-4 accent-primary"
                 aria-label="Pano izleme"
               />
-            </Row>
-            <Row label="Kapatma tuşu">
+            </SettingRow>
+            <SettingRow label="Kapatma tuşu">
               <Select
                 label="Kapatma davranışı"
                 className="w-52"
@@ -298,8 +291,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 }}
                 options={CLOSE_MODES}
               />
-            </Row>
-            <Row label="Sayfa başına">
+            </SettingRow>
+            <SettingRow label="Sayfa başına">
               <Select
                 label="Sayfa başına"
                 className="w-20"
@@ -307,7 +300,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 onValueChange={(v) => onPageSizeChange(Number.parseInt(v, 10))}
                 options={pageSizes.map((n) => ({ value: String(n), label: String(n) }))}
               />
-            </Row>
+            </SettingRow>
           </div>
         )}
 
@@ -326,7 +319,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </div>
               {dirError && <p className="text-sm text-destructive">{dirError}</p>}
             </div>
-            <Row label="Varsayılan ses kalitesi">
+            <SettingRow label="Varsayılan ses kalitesi">
               <Select
                 label="Varsayılan ses kalitesi"
                 className="w-40"
@@ -338,7 +331,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 }}
                 options={QUALITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
               />
-            </Row>
+            </SettingRow>
           </div>
         )}
 
@@ -352,15 +345,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">Konuşma motoru</span>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[10px] tracking-wide uppercase ${
-                      whisperStatus?.whisper_available
-                        ? 'border-primary/40 text-primary'
-                        : 'border-border text-muted-foreground'
-                    }`}
-                  >
-                    {whisperStatus ? (whisperStatus.whisper_available ? 'kurulu' : 'eksik') : '…'}
-                  </span>
+                  {whisperStatus ? (
+                    whisperStatus.whisper_available ? (
+                      <Stamp state="local">kurulu</Stamp>
+                    ) : (
+                      <Stamp state="none">eksik</Stamp>
+                    )
+                  ) : (
+                    <Stamp state="none">…</Stamp>
+                  )}
                   {whisperStatus && !whisperStatus.whisper_available && (
                     <Button
                       variant="outline"
@@ -383,7 +376,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               )}
             </div>
             {engError && <p className="text-sm text-destructive">{engError}</p>}
-            <Row label="Konuşma modeli">
+            <SettingRow label="Konuşma modeli">
               <Select
                 label="Konuşma modeli"
                 className="w-36"
@@ -399,7 +392,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   hint: `≈${m.sizeMb} MB`,
                 }))}
               />
-            </Row>
+            </SettingRow>
             {WHISPER_MODELS.map((m) => {
               const done = whisperStatus?.models[m.id] ?? false;
               const downloading = dlModel === m.id;
@@ -413,15 +406,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       <p className="text-xs text-muted-foreground">{m.hint}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] tracking-wide uppercase ${
-                          done
-                            ? 'border-primary/40 text-primary'
-                            : 'border-border text-muted-foreground'
-                        }`}
-                      >
-                        {done ? 'indirildi' : 'eksik'}
-                      </span>
+                      {done ? <Stamp state="local">indirildi</Stamp> : <Stamp state="none">eksik</Stamp>}
                       {!done && (
                         <Button
                           variant="outline"

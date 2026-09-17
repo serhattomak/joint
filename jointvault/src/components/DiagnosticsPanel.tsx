@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Stamp } from '@/components/ui/stamp';
 import { getHealth, type HealthReport } from '@/lib/health';
 import { WHISPER_MODELS, getWhisperStatus } from '@/lib/whisper';
 
@@ -110,13 +111,13 @@ export function DiagnosticsPanel() {
             <p className="text-sm font-medium">
               {m.id} <span className="font-normal text-muted-foreground">≈{m.sizeMb} MB</span>
             </p>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-[10px] tracking-wide uppercase ${
-                done ? 'border-primary/40 text-primary' : 'border-border text-muted-foreground'
-              }`}
-            >
-              {loading ? '…' : done ? 'indirildi' : 'eksik'}
-            </span>
+            {loading ? (
+              <Stamp state="none">…</Stamp>
+            ) : done ? (
+              <Stamp state="local">indirildi</Stamp>
+            ) : (
+              <Stamp state="none">eksik</Stamp>
+            )}
           </div>
         );
       })}

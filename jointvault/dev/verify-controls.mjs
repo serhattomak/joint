@@ -14,7 +14,10 @@ const ctx = await browser.newContext({
 });
 const page = await ctx.newPage();
 const pageErrors = [];
-page.on('pageerror', (e) => pageErrors.push(e.message));
+page.on('pageerror', (e) => {
+  // Tarayıcıda Tauri IPC yok; invoke/transformCallback hataları beklenen durum.
+  if (!/invoke|transformCallback/.test(e.message)) pageErrors.push(e.message);
+});
 
 await page.goto(URL, { waitUntil: 'load', timeout: 30000 });
 await page.evaluate(() => document.fonts.ready);
@@ -91,6 +94,43 @@ check('ikinci tur başlık', await page.getByText('collection silinsin mi?').isV
 await page.getByRole('button', { name: 'Sil' }).click();
 await page.waitForTimeout(400);
 check('DOĞRU iş çalıştı (collection)', (await log()).at(-1), 'confirm:collection');
+
+// ---------- 4. Yüzey dumanı: gerçek SettingsDialog ----------
+/* Aynı belgede yalnızca hash değiştirmek reload tetiklemez; önce boşalt. */
+await page.goto('about:blank');
+await page.goto(`${URL}#surfaces`, { waitUntil: 'load', timeout: 30000 });
+await page.evaluate(() => document.fonts.ready);
+await page.waitForTimeout(700);
+
+check('yüzey modunda diyalog açıldı', (await page.locator('[data-slot="dialog-content"]').count()) === 1, true);
+
+const dialogBox = await page.locator('[data-slot="dialog-content"]').boundingBox();
+const viewport = page.viewportSize();
+check(
+  'diyalog pencereden taşmıyor (SettingRow sonrası)',
+  dialogBox !== null && dialogBox.height <= viewport.height - 48 + 1,
+  true,
+);
+
+const settingRows = await page.locator('[data-slot="dialog-content"] .min-h-9').count();
+check('SettingRow satırları çizildi', settingRows >= 5, true);
+
+await page.getByRole('tab', { name: 'Konuşma' }).click();
+await page.waitForTimeout(500);
+check('damga çizildi (Konuşma)', (await page.locator('[data-state="none"]').count()) >= 1, true);
+/* Tauri yok → model durumu bilinmiyor → her model "eksik" damgası taşır. */
+check('damga sözcüğü basıldı: eksik', await page.getByText('eksik', { exact: true }).first().isVisible(), true);
+check(
+  'damga ikon taşıyor (svg)',
+  (await page.locator('[data-state="none"] svg').count()) >= 1,
+  true,
+);
+
+await page.getByRole('tab', { name: 'Tanılama' }).click();
+await page.waitForTimeout(600);
+check('damga çizildi (Tanılama)', (await page.locator('[data-state="none"]').count()) >= 1, true);
+
+await page.screenshot({ path: 'D:/serhatdev/joint/.impeccable/review/verify-settings.png' });
 
 // ---------- rapor ----------
 console.log(results.join('\n'));

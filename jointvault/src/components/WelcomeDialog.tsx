@@ -64,7 +64,7 @@ export function WelcomeDialog({ open, onOpenChange }: WelcomeDialogProps) {
           <DialogTitle>JointVault’a hoş geldin</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-2">
-          <p className="font-display text-lg">{STEPS[step].title}</p>
+          <p className="text-title">{STEPS[step].title}</p>
           <p className="text-sm text-muted-foreground">{STEPS[step].body}</p>
           <div className="flex gap-1.5" aria-label={`Adım ${step + 1} / ${STEPS.length}`}>
             {STEPS.map((_, i) => (

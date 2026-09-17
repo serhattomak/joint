@@ -280,7 +280,7 @@ export function TrimEditor({ inputPath, from, to, onFromChange, onToChange, disa
         </span>
       </div>
       <div>
-        <div className="flex h-4 items-end justify-between text-[10px] tabular-nums text-muted-foreground">
+        <div className="flex h-4 items-end justify-between text-2xs tabular-nums text-muted-foreground">
           {ticks.map((t) => (
             <span key={t}>{fmtClock(t)}</span>
           ))}

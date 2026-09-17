@@ -199,7 +199,11 @@ kartlarını hatırlatır ama daktilo taklidi yapmaz; mono yalnızca ölçüm ta
 - **Title** (600, 21px/1.15, -0.012em): Panel başlığı, fiş detay başlığı, boş durum başlığı, diyalog başlığı.
 - **Body** (400, 14px/1.5): Satır ve kart başlıkları 15px/1.35 medium; gövde metni 14px. Ölçü 65–75ch.
 - **Micro** (400, 12px/1.45): Alan etiketleri, yardım metni, ikincil açıklama. **Büyük harf ve harf aralığı yok.**
-- **Data** (400, 11px/1.5, 0.04em, büyük harf): Künye bandı, damga, tarih, yüzde, hız, sayım, dosya yolu.
+- **Data · damga & künye** (400, 11px/1.5, 0.04em, büyük harf · `text-2xs`): Damga, künye bandı,
+  tarih, yüzde, hız, sayım. Künye bandı bu adımı `record-band` ile kendisi kurar.
+- **Data · yol & kimlik** (400, 12px/1.5, mono, büyük harf yok · `text-micro` + `data-num`): Dosya
+  yolu ve kimlik gibi gövde içinde okunması gereken diziler. Bir basamak yukarıda durur çünkü 11px'te
+  okunurluk düşer; büyük harf giymez çünkü başlık değil, kayıttır.
 
 ### Named Rules
 **The Tek Yüz Kuralı.** Yapısal hiçbir metin ikinci bir yüz kullanmaz. Vurgu gerekiyorsa boyut
@@ -214,6 +218,12 @@ yüzü ve tabular rakamları açar (`index.css`).
 **The Büyük-Harf-Künye Kuralı.** Büyük harf ve harf aralığı yalnızca künye bandı ve damga gibi
 *veri* yüzeylerinde görünür. Bir başlığın üstüne etiket (eyebrow/kicker) koymak yasaktır; başlık
 kendi ağırlığını taşır.
+
+**The İki-Data-Basamağı Kuralı.** Veri iki basamakta yaşar; hangisi olduğu işlevine bakar: damga,
+künye bandı ve tarih `text-2xs` (11px, büyük harf); dosya yolu ve kimlik `text-micro` + `data-num`
+(12px, mono, büyük harf yok). Bir yolu 11px'e indirmek ya da bir damgayı büyük harfsiz bırakmak
+basamağı bozar. Bu ayrım, DESIGN.md ile kurulu yüzeyler arasındaki sessiz sürüklenmeyi kapatmak
+için yazıldı.
 
 ## Layout
 

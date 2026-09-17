@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Clapperboard, FilePlus2, RotateCcw } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TrimEditor } from '@/components/TrimEditor';
 import { listItems, updateItem } from '@/lib/db/client';
@@ -147,7 +148,7 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
                   >
                     <span className="min-w-0 flex-1 truncate">{s.label}</span>
                     {!s.itemId && (
-                      <span className="shrink-0 text-[10px] tracking-wide uppercase opacity-70">harici</span>
+                      <Badge variant="outline">harici</Badge>
                     )}
                   </button>
                 </li>

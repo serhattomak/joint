@@ -112,7 +112,7 @@ export function EditorDialog({ source, onClose, onDone }: EditorDialogProps) {
               <div className="h-1 flex-1 overflow-hidden rounded bg-muted">
                 <div className="h-full rounded bg-primary transition-[width]" style={{ width: `${pct}%` }} />
               </div>
-              <span className="text-[11px] tabular-nums text-muted-foreground">%{pct}</span>
+              <span className="text-2xs tabular-nums text-muted-foreground">%{pct}</span>
             </div>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
