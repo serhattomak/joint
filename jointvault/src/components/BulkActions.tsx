@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Tags, FolderInput, Shapes, Trash2, X } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { TagPicker } from '@/components/TagPicker';
 import {
   createCollection,
@@ -39,6 +41,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
   const [tagOpen, setTagOpen] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [tagNames, setTagNames] = useState<string[]>([]);
   const [catNames, setCatNames] = useState<string[]>([]);
   const [collectionId, setCollectionId] = useState('');
@@ -52,8 +55,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
 
   if (ids.length === 0) return null;
 
-  const handleDelete = async (): Promise<void> => {
-    if (!window.confirm(`${ids.length} öğeyi silmek istiyor musun?`)) return;
+  const runDelete = async (): Promise<void> => {
     setBusy(true);
     try {
       for (const id of ids) await removeItem(id);
@@ -149,7 +151,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
         <Button variant="ghost" size="sm" onClick={() => setMoveOpen(true)} disabled={busy}>
           <FolderInput /> Taşı
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => void handleDelete()} disabled={busy}>
+        <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)} disabled={busy}>
           <Trash2 /> Sil
         </Button>
         <Button variant="ghost" size="icon-sm" onClick={onClear} aria-label="Seçimi temizle">
@@ -197,18 +199,15 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
             <DialogTitle>Koleksiyona taşı</DialogTitle>
             <DialogDescription>{ids.length} öğe taşınacak.</DialogDescription>
           </DialogHeader>
-          <select
-            value={collectionId}
-            onChange={(e) => setCollectionId(e.target.value)}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-          >
-            <option value="">Koleksiyon yok</option>
-            {collections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <Select
+            label="Koleksiyon"
+            value={collectionId || 'none'}
+            onValueChange={(v) => setCollectionId(v === 'none' ? '' : v)}
+            options={[
+              { value: 'none', label: 'Koleksiyon yok' },
+              ...collections.map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
           <div className="flex gap-2">
             <Input
               value={newCollection}
@@ -232,6 +231,15 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`${ids.length} öğe silinsin mi?`}
+        description="Kayıtlar arşivden çıkar. İndirilen dosyalar diskte kalır."
+        confirmLabel={`${ids.length} öğeyi sil`}
+        onConfirm={() => void runDelete()}
+      />
     </>
   );
 }

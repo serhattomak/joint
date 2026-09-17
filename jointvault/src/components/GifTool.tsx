@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FilePlus2, Film, RotateCcw, Sparkles } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { TrimEditor } from '@/components/TrimEditor';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
@@ -196,38 +197,30 @@ export function GifTool({ refreshKey, onDone }: GifToolProps) {
                 })}
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
                   Genişlik
-                  <select
-                    value={width}
-                    onChange={(e) => setWidth(Number(e.target.value))}
+                  <Select
+                    label="Çıktı genişliği"
+                    className="w-24"
+                    size="sm"
                     disabled={busy}
-                    aria-label="Çıktı genişliği"
-                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
-                  >
-                    {WIDTHS.map((w) => (
-                      <option key={w} value={w}>
-                        {w}px
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    value={String(width)}
+                    onValueChange={(v) => setWidth(Number(v))}
+                    options={WIDTHS.map((w) => ({ value: String(w), label: `${w}px` }))}
+                  />
+                </span>
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
                   Kare hızı
-                  <select
-                    value={fps}
-                    onChange={(e) => setFps(Number(e.target.value))}
+                  <Select
+                    label="Saniyedeki kare sayısı"
+                    className="w-24"
+                    size="sm"
                     disabled={busy}
-                    aria-label="Saniyedeki kare sayısı"
-                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
-                  >
-                    {FPSES.map((f) => (
-                      <option key={f} value={f}>
-                        {f} fps
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    value={String(fps)}
+                    onValueChange={(v) => setFps(Number(v))}
+                    options={FPSES.map((f) => ({ value: String(f), label: `${f} fps` }))}
+                  />
+                </span>
                 <span className="text-xs tabular-nums text-muted-foreground">
                   Seçim: {segLen.toFixed(1)} sn / en fazla {limit} sn
                 </span>

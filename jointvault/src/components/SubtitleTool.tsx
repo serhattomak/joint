@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Captions, FilePlus2, RotateCcw, Sparkles } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import {
@@ -252,22 +253,18 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
                     Model: <span className="font-medium text-foreground">{model}</span>
                     <span className="text-xs"> (Ayarlar → Konuşma&apos;dan değiştir)</span>
                   </span>
-                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     Dil
-                    <select
-                      value={lang}
-                      onChange={(e) => setLang(e.target.value as WhisperLang)}
+                    <Select
+                      label="Transkript dili"
+                      className="w-36"
+                      size="sm"
                       disabled={!!busy}
-                      aria-label="Transkript dili"
-                      className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
-                    >
-                      {LANGS.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      value={lang}
+                      onValueChange={(v) => setLang(v as WhisperLang)}
+                      options={LANGS.map((l) => ({ value: l.id, label: l.label }))}
+                    />
+                  </span>
                 </div>
                 <p className="truncate font-mono text-xs text-muted-foreground" title={expectedSrt}>
                   → {expectedSrt}

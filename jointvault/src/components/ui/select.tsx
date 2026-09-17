@@ -42,9 +42,16 @@ function Select({ value, onValueChange, options, className, label, placeholder, 
           className,
         )}
       >
-        <SelectPrimitive.Value data-slot="select-value" className="min-w-0 truncate">
-          {placeholder}
-        </SelectPrimitive.Value>
+        {/*
+         * `placeholder` gerçek özniteliktir. Çocuk olarak verilirse base-ui onu
+         * koşulsuz basar ve seçili etiketi gölgeler — data-placeholder rengi
+         * tetikleyici sınıfında zaten tanımlı.
+         */}
+        <SelectPrimitive.Value
+          data-slot="select-value"
+          className="min-w-0 truncate"
+          placeholder={placeholder}
+        />
         <SelectPrimitive.Icon className="shrink-0 text-muted-foreground">
           <ChevronDown className="size-3.5" />
         </SelectPrimitive.Icon>

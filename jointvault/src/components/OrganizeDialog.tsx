@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -31,6 +32,24 @@ interface OrganizeDialogProps {
   onChanged: () => void;
 }
 
+type OrganizeKind = 'collection' | 'tag' | 'category';
+
+/* Onay metni tür başına sabittir: üç ayrı yaprak yerine tek yaprak, üç metin. */
+const DELETE_COPY: Record<OrganizeKind, { title: string; description: string }> = {
+  collection: {
+    title: 'Koleksiyon silinsin mi?',
+    description: 'Öğeler silinmez, koleksiyonsuz kalır.',
+  },
+  tag: {
+    title: 'Etiket silinsin mi?',
+    description: 'Etiket tüm fişlerden kaldırılır; fişler silinmez.',
+  },
+  category: {
+    title: 'Kategori silinsin mi?',
+    description: 'Öğeler silinmez, kategorisiz kalır.',
+  },
+};
+
 export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialogProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -42,6 +61,8 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  /* Onay bekleyen silme: hangi tür, hangi kimlik. */
+  const [pendingDelete, setPendingDelete] = useState<{ kind: OrganizeKind; id: string } | null>(null);
 
   const reload = async (): Promise<void> => {
     const [cols, ts, cs] = await Promise.all([listCollections(), listTags(), listCategories()]);
@@ -83,9 +104,14 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
     await changed();
   };
 
-  const handleDeleteCollection = async (id: string): Promise<void> => {
-    if (!window.confirm('Koleksiyonu silmek istiyor musun? Öğeler koleksiyonsuz kalır.')) return;
-    await removeCollection(id);
+  const requestDelete = (kind: OrganizeKind, id: string): void => setPendingDelete({ kind, id });
+
+  const runDelete = async (): Promise<void> => {
+    if (!pendingDelete) return;
+    const { kind, id } = pendingDelete;
+    if (kind === 'collection') await removeCollection(id);
+    else if (kind === 'tag') await removeTag(id);
+    else await removeCategory(id);
     await changed();
   };
 
@@ -105,12 +131,6 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
     await changed();
   };
 
-  const handleDeleteTag = async (id: string): Promise<void> => {
-    if (!window.confirm('Etiketi silmek istiyor musun?')) return;
-    await removeTag(id);
-    await changed();
-  };
-
   const handleCreateCategory = async (): Promise<void> => {
     const name = newCategory.trim();
     if (!name) return;
@@ -127,18 +147,15 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
     await changed();
   };
 
-  const handleDeleteCategory = async (id: string): Promise<void> => {
-    if (!window.confirm('Kategoriyi silmek istiyor musun?')) return;
-    await removeCategory(id);
-    await changed();
-  };
-
-  const startRename = (kind: 'collection' | 'tag' | 'category', id: string, name: string): void => {
+  const startRename = (kind: OrganizeKind, id: string, name: string): void => {
     setEditName(name);
     setEditingCollection(kind === 'collection' ? id : null);
     setEditingTag(kind === 'tag' ? id : null);
     setEditingCategory(kind === 'category' ? id : null);
   };
+
+  /* Yaprak kapalıyken gövde render edilmez; varsayılan yalnızca tip içindir. */
+  const deleteCopy = DELETE_COPY[pendingDelete?.kind ?? 'collection'];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -184,7 +201,7 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={() => void handleDeleteCollection(c.id)}
+                        onClick={() => requestDelete('collection', c.id)}
                         aria-label="Sil"
                       >
                         <Trash2 />
@@ -227,7 +244,7 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={() => void handleDeleteCategory(c.id)}
+                        onClick={() => requestDelete('category', c.id)}
                         aria-label="Sil"
                       >
                         <Trash2 />
@@ -270,7 +287,7 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={() => void handleDeleteTag(t.id)}
+                        onClick={() => requestDelete('tag', t.id)}
                         aria-label="Sil"
                       >
                         <Trash2 />
@@ -283,6 +300,17 @@ export function OrganizeDialog({ open, onOpenChange, onChanged }: OrganizeDialog
           </section>
         </div>
       </DialogContent>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDelete(null);
+        }}
+        title={deleteCopy.title}
+        description={deleteCopy.description}
+        confirmLabel="Sil"
+        onConfirm={() => void runDelete()}
+      />
     </Dialog>
   );
 }

@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Select, type SelectOption } from '@/components/ui/select';
 import { createItem } from '@/lib/db/client';
 import { startDownload, type DownloadKind } from '@/lib/downloads';
 import { detectPlatform } from '@/lib/platform';
@@ -20,6 +21,12 @@ interface DownloadDialogProps {
   onDone: () => void;
   onPickVideo: (target: FormatTarget) => void;
 }
+
+/* İki çıktı biçimi; format seçimi videoda sonraki adıma aittir. */
+const KIND_OPTIONS: readonly SelectOption[] = [
+  { value: 'video', label: 'Video', hint: 'Format seçimi sonraki adımda' },
+  { value: 'audio', label: 'Ses (m4a)' },
+];
 
 export function DownloadDialog({ open, onOpenChange, onDone, onPickVideo }: DownloadDialogProps) {
   const [url, setUrl] = useState('');
@@ -71,15 +78,12 @@ export function DownloadDialog({ open, onOpenChange, onDone, onPickVideo }: Down
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" />
-          <select
+          <Select
+            label="Format"
             value={kind}
-            onChange={(e) => setKind(e.target.value as DownloadKind)}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-            aria-label="Format"
-          >
-            <option value="video">Video (format seçimi sonraki adımda)</option>
-            <option value="audio">Ses (m4a)</option>
-          </select>
+            onValueChange={(v) => setKind(v as DownloadKind)}
+            options={KIND_OPTIONS}
+          />
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>

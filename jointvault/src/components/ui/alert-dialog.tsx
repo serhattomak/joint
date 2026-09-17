@@ -9,6 +9,17 @@ import { Button } from '@/components/ui/button';
  */
 const AlertDialog = AlertDialogPrimitive.Root;
 
+type ConfirmTone = 'destructive' | 'default';
+
+/*
+ * Kırmızı yalnızca hata ve yıkıcı eyleme aittir (DESIGN.md · Damga Kırmızısı).
+ * Yıkıcı olmayan bir onayda birincil eylem ultramarin damgadır.
+ */
+const CONFIRM_VARIANT: Record<ConfirmTone, 'destructive' | 'default'> = {
+  destructive: 'destructive',
+  default: 'default',
+};
+
 function ConfirmDialog({
   open,
   onOpenChange,
@@ -16,6 +27,7 @@ function ConfirmDialog({
   description,
   confirmLabel = 'Onayla',
   cancelLabel = 'Vazgeç',
+  tone = 'destructive',
   onConfirm,
 }: {
   open: boolean;
@@ -24,6 +36,8 @@ function ConfirmDialog({
   description?: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** Yıkıcı olmayan onaylar `default` geçer; kırmızı reservdir. */
+  tone?: ConfirmTone;
   onConfirm: () => void;
 }) {
   return (
@@ -54,7 +68,7 @@ function ConfirmDialog({
               {cancelLabel}
             </AlertDialogPrimitive.Close>
             <AlertDialogPrimitive.Close
-              render={<Button variant="destructive" onClick={onConfirm} />}
+              render={<Button variant={CONFIRM_VARIANT[tone]} onClick={onConfirm} />}
             >
               {confirmLabel}
             </AlertDialogPrimitive.Close>

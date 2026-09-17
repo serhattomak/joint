@@ -3,13 +3,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { exportVault, importVault } from '@/lib/db/client';
-import { Button } from '@/components/ui/button';import {
+import { ConfirmDialog } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Select, type SelectOption } from '@/components/ui/select';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { DiagnosticsPanel } from '@/components/DiagnosticsPanel';
 import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/components/ClipboardWatcher';
@@ -38,6 +41,12 @@ interface SettingsDialogProps {
   onReplayTour: () => void;
 }
 
+/* Kapatma davranışı — dünyada iki durum var, üçüncü yok. */
+const CLOSE_MODES: readonly SelectOption[] = [
+  { value: 'tray', label: 'Tepside çalışmaya devam et' },
+  { value: 'quit', label: 'Tamamen kapat' },
+];
+
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
@@ -63,6 +72,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
   // Konuşma (whisper): model seçimi + lazy indirme
   const [whisperModel, setWhisperModelState] = useState<WhisperModel>(() => getWhisperModel());
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(null);
@@ -125,8 +135,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
   };
 
-  const regenToken = async (): Promise<void> => {
-    if (!window.confirm('Eşleşme anahtarı yenilensin mi? Eklentiye yeniden girmen gerekir.')) return;
+  const runRegenToken = async (): Promise<void> => {
     try {
       const next = await invoke<string>('regenerate_pairing_token');
       setToken(next);
@@ -277,35 +286,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
               />
             </Row>
             <Row label="Kapatma tuşu">
-              <select
+              <Select
+                label="Kapatma davranışı"
+                className="w-52"
                 value={closeMode}
-                onChange={(e) => {
-                  const mode = e.target.value;
+                onValueChange={(mode) => {
                   setCloseMode(mode);
                   void invoke<string>('set_close_behavior', { mode }).catch((err: unknown) =>
                     setDirError(String(err)),
                   );
                 }}
-                aria-label="Kapatma davranışı"
-                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-              >
-                <option value="tray">Tepside çalışmaya devam et</option>
-                <option value="quit">Tamamen kapat</option>
-              </select>
+                options={CLOSE_MODES}
+              />
             </Row>
             <Row label="Sayfa başına">
-              <select
-                value={pageSize}
-                onChange={(e) => onPageSizeChange(Number.parseInt(e.target.value, 10))}
-                aria-label="Sayfa başına"
-                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-              >
-                {pageSizes.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              <Select
+                label="Sayfa başına"
+                className="w-20"
+                value={String(pageSize)}
+                onValueChange={(v) => onPageSizeChange(Number.parseInt(v, 10))}
+                options={pageSizes.map((n) => ({ value: String(n), label: String(n) }))}
+              />
             </Row>
           </div>
         )}
@@ -326,22 +327,17 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {dirError && <p className="text-sm text-destructive">{dirError}</p>}
             </div>
             <Row label="Varsayılan ses kalitesi">
-              <select
+              <Select
+                label="Varsayılan ses kalitesi"
+                className="w-40"
                 value={quality}
-                onChange={(e) => {
-                  const q = e.target.value as DownloadQuality;
-                  setQuality(q);
-                  setDefaultQuality(q);
+                onValueChange={(q) => {
+                  const next = q as DownloadQuality;
+                  setQuality(next);
+                  setDefaultQuality(next);
                 }}
-                aria-label="Varsayılan ses kalitesi"
-                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-              >
-                {QUALITY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                options={QUALITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              />
             </Row>
           </div>
         )}
@@ -388,22 +384,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
             </div>
             {engError && <p className="text-sm text-destructive">{engError}</p>}
             <Row label="Konuşma modeli">
-              <select
+              <Select
+                label="Konuşma modeli"
+                className="w-36"
                 value={whisperModel}
-                onChange={(e) => {
-                  const m = e.target.value as WhisperModel;
-                  setWhisperModelState(m);
-                  setWhisperModel(m);
+                onValueChange={(m) => {
+                  const next = m as WhisperModel;
+                  setWhisperModelState(next);
+                  setWhisperModel(next);
                 }}
-                aria-label="Konuşma modeli"
-                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none"
-              >
-                {WHISPER_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id} (≈{m.sizeMb} MB)
-                  </option>
-                ))}
-              </select>
+                options={WHISPER_MODELS.map((m) => ({
+                  value: m.id,
+                  label: m.id,
+                  hint: `≈${m.sizeMb} MB`,
+                }))}
+              />
             </Row>
             {WHISPER_MODELS.map((m) => {
               const done = whisperStatus?.models[m.id] ?? false;
@@ -478,7 +473,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <Button variant="outline" size="sm" onClick={() => void copyToken()}>
                 Kopyala
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void regenToken()}>
+              <Button variant="outline" size="sm" onClick={() => setConfirmRegenOpen(true)}>
                 Yenile
               </Button>
             </div>
@@ -517,6 +512,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
           </div>
         )}
       </DialogContent>
+
+      <ConfirmDialog
+        open={confirmRegenOpen}
+        onOpenChange={setConfirmRegenOpen}
+        title="Eşleşme anahtarı yenilensin mi?"
+        description="Eski anahtar geçersiz olur; eklentiye yenisini yeniden girmen gerekir."
+        confirmLabel="Yenile"
+        tone="default"
+        onConfirm={() => void runRegenToken()}
+      />
     </Dialog>
   );
 }

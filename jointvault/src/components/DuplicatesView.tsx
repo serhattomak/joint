@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Copy, ScanSearch, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { listItems, removeItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
@@ -32,6 +33,8 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
   const [keep, setKeep] = useState<Record<string, string>>({});
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* Onay isteyen iş: hangi silme akışının onay beklediğini tek yerde tutar. */
+  const [pendingRemove, setPendingRemove] = useState<'selected' | 'orphans' | null>(null);
 
   const scan = async (): Promise<void> => {
     setScanning(true);
@@ -100,7 +103,6 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
       for (const it of g.items) if (it.id !== keepId) victims.set(it.id, it);
     }
     if (victims.size === 0) return;
-    if (!window.confirm(`${victims.size} öğe silinsin mi? Dosyaları da diskten silinir.`)) return;
     setDeleting(true);
     setError(null);
     try {
@@ -128,7 +130,6 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
 
   const removeOrphans = async (): Promise<void> => {
     if (orphanChecked.size === 0) return;
-    if (!window.confirm(`${orphanChecked.size} yetim dosya diskten silinsin mi? Geri alınamaz.`)) return;
     setDeleting(true);
     setError(null);
     try {
@@ -159,6 +160,20 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
     }
     return s.size;
   })();
+
+  /* Onay yaprağının metni bekleyen işe göre türetilir — tek yaprak, iki iş. */
+  const confirmCopy =
+    pendingRemove === 'orphans'
+      ? {
+          title: `${orphanChecked.size} yetim dosya silinsin mi?`,
+          description: 'Yalnızca diskten silinir; kayıtlar etkilenmez. Geri alınamaz.',
+          label: `${orphanChecked.size} dosyayı sil`,
+        }
+      : {
+          title: `${totalVictims} öğe silinsin mi?`,
+          description: 'Kayıtlar ve diskteki dosyaları silinir. Geri alınamaz.',
+          label: `${totalVictims} öğeyi sil`,
+        };
 
   const groupBlock = (
     title: string,
@@ -208,7 +223,7 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
         <h2 className="text-title">Yinelenenler</h2>
         <div className="ml-auto flex items-center gap-2">
           {totalVictims > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => void removeSelected()} disabled={deleting}>
+            <Button variant="destructive" size="sm" onClick={() => setPendingRemove('selected')} disabled={deleting}>
               <Trash2 /> {totalVictims} öğeyi sil
             </Button>
           )}
@@ -239,7 +254,7 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
             Yetim dosyalar ({orphans.length})
           </h3>
           {orphanChecked.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => void removeOrphans()} disabled={deleting}>
+            <Button variant="destructive" size="sm" onClick={() => setPendingRemove('orphans')} disabled={deleting}>
               <Trash2 /> {orphanChecked.size} dosyayı sil
             </Button>
           )}
@@ -271,6 +286,17 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
           </ul>
         )}
       </section>
+
+      <ConfirmDialog
+        open={pendingRemove !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingRemove(null);
+        }}
+        title={confirmCopy.title}
+        description={confirmCopy.description}
+        confirmLabel={confirmCopy.label}
+        onConfirm={() => void (pendingRemove === 'orphans' ? removeOrphans() : removeSelected())}
+      />
     </div>
   );
 }
