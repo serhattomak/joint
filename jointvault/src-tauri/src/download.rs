@@ -149,10 +149,24 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
         _ => return Err("kind must be \"video\" or \"audio\"".to_string()),
     };
     let dir = download_dir(&app)?;
+    let subfolder = payload
+        .get("subfolder")
+        .or_else(|| payload.get("platform"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let target_dir = match subfolder {
+        Some(sub) => {
+            let p = dir.join(sub);
+            let _ = std::fs::create_dir_all(&p);
+            p
+        }
+        None => dir.clone(),
+    };
     // Forward slashes: yt-dlp output templates treat backslash as escape.
     let template = format!(
         "{}/%(title).100s [%(id)s].%(ext)s",
-        dir.to_string_lossy().replace('\\', "/")
+        target_dir.to_string_lossy().replace('\\', "/")
     );
 
     let _guard = QUEUE.lock().await;
@@ -169,6 +183,19 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
         "-o".to_string(),
         template,
     ];
+    let cookies_txt = app.path().app_data_dir().ok().map(|d| d.join("cookies.txt")).filter(|p| p.exists());
+    if let Some(cookie_file) = cookies_txt {
+        args.push("--cookies".to_string());
+        args.push(cookie_file.to_string_lossy().to_string());
+    } else if let Some(browser) = payload
+        .get("cookies_from_browser")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.to_string());
+    }
     if kind == "video" {
         args.push("--merge-output-format".to_string());
         args.push("mp4".to_string());

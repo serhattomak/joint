@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench, Zap } from 'lucide-react';
+import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, RefreshCw, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench, Zap } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { CaptureBar } from '@/components/CaptureBar';
@@ -15,11 +15,13 @@ import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
 import { ItemRecord } from '@/components/ItemRecord';
+import { MediaPlayerModal } from '@/components/MediaPlayerModal';
 import { MergeTool } from '@/components/MergeTool';
 import { GifTool } from '@/components/GifTool';
 import { CollectionsView } from '@/components/CollectionsView';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
 import { AiAssistantView } from '@/components/AiAssistantView';
+import { SyncView } from '@/components/SyncView';
 import { SettingsView, type SettingsTab } from '@/components/SettingsView';
 import { Sidebar, SidebarStrip, type SidebarView } from '@/components/Sidebar';
 import { SilenceTool } from '@/components/SilenceTool';
@@ -65,6 +67,7 @@ function App() {
   const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates' | null>(null);
   const [statsOnly, setStatsOnly] = useState(false);
   const [aiOnly, setAiOnly] = useState(false);
+  const [syncOnly, setSyncOnly] = useState(false);
   const [settingsOnly, setSettingsOnly] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai');
   const [collectionsOnly, setCollectionsOnly] = useState(false);
@@ -86,10 +89,23 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const [record, setRecord] = useState<Item | null>(null);
+  const [recordInitialTab, setRecordInitialTab] = useState<'detail' | 'reader'>('detail');
+  const [playingItem, setPlayingItem] = useState<Item | null>(null);
+  const [playingInitialTime, setPlayingInitialTime] = useState<number>(0);
   // İlk kurulumda tur yerine sihirbaz; mevcut kullanıcıda tur replay yolu aynen durur.
   const [wizardOpen, setWizardOpen] = useState(() => !isOnboarded());
 
   const refresh = useCallback((): void => setRefreshKey((k) => k + 1), []);
+
+  const handlePlayMedia = useCallback((item: Item, initialTime?: number) => {
+    setPlayingInitialTime(initialTime ?? 0);
+    setPlayingItem(item);
+  }, []);
+
+  const openRecord = useCallback((item: Item, tab: 'detail' | 'reader' = 'detail') => {
+    setRecord(item);
+    setRecordInitialTab(tab);
+  }, []);
 
   // Kayıt panelinden başlatılan indirme: satır içi ilerleme ızgarada belirir,
   // bu yüzden burada yalnızca kuyruğa verilir ve liste tazelenir.
@@ -127,7 +143,7 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly && !downloadedOnly;
+  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly && !downloadedOnly && !syncOnly;
 
   const showAll = (): void => {
     setPlatform('all');
@@ -141,6 +157,7 @@ function App() {
     setToolboxTool(null);
     setStatsOnly(false);
     setAiOnly(false);
+    setSyncOnly(false);
     setSettingsOnly(false);
     setCollectionsOnly(false);
   };
@@ -148,6 +165,11 @@ function App() {
   const openAi = (): void => {
     showAll();
     setAiOnly(true);
+  };
+
+  const openSync = (): void => {
+    showAll();
+    setSyncOnly(true);
   };
 
   const openSettings = (initialTab: SettingsTab = 'ai'): void => {
@@ -250,6 +272,7 @@ function App() {
     { id: 'stats', label: 'İstatistikler', icon: <BarChart3 className="size-4" />, run: openStats },
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
     { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
+    { id: 'sync', label: 'Eşitleme Merkezi', icon: <RefreshCw className="size-4" />, run: openSync },
     { id: 'dl', label: 'İndirme Yöneticisi', icon: <Download className="size-4" />, run: goDownloads },
     { id: 'organize', label: 'Koleksiyonlar', icon: <SlidersHorizontal className="size-4" />, run: openCollections },
     { id: 'settings', label: 'Ayarlar', icon: <Settings className="size-4" />, run: () => openSettings() },
@@ -267,6 +290,7 @@ function App() {
     setToolboxTool(null);
     setStatsOnly(false);
     setAiOnly(false);
+    setSyncOnly(false);
     setSettingsOnly(false);
     setCollectionsOnly(false);
   };
@@ -294,6 +318,8 @@ function App() {
       ? 'collections'
       : aiOnly
       ? 'ai'
+      : syncOnly
+      ? 'sync'
       : converterOnly
       ? 'converter'
       : toolboxOnly
@@ -316,11 +342,13 @@ function App() {
       !toolboxOnly &&
       !statsOnly &&
       !aiOnly &&
+      !syncOnly &&
       !settingsOnly &&
       !collectionsOnly,
     onHome: showAll,
     onView: (v: Exclude<SidebarView, 'all'>) => {
       if (v === 'ai') openAi();
+      else if (v === 'sync') openSync();
       else if (v === 'settings') openSettings();
       else if (v === 'collections') openCollections();
       else if (v === 'favorites') goFavorites();
@@ -349,74 +377,71 @@ function App() {
               }}
               semantic={semantic}
               onSemanticToggle={() => setSemantic((s) => !s)}
+              onOpenSync={openSync}
             />
 
             <main className="flex min-h-0 flex-1">
               {isVault ? (
-                <>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <ItemGrid
-                      query={query}
-                      semantic={semantic}
-                      platform={platform}
-                      collectionId={collectionId}
-                      categoryId={categoryId}
-                      tagId={tagId}
-                      favoritesOnly={favoritesOnly}
-                      downloadedOnly={downloadedOnly}
-                      refreshKey={refreshKey}
-                      view={view}
-                      sort={sort}
-                      pageSize={pageSize}
-                      collections={collections}
-                      categories={categories}
-                      tags={tags}
-                      onPageSizeChange={(n) => {
-                        window.localStorage.setItem('jv-page-size', String(n));
-                        setPageSize(n);
-                      }}
-                      onViewChange={switchView}
-                      onSortChange={switchSort}
-                      onPlatform={pickPlatform}
-                      onCollection={pickCollection}
-                      onCategory={pickCategory}
-                      onTag={pickTag}
-                      onOpen={setRecord}
-                      onClearFilters={showAll}
-                      onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
-                      onConvert={(item) => {
-                        if (item.local_path)
-                          setEditorSource({
-                            label: item.title || basename(item.local_path),
-                            inputPath: item.local_path,
-                            itemId: item.id,
-                          });
-                      }}
-                    />
-                  </div>
-                  {record && (
-                    <aside className="fixed inset-0 z-40 flex flex-col border-border bg-background lg:sticky lg:top-14 lg:z-auto lg:h-[calc(100vh-3.5rem)] lg:w-[360px] lg:shrink-0 lg:border-l">
-                      <ItemRecord
-                        item={record}
-                        onClose={() => setRecord(null)}
-                        onChanged={refresh}
-                        onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
-                        onConvert={(item) => {
-                          if (item.local_path)
-                            setEditorSource({
-                              label: item.title || basename(item.local_path),
-                              inputPath: item.local_path,
-                              itemId: item.id,
-                            });
-                        }}
-                        onAudio={startAudio}
-                      />
-                    </aside>
-                  )}
-                </>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <ItemGrid
+                    query={query}
+                    semantic={semantic}
+                    platform={platform}
+                    collectionId={collectionId}
+                    categoryId={categoryId}
+                    tagId={tagId}
+                    favoritesOnly={favoritesOnly}
+                    downloadedOnly={downloadedOnly}
+                    refreshKey={refreshKey}
+                    view={view}
+                    sort={sort}
+                    pageSize={pageSize}
+                    collections={collections}
+                    categories={categories}
+                    tags={tags}
+                    onPageSizeChange={(n) => {
+                      window.localStorage.setItem('jv-page-size', String(n));
+                      setPageSize(n);
+                    }}
+                    onViewChange={switchView}
+                    onSortChange={switchSort}
+                    onPlatform={pickPlatform}
+                    onCollection={pickCollection}
+                    onCategory={pickCategory}
+                    onTag={pickTag}
+                    onOpen={openRecord}
+                    onClearFilters={showAll}
+                    onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
+                    onConvert={(item) => {
+                      if (item.local_path)
+                        setEditorSource({
+                          label: item.title || basename(item.local_path),
+                          inputPath: item.local_path,
+                          itemId: item.id,
+                        });
+                    }}
+                    onPlayMedia={handlePlayMedia}
+                  />
+                </div>
               ) : downloadedOnly ? (
                 <div className="min-w-0 flex-1">
-                  <DownloadsView onClose={showAll} />
+                  <DownloadsView
+                    onClose={showAll}
+                    onOpenItem={(item) => openRecord(item, 'detail')}
+                    onConvert={(item) => {
+                      if (item.local_path)
+                        setEditorSource({
+                          label: item.title || basename(item.local_path),
+                          inputPath: item.local_path,
+                          itemId: item.id,
+                        });
+                    }}
+                    onPlayMedia={handlePlayMedia}
+                  />
+                </div>
+              ) : syncOnly ? (
+                <div className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+                  <SyncView onSyncDone={refresh} />
                 </div>
               ) : aiOnly ? (
                 <div className="min-w-0 flex-1">
@@ -427,7 +452,7 @@ function App() {
                         const found = all.find((i) => i.id === itemId);
                         if (found) {
                           showAll();
-                          setRecord(found);
+                          openRecord(found, 'detail');
                         }
                       });
                     }}
@@ -552,6 +577,42 @@ function App() {
           />
           <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
           <EditorDialog source={editorSource} onClose={() => setEditorSource(null)} onDone={refresh} />
+          {record && (
+            <ItemRecord
+              item={record}
+              initialTab={recordInitialTab}
+              onClose={() => setRecord(null)}
+              onChanged={refresh}
+              onPickVideo={(item) => setFormatTarget({ id: item.id, url: item.url, title: item.title })}
+              onConvert={(item) => {
+                if (item.local_path)
+                  setEditorSource({
+                    label: item.title || basename(item.local_path),
+                    inputPath: item.local_path,
+                    itemId: item.id,
+                  });
+              }}
+              onAudio={startAudio}
+              onPlayMedia={handlePlayMedia}
+            />
+          )}
+          <MediaPlayerModal
+            item={playingItem}
+            initialTime={playingInitialTime}
+            onClose={() => {
+              setPlayingItem(null);
+              setPlayingInitialTime(0);
+            }}
+            onConvert={(item) => {
+              if (item.local_path)
+                setEditorSource({
+                  label: item.title || basename(item.local_path),
+                  inputPath: item.local_path,
+                  itemId: item.id,
+                });
+            }}
+            onOpenItem={(item) => openRecord(item, 'detail')}
+          />
           <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
           <XSyncReviewDialog onDone={refresh} />
           <WelcomeDialog open={tourOpen} onOpenChange={setTourOpen} />

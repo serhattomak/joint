@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { CornerDownLeft, Link2, Plus, Search, Sparkles } from 'lucide-react';
+import { CornerDownLeft, Link2, Plus, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useNotice } from '@/components/ui/notice';
 import { createItem, removeItem, updateItem } from '@/lib/db/client';
 import { PLATFORM_META, detectPlatform, fetchPreview } from '@/lib/platform';
+import { scrapeAndStoreArticle } from '@/lib/scraper';
 
 /*
  * Yakala çubuğu — uygulamanın imza etkileşimi.
@@ -30,9 +31,10 @@ interface CaptureBarProps {
   onDetailed: (url: string) => void;
   semantic?: boolean;
   onSemanticToggle?: () => void;
+  onOpenSync?: () => void;
 }
 
-export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticToggle }: CaptureBarProps) {
+export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticToggle, onOpenSync }: CaptureBarProps) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const notice = useNotice();
@@ -74,6 +76,11 @@ export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticT
           if (!p || (!p.title && !p.thumbnail)) return;
           return updateItem(item.id, { title: p.title, thumbnail: p.thumbnail }).then(onSaved);
         })
+        .catch(() => undefined);
+
+      // Sayfa içeriğini kazı ve FTS5 tam metin indeksine ekle
+      void scrapeAndStoreArticle(item.id, trimmed)
+        .then(onSaved)
         .catch(() => undefined);
     } catch (e) {
       notice.push({
@@ -145,6 +152,19 @@ export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticT
             >
               <Sparkles className={`size-3 ${semantic ? 'text-primary' : 'text-muted-foreground'}`} />
               <span className={semantic ? 'font-medium text-foreground' : 'text-muted-foreground'}>Semantik</span>
+            </Button>
+          )}
+          {onOpenSync && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onOpenSync}
+              className="h-7 gap-1 px-2 text-2xs hover:text-primary"
+              title="Eşitleme Merkezi (X, Instagram, YouTube)"
+            >
+              <RefreshCw className="size-3 text-primary" />
+              <span>Eşitle</span>
             </Button>
           )}
           <span className="hidden shrink-0 items-center gap-1.5 font-mono text-2xs text-muted-foreground sm:flex">

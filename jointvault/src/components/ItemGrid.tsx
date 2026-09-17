@@ -9,6 +9,7 @@ import { ItemCardView, ItemRowView } from '@/components/ItemViews';
 import {
   getAllCategoriesByItem,
   getAllTagsByItem,
+  getArticleItemIds,
   listItemsPage,
   removeItem,
   searchHybridChunks,
@@ -44,8 +45,9 @@ interface ItemGridProps {
   onCollection: (id: string) => void;
   onCategory: (id: string) => void;
   onTag: (id: string) => void;
-  onOpen: (item: Item) => void;
+  onOpen: (item: Item, tab?: 'detail' | 'reader') => void;
   onClearFilters: () => void;
+  onPlayMedia?: (item: Item) => void;
 }
 
 // İlk boyamada sadece ilk dilim kurulur, gerisi boş karelerde büyür.
@@ -84,6 +86,7 @@ export function ItemGrid({
   onClearFilters,
   onPickVideo,
   onConvert,
+  onPlayMedia,
 }: ItemGridProps & { onPickVideo: (item: Item) => void; onConvert: (item: Item) => void }) {
   // Sayfa verisi: filtre+arama SQL'de (LIMIT/OFFSET), ekrana tek sayfa gelir.
   const [rows, setRows] = useState<Item[]>([]);
@@ -94,6 +97,7 @@ export function ItemGrid({
   const [goto, setGoto] = useState<string | null>(null);
   const [tagsByItem, setTagsByItem] = useState<Record<string, Tag[]>>({});
   const [catsByItem, setCatsByItem] = useState<Record<string, Category[]>>({});
+  const [hasArticleIds, setHasArticleIds] = useState<Set<string>>(new Set());
   const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [debouncedQuery, setDebouncedQuery] = useState(query);
@@ -161,10 +165,15 @@ export function ItemGrid({
   useEffect(() => {
     let live = true;
     void (async () => {
-      const [tagMap, catMap] = await Promise.all([getAllTagsByItem(), getAllCategoriesByItem()]);
+      const [tagMap, catMap, articleIds] = await Promise.all([
+        getAllTagsByItem(),
+        getAllCategoriesByItem(),
+        getArticleItemIds(),
+      ]);
       if (!live) return;
       setTagsByItem(tagMap);
       setCatsByItem(catMap);
+      setHasArticleIds(articleIds);
     })();
     return () => {
       live = false;
@@ -344,6 +353,7 @@ export function ItemGrid({
                 collectionLabel={collectionLabel(item.collection_id)}
                 selected={selected.has(item.id)}
                 index={0}
+                hasArticle={hasArticleIds.has(item.id)}
                 onToggle={toggleSelect}
                 onFavorite={handleFavorite}
                 onDelete={(id) => setPendingDelete(rows.find((r) => r.id === id) ?? null)}
@@ -353,6 +363,7 @@ export function ItemGrid({
                 onAudio={handleAudioDownload}
                 onPickVideo={onPickVideo}
                 onConvert={onConvert}
+                onPlayMedia={onPlayMedia}
               />
             ))}
           </div>
@@ -367,6 +378,7 @@ export function ItemGrid({
                 collectionLabel={collectionLabel(item.collection_id)}
                 selected={selected.has(item.id)}
                 index={i}
+                hasArticle={hasArticleIds.has(item.id)}
                 onToggle={toggleSelect}
                 onFavorite={handleFavorite}
                 onDelete={(id) => setPendingDelete(rows.find((r) => r.id === id) ?? null)}
@@ -376,6 +388,7 @@ export function ItemGrid({
                 onAudio={handleAudioDownload}
                 onPickVideo={onPickVideo}
                 onConvert={onConvert}
+                onPlayMedia={onPlayMedia}
               />
             ))}
           </div>

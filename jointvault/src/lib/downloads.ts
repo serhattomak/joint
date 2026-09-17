@@ -45,14 +45,31 @@ export async function startDownload(
   kind: DownloadKind,
   quality: DownloadQuality = '720',
   formatId?: string,
-): Promise<void> {
+  options?: {
+    subfolder?: string;
+    cookiesFromBrowser?: string;
+  },
+): Promise<string | null> {
   await setDownloadState(itemId, { status: 'queued', error: null });
   try {
-    const out = await invoke<string>('download_media', { payload: { item_id: itemId, url, kind, quality, format_id: formatId ?? null } });
-    await setDownloadState(itemId, { status: 'done', local_path: out && out !== 'done' ? out : null, error: null });
+    const out = await invoke<string>('download_media', {
+      payload: {
+        item_id: itemId,
+        url,
+        kind,
+        quality,
+        format_id: formatId ?? null,
+        subfolder: options?.subfolder ?? null,
+        cookies_from_browser: options?.cookiesFromBrowser ?? null,
+      },
+    });
+    const localPath = out && out !== 'done' ? out : null;
+    await setDownloadState(itemId, { status: 'done', local_path: localPath, error: null });
+    return localPath;
   } catch (e) {
     const message = typeof e === 'string' ? e : e instanceof Error ? e.message : 'İndirme başarısız.';
     await setDownloadState(itemId, { status: 'error', error: message });
+    return null;
   }
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Tags, FolderInput, Shapes, Sparkles, Trash2, X } from 'lucide-react';
+import { BookOpen, FolderInput, Shapes, Sparkles, Tags, Trash2, X } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,9 +11,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { Select } from '@/components/ui/select';
 import { TagPicker } from '@/components/TagPicker';
 import { batchCategorizeItems } from '@/lib/ai';
+import { batchScrapeItems } from '@/lib/scraper';
 import {
   createCollection,
   getCategoriesForItem,
@@ -48,12 +50,34 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
   const [aiProgress, setAiProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [aiAutoApply, setAiAutoApply] = useState(true);
   const [aiFinished, setAiFinished] = useState<{ processed: number; applied: number } | null>(null);
+  const [scrapeOpen, setScrapeOpen] = useState(false);
+  const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+  const [scrapeFinished, setScrapeFinished] = useState<{ success: number; errors: number } | null>(null);
   const [tagNames, setTagNames] = useState<string[]>([]);
   const [catNames, setCatNames] = useState<string[]>([]);
   const [collectionId, setCollectionId] = useState('');
   const [newCollection, setNewCollection] = useState('');
   const [collections, setCollections] = useState<Collection[]>([]);
   const [busy, setBusy] = useState(false);
+
+  const handleBatchScrape = async (): Promise<void> => {
+    setBusy(true);
+    setScrapeProgress(null);
+    setScrapeFinished(null);
+    try {
+      const allItems = await listItems();
+      const targetItems = allItems.filter((it) => ids.includes(it.id));
+      const res = await batchScrapeItems(targetItems, (current, total, item) => {
+        setScrapeProgress({ current, total, title: item?.title || item?.url || 'Öğe' });
+      });
+      setScrapeFinished({ success: res.successCount, errors: res.errorCount });
+      onDone();
+    } catch (err) {
+      console.error('[BulkActions] Toplu kazıma hatası:', err);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (tagOpen || moveOpen) void listCollections().then(setCollections);
@@ -182,6 +206,19 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           className="gap-1 text-primary hover:text-primary"
         >
           <Sparkles className="size-4" /> AI ile Düzenle
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setScrapeOpen(true);
+            setScrapeFinished(null);
+            setScrapeProgress(null);
+          }}
+          disabled={busy}
+          className="gap-1 text-emerald-500 hover:text-emerald-400"
+        >
+          <BookOpen className="size-4" /> İçerikleri Çek (Scrape)
         </Button>
         <Button variant="ghost" size="sm" onClick={() => setTagOpen(true)} disabled={busy}>
           <Tags /> Etiket
@@ -342,6 +379,54 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
                 </Button>
                 <Button onClick={() => void handleAiBatch()} disabled={busy}>
                   {busy ? 'İşleniyor…' : 'Analizi Başlat'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Toplu İçerik Kazıma (Scraping) Dialogu */}
+      <Dialog open={scrapeOpen} onOpenChange={setScrapeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Web İçeriklerini Toplu Kazı</DialogTitle>
+            <DialogDescription>
+              Seçili {ids.length} yer iminin web sayfalarına gidilerek makale metinleri, başlıklar, görseller ve videolar kazınacak ve tam metin aramaya indekslenecek.
+            </DialogDescription>
+          </DialogHeader>
+
+          {scrapeProgress && (
+            <div className="flex flex-col gap-2 py-3">
+              <div className="flex justify-between text-xs">
+                <span className="font-medium text-foreground truncate max-w-[280px]">
+                  {scrapeProgress.title}
+                </span>
+                <span className="text-muted-foreground font-mono">
+                  {scrapeProgress.current + 1} / {scrapeProgress.total}
+                </span>
+              </div>
+              <Progress value={((scrapeProgress.current + 1) / scrapeProgress.total) * 100} />
+            </div>
+          )}
+
+          {scrapeFinished && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-400">
+              ✓ {scrapeFinished.success} sayfa başarıyla kazındı ve FTS5 aramasına indekslendi!
+              {scrapeFinished.errors > 0 && ` (${scrapeFinished.errors} hata oluştu)`}
+            </div>
+          )}
+
+          <DialogFooter>
+            {scrapeFinished ? (
+              <Button onClick={() => setScrapeOpen(false)}>Tamamla</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setScrapeOpen(false)} disabled={busy}>
+                  Vazgeç
+                </Button>
+                <Button onClick={() => void handleBatchScrape()} disabled={busy}>
+                  {busy ? 'Kazınıyor…' : 'Kazımayı Başlat'}
                 </Button>
               </>
             )}

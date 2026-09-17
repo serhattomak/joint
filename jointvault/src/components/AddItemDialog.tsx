@@ -30,6 +30,7 @@ import {
 } from '@/lib/db/client';
 import type { Collection, Item } from '@/lib/db/types';
 import { detectPlatform, fetchPreview } from '@/lib/platform';
+import { scrapeAndStoreArticle } from '@/lib/scraper';
 
 interface AddItemDialogProps {
   open: boolean;
@@ -122,6 +123,12 @@ export function AddItemDialog({
       await setTagsForItem(saved.id, tagIds.map((t) => t.id));
       const catIds = await Promise.all(categories.map((name) => getOrCreateCategory(name)));
       await setCategoriesForItem(saved.id, catIds.map((c) => c.id));
+
+      // Arka planda sayfa içeriğini kazı ve FTS5/AI indeksine ekle
+      void scrapeAndStoreArticle(saved.id, saved.url).then(onSaved).catch((err) => {
+        console.warn('[AddItemDialog] Arka plan kazıma uyarısı:', err);
+      });
+
       onSaved();
       onOpenChange(false);
     } catch (e) {

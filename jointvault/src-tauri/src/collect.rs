@@ -18,10 +18,16 @@ struct CollectBody {
     quality: Option<String>,
 }
 
+#[derive(Deserialize, Serialize)]
+struct CookiesBody {
+    content: String,
+}
+
 pub async fn run_bridge(app: tauri::AppHandle) {
     let router = Router::new()
         .route("/collect", post(collect))
         .route("/formats", get(formats))
+        .route("/cookies", post(receive_cookies))
         .with_state(app);
     let Ok(listener) = tokio::net::TcpListener::bind("127.0.0.1:48120").await else {
         return;
@@ -107,6 +113,47 @@ async fn collect(
             (
                 StatusCode::ACCEPTED,
                 Json(serde_json::json!({ "accepted": n })),
+            )
+        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "unauthorized" })),
+        ),
+    }
+}
+
+async fn receive_cookies(
+    State(app): State<tauri::AppHandle>,
+    headers: HeaderMap,
+    Json(body): Json<CookiesBody>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let expected = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|d| std::fs::read_to_string(d.join("bridge_token")).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let got = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim);
+    match (expected, got) {
+        (Some(e), Some(g)) if e == g => {
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                if std::fs::write(dir.join("cookies.txt"), &body.content).is_ok() {
+                    let _ = app.emit("cookies-updated", ());
+                    return (
+                        StatusCode::OK,
+                        Json(serde_json::json!({ "status": "ok", "message": "cookies saved" })),
+                    );
+                }
+            }
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "could not write cookies.txt" })),
             )
         }
         _ => (

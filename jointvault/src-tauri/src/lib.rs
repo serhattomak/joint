@@ -14,6 +14,8 @@ mod tray;
 mod whisper;
 mod ai;
 mod turbo_download;
+mod sync;
+mod scraper;
 
 use tauri::Manager;
 
@@ -73,7 +75,16 @@ pub fn run() {
       turbo_download::turbo_probe_url,
       turbo_download::turbo_start_download,
       turbo_download::turbo_pause_download,
-      turbo_download::turbo_cancel_download
+      turbo_download::turbo_cancel_download,
+      sync::sync_get_config,
+      sync::sync_save_config,
+      sync::sync_check_browser,
+      sync::sync_scan_platform,
+      sync::sync_has_cookies_file,
+      sync::sync_upload_cookies,
+      sync::sync_clear_cookies_file,
+      scraper::scrape_item_content,
+      scraper::cache_article_images
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

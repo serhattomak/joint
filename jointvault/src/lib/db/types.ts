@@ -47,7 +47,7 @@ export interface Category {
 export interface ItemChunkRow {
   id: string;
   item_id: string;
-  chunk_type: 'meta' | 'note' | 'transcript';
+  chunk_type: 'meta' | 'note' | 'transcript' | 'article';
   chunk_text: string;
   start_seconds: number | null;
   end_seconds: number | null;
@@ -60,4 +60,29 @@ export interface HybridSearchResult {
   item: Item;
   score: number;
   matchSource: 'fts' | 'vector' | 'both';
+  fts_rank?: number;
+  vector_sim?: number;
+  combined_score?: number;
+}
+
+export interface ScrapedMedia {
+  url: string;
+  alt?: string | null;
+  media_type: 'image' | 'video';
+  caption?: string | null;
+}
+
+export interface ItemArticle {
+  item_id: string;
+  title: string | null;
+  content_text: string;
+  content_markdown: string | null;
+  author: string | null;
+  published_at: string | null;
+  reading_time_mins: number;
+  lead_image: string | null;
+  images_json: string | null;
+  videos_json: string | null;
+  site_name: string | null;
+  scraped_at: string;
 }

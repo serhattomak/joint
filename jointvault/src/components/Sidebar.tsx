@@ -6,6 +6,7 @@ import {
   Download,
   FolderKanban,
   LayoutGrid,
+  RefreshCw,
   Settings,
   Sparkles,
   Star,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react';
 import { getAiStatus, useAiWarmupStatus } from '@/lib/ai';
 
-export type SidebarView = 'all' | 'favorites' | 'downloads' | 'collections' | 'converter' | 'toolbox' | 'stats' | 'ai' | 'settings';
+export type SidebarView = 'all' | 'favorites' | 'sync' | 'downloads' | 'collections' | 'converter' | 'toolbox' | 'stats' | 'ai' | 'settings';
 
 interface SidebarProps {
   view: SidebarView;
@@ -53,6 +54,7 @@ function useNavEntries(props: SidebarProps): NavEntry[] {
   return [
     { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome },
     viewBtn('favorites', <Star />, 'Favoriler'),
+    viewBtn('sync', <RefreshCw />, 'Eşitleme'),
     viewBtn('downloads', <Download />, 'İndirme Yöneticisi'),
     viewBtn('collections', <FolderKanban />, 'Koleksiyonlar'),
     viewBtn('ai', <Sparkles />, 'Kasa Asistanı'),
@@ -151,11 +153,11 @@ export function Sidebar(props: SidebarProps) {
 
       <nav className="flex flex-1 flex-col gap-0.5 px-2 pb-4">
         <GroupLabel>Kasa</GroupLabel>
-        {entries.slice(0, 4).map((e) => (
+        {entries.slice(0, 5).map((e) => (
           <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
         ))}
         <GroupLabel>Araçlar</GroupLabel>
-        {entries.slice(4, 8).map((e) => (
+        {entries.slice(5, 9).map((e) => (
           <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
         ))}
         <GroupLabel>Sistem</GroupLabel>

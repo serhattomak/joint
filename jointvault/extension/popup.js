@@ -2,47 +2,117 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:48120/collect";
 const endpointEl = document.getElementById("endpoint");
 const tokenEl = document.getElementById("token");
 const statusEl = document.getElementById("status");
+const permBanner = document.getElementById("permBanner");
+const serverDot = document.getElementById("serverDot");
+const serverStatusText = document.getElementById("serverStatusText");
 
+// Load stored settings
 chrome.storage.local.get(
   { endpoint: DEFAULT_ENDPOINT, token: "" },
   (cfg) => {
     endpointEl.value = cfg.endpoint;
     tokenEl.value = cfg.token;
+    checkServerConnection(cfg.endpoint);
   }
 );
 
 endpointEl.addEventListener("change", () => {
-  chrome.storage.local.set({ endpoint: endpointEl.value.trim() || DEFAULT_ENDPOINT });
+  const ep = endpointEl.value.trim() || DEFAULT_ENDPOINT;
+  chrome.storage.local.set({ endpoint: ep });
+  checkServerConnection(ep);
 });
+
 tokenEl.addEventListener("change", () => {
   chrome.storage.local.set({ token: tokenEl.value.trim() });
 });
 
-// Sekme rozeti: hangi adapter çalışacak, popup açılışında göster.
+// Check if chrome.cookies permission is loaded (Chrome 127+ requires extension reload when manifest changes)
+if (!chrome.cookies && permBanner) {
+  permBanner.style.display = "flex";
+}
+
+// Ping JointVault desktop bridge
+async function checkServerConnection(endpoint) {
+  try {
+    const base = (endpoint || DEFAULT_ENDPOINT).replace(/\/collect\/?$/, "/formats?url=ping");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1800);
+    const res = await fetch(base, { signal: controller.signal }).catch(() => null);
+    clearTimeout(timeout);
+    if (res && res.status !== 0) {
+      serverDot.classList.add("online");
+      serverStatusText.textContent = "Kasa Bağlı";
+    } else {
+      serverDot.classList.remove("online");
+      serverStatusText.textContent = "Kasa Kapalı";
+    }
+  } catch {
+    serverDot.classList.remove("online");
+    serverStatusText.textContent = "Kasa Kapalı";
+  }
+}
+
+// Sekme algılayıcı ve rozet güncelleme
 (() => {
-  const sites = [
-    { match: ["youtube.com", "youtu.be"], name: "YouTube", hint: "Playlist sayfasını açıp Topla'ya bas.", dot: "#dc2626" },
-    { match: ["instagram.com"], name: "Instagram", hint: "Kaydedilenler sayfasını açıp Topla'ya bas.", dot: "#db2777" },
-    { match: ["x.com", "twitter.com"], name: "X", hint: "Yer işaretleri sayfasını açıp Topla'ya bas.", dot: "#78716c" },
-  ];
-  const setSite = (name, hint, dot) => {
-    document.getElementById("siteName").textContent = name;
-    document.getElementById("siteHint").textContent = hint;
-    document.getElementById("siteDot").style.background = dot;
-  };
+  const badgeEl = document.getElementById("platformBadge");
+  const nameEl = document.getElementById("siteName");
+  const hintEl = document.getElementById("siteHint");
+
   chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-    const found = sites.find((s) => s.match.some((m) => (tab && tab.url ? tab.url.includes(m) : false)));
-    if (found) setSite(found.name, found.hint, found.dot);
-    else setSite("Bilinmeyen sekme", "Desteklenen bir kaydedilenler sayfası aç.", "#a8a29e");
-  }).catch(() => setSite("Bilinmeyen sekme", "Desteklenen bir kaydedilenler sayfası aç.", "#a8a29e"));
+    const url = tab && tab.url ? tab.url : "";
+
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      badgeEl.textContent = "▶";
+      badgeEl.style.color = "#ef4444";
+      badgeEl.style.borderColor = "rgba(239, 68, 68, 0.3)";
+      if (url.includes("/playlist") || url.includes("list=")) {
+        nameEl.textContent = "YouTube - Oynatma Listesi";
+        hintEl.textContent = "Topla'ya basarak listeyi JointVault'a aktarın.";
+      } else {
+        nameEl.textContent = "YouTube";
+        hintEl.textContent = "Tekil videoyu aşağıdan indirebilir veya playlist açabilirsiniz.";
+      }
+    } else if (url.includes("instagram.com")) {
+      badgeEl.textContent = "IG";
+      badgeEl.style.color = "#ec4899";
+      badgeEl.style.borderColor = "rgba(236, 72, 153, 0.3)";
+      if (url.includes("/saved")) {
+        nameEl.textContent = "Instagram - Kaydedilenler";
+        hintEl.textContent = "Topla'ya basarak tüm kaydedilenleri çekin.";
+      } else {
+        nameEl.textContent = "Instagram";
+        hintEl.textContent = "Kaydedilenler sayfasını açıp Topla'ya basın.";
+      }
+    } else if (url.includes("x.com") || url.includes("twitter.com")) {
+      badgeEl.textContent = "𝕏";
+      badgeEl.style.color = "#f3f4f6";
+      badgeEl.style.borderColor = "rgba(255, 255, 255, 0.25)";
+      if (url.includes("/bookmarks") || url.includes("/i/bookmarks")) {
+        nameEl.textContent = "X (Twitter) - Yer İmleri";
+        hintEl.textContent = "Topla'ya basarak tüm yer imlerini çekin.";
+      } else {
+        nameEl.textContent = "X (Twitter)";
+        hintEl.textContent = "Yer imleri sayfasını (/i/bookmarks) açıp Topla'ya basın.";
+      }
+    } else {
+      badgeEl.textContent = "🌐";
+      badgeEl.style.color = "#9ca3af";
+      badgeEl.style.borderColor = "var(--border)";
+      nameEl.textContent = "Desteklenmeyen Sekme";
+      hintEl.textContent = "X, Instagram veya YouTube sekmesinde çalışır.";
+    }
+  }).catch(() => {
+    nameEl.textContent = "Sekme okunamadı";
+  });
 })();
 
-// Tekil indir: sekmeye göre tekil URL + gerçek kaliteler (yüzen buton yerine).
+// Tekil indirici modülü
 (() => {
   const kindEl = document.getElementById("dl-kind");
   const qualityEl = document.getElementById("dl-quality");
   const btn = document.getElementById("download");
   const hintEl = document.getElementById("dlHint");
+  const badgeEl = document.getElementById("dlBadge");
   let single = null;
 
   const resolveSingle = (url) => {
@@ -60,11 +130,18 @@ tokenEl.addEventListener("change", () => {
   chrome.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
     single = resolveSingle(tab && tab.url ? tab.url : "");
     if (!single) {
-      hintEl.textContent = "Tekil içerik (tweet, post, video) sayfasında aktif olur.";
+      badgeEl.textContent = "Pasif";
+      hintEl.textContent = "Tekil tweet, reel/post veya YouTube videosunda aktif olur.";
       btn.disabled = true;
       return;
     }
-    hintEl.textContent = "Bu sayfadaki içerik review'e düşer.";
+
+    badgeEl.textContent = "Aktif";
+    badgeEl.style.color = "#34d399";
+    badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+    btn.disabled = false;
+    hintEl.textContent = "Bu sayfadaki medya içeriği algılandı. Doğrudan Kasa'ya indirebilirsiniz.";
+
     try {
       const cfg = await new Promise((res) => chrome.storage.local.get({ endpoint: DEFAULT_ENDPOINT, token: "" }, res));
       const base = (cfg.endpoint || DEFAULT_ENDPOINT).replace(/\/collect\/?$/, "/formats");
@@ -72,14 +149,13 @@ tokenEl.addEventListener("change", () => {
         headers: { Authorization: "Bearer " + cfg.token },
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
-      const heights = data.heights || [];
-      qualityEl.innerHTML = heights.length
-        ? heights.map((h) => `<option value="${h}">${h}p</option>`).join("")
-        : `<option value="720">720p</option>`;
-    } catch (e) {
-      qualityEl.innerHTML = `<option value="720">720p</option>`;
-      hintEl.textContent = "Kalite okunamadı, varsayılan 720p: " + (e && e.message ? e.message : e);
+      if (res.ok && Array.isArray(data.heights) && data.heights.length > 0) {
+        qualityEl.innerHTML = data.heights.map((h) => `<option value="${h}">${h}p</option>`).join("");
+      } else {
+        qualityEl.innerHTML = `<option value="720">720p (Varsayılan)</option><option value="1080">1080p</option><option value="480">480p</option>`;
+      }
+    } catch {
+      qualityEl.innerHTML = `<option value="720">720p (Varsayılan)</option><option value="1080">1080p</option>`;
     }
   }).catch(() => {
     btn.disabled = true;
@@ -91,7 +167,7 @@ tokenEl.addEventListener("change", () => {
     const token = tokenEl.value.trim();
     btn.disabled = true;
     statusEl.dataset.state = "busy";
-    statusEl.textContent = "Gönderiliyor…";
+    statusEl.textContent = "İçerik Kasa'ya aktarılıyor…";
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const res = await fetch(endpoint, {
@@ -109,19 +185,23 @@ tokenEl.addEventListener("change", () => {
           quality: qualityEl.value || "720",
         }),
       });
+      if (res.status === 401) {
+        throw new Error("Yetkilendirme hatası (401). Lütfen Ayarlar kısmından JointVault eşleşme anahtarını girin.");
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
       statusEl.dataset.state = "ok";
-      statusEl.textContent = "Kuyruğa alındı (" + (data.accepted ?? 1) + ")";
+      statusEl.textContent = "✅ Başarılı: İçerik Kasa'ya alındı ve indirme başlatıldı!";
     } catch (e) {
       statusEl.dataset.state = "error";
-      statusEl.textContent = "Error: " + (e && e.message ? e.message : e);
+      statusEl.textContent = "Hata: " + (e && e.message ? e.message : e);
     } finally {
       btn.disabled = false;
     }
   });
 })();
 
+// Topla butonu (DOM Scraper)
 document.getElementById("collect").addEventListener("click", async () => {
   const btn = document.getElementById("collect");
   const endpoint = endpointEl.value.trim() || DEFAULT_ENDPOINT;
@@ -129,53 +209,134 @@ document.getElementById("collect").addEventListener("click", async () => {
   chrome.storage.local.set({ endpoint, token });
   btn.disabled = true;
   statusEl.dataset.state = "busy";
-  statusEl.textContent = "Scrolling page, collecting… (keep popup open, large lists take minutes)";
+  statusEl.textContent = "Sayfa taranıyor ve kaydırılıyor… (Pencereyi açık tutun)";
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || tab.id == null) throw new Error("no active tab");
-    // Site router: tab URL decides the adapter, single Collect button.
+    if (!tab || tab.id == null) throw new Error("Aktif sekme bulunamadı.");
+
     const tabUrl = tab.url || "";
     const isYT = tabUrl.includes("youtube.com") || tabUrl.includes("youtu.be");
     if (isYT && !tabUrl.includes("/playlist") && !(tabUrl.includes("/watch") && tabUrl.includes("list="))) {
       statusEl.dataset.state = "error";
-      statusEl.textContent = "Önce bir YouTube playlisti aç (playlist sayfası ya da listeli izleme).";
+      statusEl.textContent = "Önce bir YouTube playlisti açın (oynatma listesi sayfası ya da listeli izleme).";
       return;
     }
+
     const script = isYT
       ? "scrape-youtube.js"
       : tabUrl.includes("instagram.com")
         ? "scrape-instagram.js"
         : "scrape.js";
+
     const injected = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: [script]
+      files: [script],
     });
+
     const raw = (injected && injected[0] && injected[0].result) || [];
-    // Yeni kontrat {items, debug}; eski dizi kontratıyla geriye uyumlu.
     const items = Array.isArray(raw) ? raw : raw.items || [];
     const debug = Array.isArray(raw) ? null : raw.debug;
+
     if (!items.length) {
       statusEl.dataset.state = "error";
-      statusEl.textContent = "No bookmarks found on this page.";
+      statusEl.textContent = "Bu sayfada toplanacak kayıt bulunamadı. Lütfen yer imleri veya kaydedilenler sayfasında olduğunuzdan emin olun.";
       return;
     }
+
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer " + token
+        Authorization: "Bearer " + token,
       },
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items }),
     });
+
+    if (res.status === 401) {
+      throw new Error("Yetkilendirme hatası (401). Lütfen Ayarlar kısmından JointVault eşleşme anahtarını girin.");
+    }
+
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+
+    const accepted = data.accepted != null ? data.accepted : items.length;
     statusEl.dataset.state = "ok";
-    statusEl.textContent =
-      "OK: " + (data.accepted != null ? data.accepted : items.length) + " accepted" +
-      (debug ? ` | ${debug.v ?? "?"} tur=${debug.passes} bos=${debug.emptyHits} h=${debug.startHeight}→${debug.endHeight}` : "");
+    statusEl.textContent = `✅ Başarılı: ${accepted} içerik toplandı ve JointVault'a aktarıldı!`;
   } catch (e) {
     statusEl.dataset.state = "error";
-    statusEl.textContent = "Error: " + (e && e.message ? e.message : e);
+    statusEl.textContent = "Hata: " + (e && e.message ? e.message : e);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Çerezleri Aktar butonu
+document.getElementById("sync-cookies")?.addEventListener("click", async () => {
+  const btn = document.getElementById("sync-cookies");
+  const endpoint = (endpointEl.value.trim() || DEFAULT_ENDPOINT).replace(/\/collect\/?$/, "/cookies");
+  const token = tokenEl.value.trim();
+  btn.disabled = true;
+  statusEl.dataset.state = "busy";
+  statusEl.textContent = "Oturum çerezleri ayıklanıyor…";
+
+  try {
+    if (!chrome.cookies) {
+      if (permBanner) permBanner.style.display = "flex";
+      throw new Error("Yeni izinlerin etkinleşmesi için lütfen chrome://extensions sayfasından JointVault eklentisindeki 🔄 (Yenile) butonuna bir kez tıklayın.");
+    }
+
+    const targets = [
+      { url: "https://x.com", domain: "x.com" },
+      { url: "https://twitter.com", domain: "twitter.com" },
+      { url: "https://www.instagram.com", domain: "instagram.com" },
+      { url: "https://www.youtube.com", domain: "youtube.com" },
+    ];
+
+    let lines = ["# Netscape HTTP Cookie File", "# Created by JointVault Extension", ""];
+    const seen = new Set();
+    let count = 0;
+
+    for (const t of targets) {
+      const byUrl = await chrome.cookies.getAll({ url: t.url }).catch(() => []);
+      const byDomain = await chrome.cookies.getAll({ domain: t.domain }).catch(() => []);
+      for (const c of [...byUrl, ...byDomain]) {
+        const key = `${c.domain}|${c.name}|${c.path}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          count++;
+          const flag = c.domain.startsWith(".") ? "TRUE" : "FALSE";
+          const secure = c.secure ? "TRUE" : "FALSE";
+          const expires = c.expirationDate ? Math.round(c.expirationDate) : Math.round(Date.now() / 1000) + 86400 * 30;
+          lines.push(`${c.domain}\t${flag}\t${c.path}\t${secure}\t${expires}\t${c.name}\t${c.value}`);
+        }
+      }
+    }
+
+    if (count === 0) {
+      throw new Error("Tarayıcınızda aktif X, Instagram veya YouTube oturumu/çerezi bulunamadı.");
+    }
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ content: lines.join("\n") }),
+    });
+
+    if (res.status === 401) {
+      throw new Error("Yetkilendirme hatası (401). Lütfen Ayarlar kısmından JointVault eşleşme anahtarını girin.");
+    }
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || ("HTTP " + res.status));
+    }
+
+    statusEl.dataset.state = "ok";
+    statusEl.textContent = `✅ Başarılı: ${count} çerez JointVault'a aktarıldı! Artık kilitlenme olmadan doğrudan tarama yapabilirsiniz.`;
+  } catch (e) {
+    statusEl.dataset.state = "error";
+    statusEl.textContent = "Hata: " + (e && e.message ? e.message : e);
   } finally {
     btn.disabled = false;
   }

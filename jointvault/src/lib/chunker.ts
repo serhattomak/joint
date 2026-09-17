@@ -8,7 +8,7 @@
 export interface ItemChunk {
   id: string;
   itemId: string;
-  chunkType: 'meta' | 'note' | 'transcript';
+  chunkType: 'meta' | 'note' | 'transcript' | 'article';
   chunkText: string;
   startSeconds?: number | null;
   endSeconds?: number | null;
@@ -189,6 +189,42 @@ export function buildMetaChunks(
       endSeconds: null,
     });
   }
+
+  return chunks;
+}
+
+/**
+ * Düz makale metnini ~150-250 kelimelik paragraflar/bloklar halinde chunk'lara böler.
+ */
+export function chunkArticleText(itemId: string, text: string): ItemChunk[] {
+  if (!text || !text.trim()) return [];
+  const paragraphs = text.split(/\n\s*\n+/);
+  const chunks: ItemChunk[] = [];
+  let currentWords: string[] = [];
+
+  const pushCurrent = () => {
+    if (currentWords.length === 0) return;
+    chunks.push({
+      id: crypto.randomUUID(),
+      itemId,
+      chunkType: 'article',
+      chunkText: currentWords.join(' ').trim(),
+      startSeconds: null,
+      endSeconds: null,
+    });
+    currentWords = [];
+  };
+
+  for (const para of paragraphs) {
+    const words = para.split(/\s+/).filter(Boolean);
+    if (words.length === 0) continue;
+
+    if (currentWords.length + words.length > 250) {
+      pushCurrent();
+    }
+    currentWords.push(...words);
+  }
+  pushCurrent();
 
   return chunks;
 }

@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import {
-  AlertCircle,
   Archive,
   ArrowLeft,
   CheckCircle2,
   Download,
-  ExternalLink,
   FileCode,
   FileText,
   Film,
@@ -15,14 +13,15 @@ import {
   Music,
   Package,
   Pause,
+  Pencil,
   Play,
   Plus,
+  Scissors,
   Search,
   Trash2,
   Zap,
 } from 'lucide-react';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
-import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,17 +33,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import {
   clearCompletedDownloads,
   createDownloadJob,
   detectCategoryFromFilename,
   listDownloadJobs,
+  listDownloadedItems,
   removeDownloadJob,
+  removeItem,
+  setDownloadState,
   updateDownloadJob,
+  updateItem,
   type DownloadCategory,
   type DownloadJob,
   type DownloadStatus,
 } from '@/lib/db/client';
+import type { Item } from '@/lib/db/types';
+import { PLATFORM_META, type Platform } from '@/lib/platform';
 import { formatBytes } from '@/lib/downloads';
 import {
   cancelTurboDownload,
@@ -59,16 +65,26 @@ import {
 
 export interface DownloadsViewProps {
   onClose?: () => void;
+  onOpenItem?: (item: Item) => void;
+  onConvert?: (item: Item) => void;
+  onPlayMedia?: (item: Item) => void;
 }
 
 type FilterStatus = 'all' | 'active' | 'queued' | 'completed' | 'paused' | 'error';
 type FilterCategory = 'all' | DownloadCategory;
 
-export function DownloadsView({ onClose }: DownloadsViewProps) {
+export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: DownloadsViewProps) {
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filtreler
+  // Kasa İndirmeleri
+  const [sourceTab, setSourceTab] = useState<'vault' | 'turbo'>('vault');
+  const [vaultItems, setVaultItems] = useState<Item[]>([]);
+  const [vaultLoading, setVaultLoading] = useState(true);
+  const [vaultSearch, setVaultSearch] = useState('');
+  const [vaultPlatform, setVaultPlatform] = useState('all');
+
+  // Filtreler (Turbo için)
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,7 +97,17 @@ export function DownloadsView({ onClose }: DownloadsViewProps) {
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchUrls, setBatchUrls] = useState('');
   const [batchBusy, setBatchBusy] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+
+  // Kasa Medyası Silme Durumu (Diskten ve/veya Kasadan)
+  const [vaultItemToDelete, setVaultItemToDelete] = useState<Item | null>(null);
+  const [deleteVaultDiskFile, setDeleteVaultDiskFile] = useState(true);
+  const [deleteVaultRecord, setDeleteVaultRecord] = useState(false);
+  const [vaultDeleteBusy, setVaultDeleteBusy] = useState(false);
+
+  // Turbo İndirme Silme Durumu (Diskten ve/veya Kuyruktan)
+  const [turboJobToDelete, setTurboJobToDelete] = useState<DownloadJob | null>(null);
+  const [deleteTurboDiskFile, setDeleteTurboDiskFile] = useState(true);
+  const [turboDeleteBusy, setTurboDeleteBusy] = useState(false);
 
   const reloadJobs = async () => {
     try {
@@ -93,8 +119,23 @@ export function DownloadsView({ onClose }: DownloadsViewProps) {
     }
   };
 
+  const reloadVaultItems = async () => {
+    try {
+      setVaultLoading(true);
+      const items = await listDownloadedItems();
+      setVaultItems(items);
+      // Eğer Kasa'da henüz indirme yok ama turbo kuyruğunda varsa turbo sekmesine geç
+      if (items.length === 0 && jobs.length > 0) {
+        setSourceTab('turbo');
+      }
+    } finally {
+      setVaultLoading(false);
+    }
+  };
+
   useEffect(() => {
     void reloadJobs();
+    void reloadVaultItems();
   }, []);
 
   // Canlı İlerleme Dinleyicisi
@@ -159,11 +200,67 @@ export function DownloadsView({ onClose }: DownloadsViewProps) {
     });
   };
 
-  const handleCancel = async (jobId: string) => {
-    await cancelTurboDownload(jobId);
-    await removeDownloadJob(jobId);
-    setJobs((prev) => prev.filter((j) => j.id !== jobId));
-    setPendingDelete(null);
+  // Kasa Medyası Silme İşlemi (Diskten ve/veya Kasadan)
+  const handleConfirmDeleteVaultItem = async () => {
+    if (!vaultItemToDelete) return;
+    setVaultDeleteBusy(true);
+    try {
+      // 1. Bilgisayardan dosyayı sil
+      if (deleteVaultDiskFile) {
+        if (vaultItemToDelete.local_path) {
+          await invoke('delete_file', { path: vaultItemToDelete.local_path }).catch((err) => {
+            console.warn('[delete_file] Yerel dosya silinemedi (zaten silinmiş olabilir):', err);
+          });
+        }
+        if (vaultItemToDelete.converted_path) {
+          await invoke('delete_file', { path: vaultItemToDelete.converted_path }).catch((err) => {
+            console.warn('[delete_file] Dönüştürülen dosya silinemedi:', err);
+          });
+        }
+      }
+
+      // 2. Kasa kaydını tamamen sil veya indirme durumunu sıfırla
+      if (deleteVaultRecord) {
+        await removeItem(vaultItemToDelete.id);
+      } else {
+        await setDownloadState(vaultItemToDelete.id, {
+          status: 'none',
+          local_path: null,
+          error: null,
+        });
+        await updateItem(vaultItemToDelete.id, {
+          converted_path: null,
+        });
+      }
+
+      setVaultItemToDelete(null);
+      await reloadVaultItems();
+    } catch (err) {
+      console.error('[delete_vault_item]', err);
+    } finally {
+      setVaultDeleteBusy(false);
+    }
+  };
+
+  // Turbo İndirme Silme İşlemi (Diskten ve/veya Kuyruktan)
+  const handleConfirmDeleteTurboJob = async () => {
+    if (!turboJobToDelete) return;
+    setTurboDeleteBusy(true);
+    try {
+      if (deleteTurboDiskFile && turboJobToDelete.destination_path) {
+        await invoke('delete_file', { path: turboJobToDelete.destination_path }).catch((err) => {
+          console.warn('[delete_file] Turbo hedef dosyası silinemedi:', err);
+        });
+      }
+      await cancelTurboDownload(turboJobToDelete.id);
+      await removeDownloadJob(turboJobToDelete.id);
+      setJobs((prev) => prev.filter((j) => j.id !== turboJobToDelete.id));
+      setTurboJobToDelete(null);
+    } catch (err) {
+      console.error('[delete_turbo_job]', err);
+    } finally {
+      setTurboDeleteBusy(false);
+    }
   };
 
   const handlePauseAll = async () => {
@@ -240,6 +337,21 @@ export function DownloadsView({ onClose }: DownloadsViewProps) {
     });
   }, [jobs, statusFilter, categoryFilter, searchQuery]);
 
+  const filteredVaultItems = useMemo(() => {
+    return vaultItems.filter((item) => {
+      if (vaultPlatform !== 'all' && item.platform !== vaultPlatform) return false;
+      if (vaultSearch.trim()) {
+        const q = vaultSearch.toLowerCase();
+        return (
+          (item.title?.toLowerCase().includes(q) ?? false) ||
+          item.url.toLowerCase().includes(q) ||
+          (item.local_path?.toLowerCase().includes(q) ?? false)
+        );
+      }
+      return true;
+    });
+  }, [vaultItems, vaultPlatform, vaultSearch]);
+
   const getCategoryIcon = (cat: DownloadCategory) => {
     switch (cat) {
       case 'video':
@@ -259,40 +371,77 @@ export function DownloadsView({ onClose }: DownloadsViewProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-6 py-8 text-foreground md:px-10">
-      {/* ÜST BAŞLIK VE HIZ GÖSTERGESİ */}
+      {/* ÜST BAŞLIK, KAYNAK SEKMELERİ VE AKSİYONLAR */}
       <div className="mb-6 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2.5">
             <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Zap className="size-5" />
+              <Download className="size-5" />
             </span>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight">İndirme Yöneticisi</h1>
               <Badge variant="outline" className="text-xs font-mono font-normal">
-                IDM Turbo Engine
+                {sourceTab === 'vault' ? 'Kasa Medyaları' : 'Turbo Engine'}
               </Badge>
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Çok kanallı paralel parçalı indirme motoru ile dosyalarınızı en yüksek hızda indirin ve yönetin.
+            {sourceTab === 'vault'
+              ? "Kasa'daki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
+              : 'Çok kanallı paralel parçalı indirme motoru ile dosyalarınızı en yüksek hızda indirin ve yönetin.'}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Toplam Canlı Hız */}
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3.5 py-1.5 shadow-xs">
-            <span
-              className={`size-2.5 rounded-full ${
-                activeCount > 0 ? 'animate-pulse bg-emerald-500' : 'bg-muted-foreground/30'
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Ana Kaynak Seçici: Kasa Medyaları vs Turbo İndirmeler */}
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setSourceTab('vault')}
+              className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium transition ${
+                sourceTab === 'vault'
+                  ? 'bg-card text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
-            />
-            <div className="flex flex-col">
-              <span className="text-2xs text-muted-foreground leading-none">Toplam Hız</span>
-              <span className="font-mono text-sm font-semibold text-foreground">
-                {formatSpeed(totalSpeed)}
+            >
+              <Film className="size-3.5 text-primary" />
+              <span>Kasa Medyaları</span>
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.2 font-mono text-2xs text-primary font-semibold">
+                {vaultItems.length}
               </span>
-            </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSourceTab('turbo')}
+              className={`flex items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium transition ${
+                sourceTab === 'turbo'
+                  ? 'bg-card text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Zap className="size-3.5 text-amber-500" />
+              <span>Çok Kanallı (Turbo)</span>
+              <span className="rounded-full bg-muted px-1.5 py-0.2 font-mono text-2xs">
+                {jobs.length}
+              </span>
+            </button>
           </div>
+
+          {sourceTab === 'turbo' && (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3.5 py-1.5 shadow-xs">
+              <span
+                className={`size-2.5 rounded-full ${
+                  activeCount > 0 ? 'animate-pulse bg-emerald-500' : 'bg-muted-foreground/30'
+                }`}
+              />
+              <div className="flex flex-col">
+                <span className="text-2xs text-muted-foreground leading-none">Toplam Hız</span>
+                <span className="font-mono text-sm font-semibold text-foreground">
+                  {formatSpeed(totalSpeed)}
+                </span>
+              </div>
+            </div>
+          )}
 
           {onClose && (
             <Button variant="outline" size="sm" onClick={onClose}>
@@ -302,317 +451,470 @@ export function DownloadsView({ onClose }: DownloadsViewProps) {
         </div>
       </div>
 
-      {/* ARAÇ ÇUBUĞU (AKSIYON BUTONLARI) */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => setQuickOpen(true)} className="gap-1.5 shadow-xs">
-            <Plus className="size-4" /> Yeni İndirme Ekle
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)} className="gap-1.5">
-            <Download className="size-3.5" /> Toplu Link Ekle
-          </Button>
-          <div className="h-4 w-px bg-border mx-1" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void handleResumeAll()}
-            disabled={jobs.filter((j) => j.status === 'paused' || j.status === 'queued').length === 0}
-            className="gap-1.5 text-xs"
-          >
-            <Play className="size-3.5 text-emerald-500" /> Tümünü Başlat
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void handlePauseAll()}
-            disabled={activeCount === 0}
-            className="gap-1.5 text-xs"
-          >
-            <Pause className="size-3.5 text-amber-500" /> Tümünü Duraklat
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void handleClearCompleted()}
-            disabled={completedCount === 0}
-            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Tamamlananları Temizle
-          </Button>
-        </div>
+      {sourceTab === 'vault' ? (
+        <div className="flex flex-col gap-5">
+          {/* Arama ve Platform Filtreleri */}
+          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={vaultSearch}
+                onChange={(e) => setVaultSearch(e.target.value)}
+                placeholder="Kasa indirmelerinde ara (başlık, URL, dosya)…"
+                className="pl-9 text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto text-xs w-full sm:w-auto">
+              {[
+                { id: 'all', label: 'Tüm Platformlar' },
+                { id: 'youtube', label: 'YouTube' },
+                { id: 'x', label: 'X (Twitter)' },
+                { id: 'instagram', label: 'Instagram' },
+                { id: 'other', label: 'Diğer Web' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setVaultPlatform(p.id)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition whitespace-nowrap ${
+                    vaultPlatform === p.id
+                      ? 'bg-primary text-primary-foreground shadow-2xs'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* Canlı Arama */}
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="İndirmelerde ara…"
-            className="pl-9 text-sm"
-          />
-        </div>
-      </div>
-
-      {/* SEKME VE KATEGORİ FİLTRELERİ */}
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-4">
-        {/* Durum Sekmeleri */}
-        <div className="flex items-center gap-1 overflow-x-auto p-1 bg-muted/40 rounded-lg border border-border">
-          {[
-            { id: 'all', label: 'Tümü', count: jobs.length },
-            { id: 'active', label: 'İndiriliyor', count: activeCount },
-            { id: 'queued', label: 'Kuyrukta', count: queuedCount },
-            { id: 'completed', label: 'Tamamlandı', count: completedCount },
-            { id: 'paused', label: 'Duraklatıldı', count: jobs.filter((j) => j.status === 'paused').length },
-            { id: 'error', label: 'Hatalı', count: jobs.filter((j) => j.status === 'error').length },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setStatusFilter(tab.id as FilterStatus)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition whitespace-nowrap ${
-                statusFilter === tab.id
-                  ? 'bg-card text-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span>{tab.label}</span>
-              <span className="rounded bg-muted px-1.5 py-0.2 font-mono text-2xs">
-                {tab.count}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Kategori Filtresi */}
-        <div className="flex items-center gap-1 overflow-x-auto text-xs">
-          {[
-            { id: 'all', label: 'Tüm Dosyalar' },
-            { id: 'video', label: 'Videolar' },
-            { id: 'audio', label: 'Ses' },
-            { id: 'archive', label: 'Sıkıştırılmış' },
-            { id: 'document', label: 'Belgeler' },
-            { id: 'program', label: 'Programlar' },
-          ].map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setCategoryFilter(c.id as FilterCategory)}
-              className={`rounded-full px-2.5 py-1 transition ${
-                categoryFilter === c.id
-                  ? 'bg-primary/15 font-semibold text-primary'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* İNDİRME LİSTESİ / KARTLARI */}
-      {loading ? (
-        <p className="py-16 text-center text-sm text-muted-foreground">İndirmeler yükleniyor…</p>
-      ) : filteredJobs.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-16 text-center">
-          <Download className="mx-auto mb-3 size-10 text-muted-foreground/50" />
-          <p className="text-base font-semibold">Aktif veya kayıtlı indirme bulunamadı</p>
-          <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
-            Yukarıdaki '+ Yeni İndirme Ekle' butonuna tıklayarak veya panoya dosya bağlantısı kopyalayarak çok kanallı indirmeyi başlatabilirsiniz.
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {filteredJobs.map((job) => {
-            const pct =
-              job.file_size > 0
-                ? Math.min(100, (job.downloaded_size / job.file_size) * 100)
-                : job.status === 'completed'
-                ? 100
-                : 0;
-
-            const chunks = liveChunks[job.id] ?? [];
-
-            return (
-              <div
-                key={job.id}
-                className="group flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xs transition hover:border-primary/40"
-              >
-                {/* ÜST SATIR: İKON + DOSYA ADI + METRİKLER + AKSİYONLAR */}
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted/60 border border-border/40">
-                      {getCategoryIcon(job.category)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold leading-tight text-foreground" title={job.filename}>
-                          {job.filename}
-                        </span>
-                        {job.threads > 1 && (
-                          <Badge variant="outline" className="font-mono text-2xs px-1.5 py-0">
-                            {job.threads} Kanal
-                          </Badge>
-                        )}
+          {/* İndirme Listesi / Kartları */}
+          {vaultLoading ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">Kasa indirmeleri yükleniyor…</p>
+          ) : filteredVaultItems.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-14 text-center bg-card/30">
+              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Film className="size-7" />
+              </div>
+              <h3 className="text-lg font-semibold">
+                {vaultItems.length === 0 ? 'Henüz İndirilmiş Medya Yok' : 'Filtreye Uygun Medya Bulunamadı'}
+              </h3>
+              <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                {vaultItems.length === 0
+                  ? "Kasa (Tümü) ekranındaki herhangi bir YouTube, X veya video kartının sağ altındaki İndir butonuna tıklayarak medyayı bilgisayarınıza indirebilirsiniz. İndirilen tüm video ve ses dosyaları burada listelenir."
+                  : 'Farklı bir arama terimi veya platform filtresi deneyebilirsiniz.'}
+              </p>
+              {vaultItems.length === 0 && onClose && (
+                <div className="mt-6 flex justify-center">
+                  <Button onClick={onClose} className="gap-2">
+                    <ArrowLeft className="size-4" /> Kasa'ya Dön ve Medyaları İndir
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredVaultItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="group flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs transition hover:border-primary/40 hover:shadow-md"
+                >
+                  <div className="relative aspect-video w-full overflow-hidden bg-muted/60 border-b border-border">
+                    {item.thumbnail ? (
+                      <img src={item.thumbnail} alt="" className="h-full w-full object-cover group-hover:scale-102 transition-transform duration-200" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center font-mono text-2xs text-muted-foreground uppercase">
+                        Kapak Yok
                       </div>
-                      <p className="truncate text-2xs font-mono text-muted-foreground/80 mt-0.5" title={job.url}>
-                        {job.url}
-                      </p>
-                    </div>
+                    )}
+                    <span className="absolute top-2 left-2 rounded-md bg-black/75 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-xs">
+                      {PLATFORM_META[item.platform as Platform]?.label ?? item.platform}
+                    </span>
+                    <span className="absolute top-2 right-2 rounded-md bg-emerald-600/90 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-xs flex items-center gap-1">
+                      <CheckCircle2 className="size-2.5" /> İndirildi
+                    </span>
                   </div>
 
-                  {/* Durum & Metrikler */}
-                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                    <div className="flex flex-col items-end text-right font-mono text-xs">
-                      {job.status === 'active' ? (
-                        <>
-                          <span className="font-semibold text-primary">{formatSpeed(job.speed_bps)}</span>
-                          <span className="text-2xs text-muted-foreground">Kalan: {formatEta(job.eta_secs)}</span>
-                        </>
-                      ) : job.status === 'completed' ? (
-                        <span className="flex items-center gap-1 text-emerald-500 font-medium text-xs">
-                          <CheckCircle2 className="size-3.5" /> Tamamlandı
-                        </span>
-                      ) : job.status === 'paused' ? (
-                        <span className="text-amber-500 text-xs font-medium">Duraklatıldı</span>
-                      ) : job.status === 'queued' ? (
-                        <span className="text-muted-foreground text-xs font-medium">Kuyrukta</span>
-                      ) : (
-                        <span className="text-destructive text-xs font-medium flex items-center gap-1">
-                          <AlertCircle className="size-3" /> Hata
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex flex-1 flex-col p-4 gap-2.5">
+                    <h4
+                      className="line-clamp-2 text-sm font-semibold leading-snug cursor-pointer hover:text-primary transition-colors"
+                      title={item.title ?? item.url}
+                      onClick={() => onOpenItem?.(item)}
+                    >
+                      {item.title || item.url}
+                    </h4>
 
-                    {/* Aksiyon Düğmeleri */}
-                    <div className="flex items-center gap-1">
-                      {job.status === 'active' && (
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="size-8 text-amber-500 hover:text-amber-600"
-                          onClick={() => void handlePause(job)}
-                          title="Duraklat"
-                        >
-                          <Pause className="size-3.5" />
-                        </Button>
-                      )}
+                    {item.local_path && (
+                      <p
+                        className="truncate font-mono text-2xs text-muted-foreground bg-muted/70 px-2 py-1 rounded border border-border/40"
+                        title={item.local_path}
+                      >
+                        {item.local_path}
+                      </p>
+                    )}
 
-                      {(job.status === 'paused' || job.status === 'queued' || job.status === 'error') && (
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="size-8 text-emerald-500 hover:text-emerald-600"
-                          onClick={() => void handleResume(job)}
-                          title="Devam Et"
-                        >
-                          <Play className="size-3.5" />
-                        </Button>
-                      )}
-
-                      {job.status === 'completed' && (
+                    <div className="mt-auto pt-3 flex items-center gap-2 border-t border-border">
+                      {item.local_path && (
                         <>
                           <Button
-                            size="icon"
+                            size="sm"
                             variant="outline"
-                            className="size-8 text-primary"
-                            onClick={() => void openPath(job.destination_path)}
-                            title="Dosyayı Aç"
+                            className="gap-1.5 text-xs h-8 flex-1 font-medium"
+                            onClick={() => {
+                              if (onPlayMedia) {
+                                onPlayMedia(item);
+                              } else {
+                                void openPath(item.local_path!);
+                              }
+                            }}
                           >
-                            <ExternalLink className="size-3.5" />
+                            <Play className="size-3 text-emerald-500 fill-emerald-500" /> Oynat
                           </Button>
                           <Button
-                            size="icon"
-                            variant="outline"
-                            className="size-8 text-muted-foreground hover:text-foreground"
-                            onClick={() => void revealItemInDir(job.destination_path)}
-                            title="Klasörde Göster"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            title="Windows Gezgini'nde Göster"
+                            onClick={() => void revealItemInDir(item.local_path!)}
                           >
-                            <FolderOpen className="size-3.5" />
+                            <FolderOpen className="size-3.5 text-muted-foreground" />
                           </Button>
                         </>
                       )}
-
+                      {onConvert && item.local_path && (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          title="Dönüştür / Kırp"
+                          onClick={() => onConvert(item)}
+                        >
+                          <Scissors className="size-3.5 text-muted-foreground" />
+                        </Button>
+                      )}
+                      {onOpenItem && (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          title="Merkezi Fişi Aç"
+                          onClick={() => onOpenItem(item)}
+                        >
+                          <Pencil className="size-3.5 text-muted-foreground" />
+                        </Button>
+                      )}
                       <Button
-                        size="icon"
+                        size="icon-sm"
                         variant="ghost"
-                        className="size-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => setPendingDelete(job.id)}
-                        title="İndirmeyi Sil"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        title="Medyayı Sil (Listeden / Bilgisayardan)"
+                        onClick={() => {
+                          setVaultItemToDelete(item);
+                          setDeleteVaultDiskFile(true);
+                          setDeleteVaultRecord(false);
+                        }}
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                   </div>
                 </div>
-
-                {/* İLERLEME ÇUBUĞU & BOYUT BİLGİSİ */}
-                <div className="flex flex-col gap-1.5">
-                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full transition-all duration-300 ${
-                        job.status === 'completed'
-                          ? 'bg-emerald-500'
-                          : job.status === 'paused'
-                          ? 'bg-amber-500'
-                          : job.status === 'error'
-                          ? 'bg-destructive'
-                          : 'bg-primary'
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between font-mono text-2xs text-muted-foreground">
-                    <span>
-                      {formatBytes(job.downloaded_size)} /{' '}
-                      {job.file_size > 0 ? formatBytes(job.file_size) : 'Bilinmeyen'} (%{pct.toFixed(1)})
-                    </span>
-                    <span className="truncate max-w-[280px]" title={job.destination_path}>
-                      {job.destination_path}
-                    </span>
-                  </div>
-                </div>
-
-                {/* IDM SEGMENT / PARALEL KANAL DOLUM GÖSTERGESİ */}
-                {job.status === 'active' && chunks.length > 1 && (
-                  <div className="flex flex-col gap-1 rounded-lg border border-border/50 bg-muted/20 p-2">
-                    <div className="flex items-center justify-between text-2xs text-muted-foreground">
-                      <span className="font-semibold text-foreground flex items-center gap-1">
-                        <Zap className="size-3 text-primary" /> Çok Kanallı Parça Akışı ({chunks.length} Segment)
-                      </span>
-                      <span>IDM Paralel Hızlandırıcı</span>
-                    </div>
-
-                    <div className="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-16 gap-1 mt-1">
-                      {chunks.map((ch) => (
-                        <div
-                          key={ch.id}
-                          className="flex flex-col items-center gap-0.5 rounded bg-card p-1 border border-border/60"
-                        >
-                          <div className="relative h-6 w-full overflow-hidden rounded bg-muted/50">
-                            <div
-                              className="absolute bottom-0 left-0 right-0 bg-primary/80 transition-all duration-200"
-                              style={{ height: `${ch.percent}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-3xs text-muted-foreground">
-                            {Math.round(ch.percent)}%
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {job.error_message && (
-                  <p className="text-xs text-destructive bg-destructive/10 p-2 rounded-md font-mono">
-                    Hata: {job.error_message}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          )}
         </div>
+      ) : (
+        <>
+          {/* ARAÇ ÇUBUĞU (AKSIYON BUTONLARI) */}
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={() => setQuickOpen(true)} className="gap-1.5 shadow-xs">
+                <Plus className="size-4" /> Yeni İndirme Ekle
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)} className="gap-1.5">
+                <Download className="size-3.5" /> Toplu Link Ekle
+              </Button>
+              <div className="h-4 w-px bg-border mx-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleResumeAll()}
+                disabled={jobs.filter((j) => j.status === 'paused' || j.status === 'queued').length === 0}
+                className="gap-1.5 text-xs"
+              >
+                <Play className="size-3.5 text-emerald-500" /> Tümünü Başlat
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void handlePauseAll()}
+                disabled={activeCount === 0}
+                className="gap-1.5 text-xs"
+              >
+                <Pause className="size-3.5 text-amber-500" /> Tümünü Duraklat
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleClearCompleted()}
+                disabled={completedCount === 0}
+                className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Tamamlananları Temizle
+              </Button>
+            </div>
+
+            {/* Canlı Arama */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="İndirmelerde ara…"
+                className="pl-9 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* SEKME VE KATEGORİ FİLTRELERİ */}
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-4">
+            {/* Durum Sekmeleri */}
+            <div className="flex items-center gap-1 overflow-x-auto p-1 bg-muted/40 rounded-lg border border-border">
+              {[
+                { id: 'all', label: 'Tümü', count: jobs.length },
+                { id: 'active', label: 'İndiriliyor', count: activeCount },
+                { id: 'queued', label: 'Kuyrukta', count: queuedCount },
+                { id: 'completed', label: 'Tamamlandı', count: completedCount },
+                { id: 'paused', label: 'Duraklatıldı', count: jobs.filter((j) => j.status === 'paused').length },
+                { id: 'error', label: 'Hatalı', count: jobs.filter((j) => j.status === 'error').length },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setStatusFilter(tab.id as FilterStatus)}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition whitespace-nowrap ${
+                    statusFilter === tab.id
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className="rounded bg-muted px-1.5 py-0.2 font-mono text-2xs">
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Kategori Filtresi */}
+            <div className="flex items-center gap-1 overflow-x-auto text-xs">
+              {[
+                { id: 'all', label: 'Tüm Dosyalar' },
+                { id: 'video', label: 'Videolar' },
+                { id: 'audio', label: 'Ses' },
+                { id: 'archive', label: 'Sıkıştırılmış' },
+                { id: 'document', label: 'Belgeler' },
+                { id: 'program', label: 'Programlar' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCategoryFilter(c.id as FilterCategory)}
+                  className={`rounded-full px-2.5 py-1 transition ${
+                    categoryFilter === c.id
+                      ? 'bg-primary/15 font-semibold text-primary'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* İNDİRME LİSTESİ / KARTLARI */}
+          {loading ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">İndirmeler yükleniyor…</p>
+          ) : filteredJobs.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-16 text-center">
+              <Download className="mx-auto mb-3 size-10 text-muted-foreground/50" />
+              <p className="text-base font-semibold">Aktif veya kayıtlı indirme bulunamadı</p>
+              <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
+                Yukarıdaki '+ Yeni İndirme Ekle' butonuna tıklayarak veya panoya dosya bağlantısı kopyalayarak çok kanallı indirmeyi başlatabilirsiniz.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {filteredJobs.map((job) => {
+                const pct =
+                  job.file_size > 0
+                    ? Math.min(100, (job.downloaded_size / job.file_size) * 100)
+                    : job.status === 'completed'
+                    ? 100
+                    : 0;
+
+                const chunks = liveChunks[job.id] ?? [];
+
+                return (
+                  <div
+                    key={job.id}
+                    className="group flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xs transition hover:border-primary/40"
+                  >
+                    {/* ÜST SATIR: İKON + DOSYA ADI + METRİKLER + AKSİYONLAR */}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted/60 border border-border/40">
+                          {getCategoryIcon(job.category)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-semibold leading-tight text-foreground" title={job.filename}>
+                              {job.filename}
+                            </span>
+                            {job.threads > 1 && (
+                              <Badge variant="outline" className="text-3xs font-mono py-0 px-1 text-muted-foreground">
+                                {job.threads} parça
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="truncate text-micro text-muted-foreground font-mono mt-0.5" title={job.url}>
+                            {job.url}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Durum & Butonlar */}
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {job.status === 'active' && formatSpeed(job.speed_bps)}
+                          {job.status === 'active' && job.eta_secs > 0 && ` · ${formatEta(job.eta_secs)}`}
+                        </span>
+
+                        {job.status === 'completed' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1 text-xs"
+                            onClick={() => void openPath(job.destination_path)}
+                          >
+                            <FolderOpen className="size-3.5" /> Dosyayı Aç
+                          </Button>
+                        )}
+
+                        {job.status === 'active' && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            onClick={() => void handlePause(job)}
+                            title="Duraklat"
+                          >
+                            <Pause className="size-3.5 text-amber-500" />
+                          </Button>
+                        )}
+
+                        {job.status === 'paused' && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            onClick={() => void handleResume(job)}
+                            title="Devam Et"
+                          >
+                            <Play className="size-3.5 text-emerald-500" />
+                          </Button>
+                        )}
+
+                        {job.status === 'error' && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            onClick={() => void handleResume(job)}
+                            title="Tekrar Dene"
+                          >
+                            <Play className="size-3.5 text-primary" />
+                          </Button>
+                        )}
+
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setTurboJobToDelete(job);
+                            setDeleteTurboDiskFile(true);
+                          }}
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          title="İndirmeyi Sil (Listeden / Bilgisayardan)"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* İLERLEME ÇUBUĞU */}
+                    <div className="flex flex-col gap-1">
+                      <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            job.status === 'completed'
+                              ? 'bg-emerald-500'
+                              : job.status === 'paused'
+                              ? 'bg-amber-500'
+                              : job.status === 'error'
+                              ? 'bg-destructive'
+                              : 'bg-primary'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between font-mono text-2xs text-muted-foreground">
+                        <span>
+                          {formatBytes(job.downloaded_size)} /{' '}
+                          {job.file_size > 0 ? formatBytes(job.file_size) : 'Bilinmeyen'} (%{pct.toFixed(1)})
+                        </span>
+                        <span className="truncate max-w-[280px]" title={job.destination_path}>
+                          {job.destination_path}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* PARÇA (CHUNK) GÖRSELLEŞTİRME (SADECE AKTİFSE) */}
+                    {job.status === 'active' && chunks.length > 0 && (
+                      <div className="mt-1 flex flex-col gap-1 border-t border-border/40 pt-2">
+                        <span className="text-3xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Parça Durumları ({chunks.length} iş parçacığı):
+                        </span>
+                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                          {chunks.map((ch) => (
+                            <div
+                              key={ch.id}
+                              className="flex flex-col gap-0.5 rounded bg-muted/40 p-1 text-center"
+                            >
+                              <div className="relative h-6 w-full overflow-hidden rounded bg-muted/50">
+                                <div
+                                  className="absolute bottom-0 left-0 right-0 bg-primary/80 transition-all duration-200"
+                                  style={{ height: `${ch.percent}%` }}
+                                />
+                              </div>
+                              <span className="font-mono text-3xs text-muted-foreground">
+                                {Math.round(ch.percent)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {job.error_message && (
+                      <p className="text-xs text-destructive bg-destructive/10 p-2 rounded-md font-mono">
+                        Hata: {job.error_message}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* HIZLI İNDİRME DİYALOĞU */}
@@ -655,20 +957,185 @@ export function DownloadsView({ onClose }: DownloadsViewProps) {
         </DialogContent>
       </Dialog>
 
-      {/* SİLME ONAY DİYALOĞU */}
-      <ConfirmDialog
-        open={pendingDelete !== null}
+      {/* KASA MEDYASI SİLME DİYALOĞU */}
+      <Dialog
+        open={vaultItemToDelete !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
+          if (!open && !vaultDeleteBusy) setVaultItemToDelete(null);
         }}
-        title="İndirme kaydı silinsin mi?"
-        description="İndirme yöneticisindeki kayıt silinecektir."
-        confirmLabel="Sil"
-        tone="destructive"
-        onConfirm={() => {
-          if (pendingDelete) void handleCancel(pendingDelete);
+      >
+        <DialogContent className="max-w-md gap-4 p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
+              <Trash2 className="size-5" />
+              İndirilen Medyayı Sil
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              "{vaultItemToDelete?.title || vaultItemToDelete?.url}" için silme seçeneklerini belirleyin.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-1">
+            {vaultItemToDelete?.local_path && (
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-xs">
+                <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                  Dosya Konumu
+                </span>
+                <p className="font-mono text-2xs break-all text-foreground select-all">
+                  {vaultItemToDelete.local_path}
+                </p>
+                {vaultItemToDelete.converted_path && (
+                  <>
+                    <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground block mt-2 mb-1">
+                      Dönüştürülen Dosya
+                    </span>
+                    <p className="font-mono text-2xs break-all text-foreground select-all">
+                      {vaultItemToDelete.converted_path}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Seçenek 1: Bilgisayardan Sil */}
+            <div
+              onClick={() => setDeleteVaultDiskFile((v) => !v)}
+              className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 cursor-pointer hover:bg-muted/30 transition select-none"
+            >
+              <Switch
+                checked={deleteVaultDiskFile}
+                onCheckedChange={(checked) => setDeleteVaultDiskFile(checked)}
+                className="mt-0.5 pointer-events-none"
+              />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-semibold text-foreground">
+                  Dosyayı bilgisayardan kalıcı olarak sil
+                </span>
+                <span className="text-2xs text-muted-foreground leading-relaxed">
+                  İndirilmiş olan video/ses dosyası diskten silinir ve yer açılır.
+                </span>
+              </div>
+            </div>
+
+            {/* Seçenek 2: Kasa Kaydını da Kaldır */}
+            <div
+              onClick={() => setDeleteVaultRecord((v) => !v)}
+              className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 cursor-pointer hover:bg-muted/30 transition select-none"
+            >
+              <Switch
+                checked={deleteVaultRecord}
+                onCheckedChange={(checked) => setDeleteVaultRecord(checked)}
+                className="mt-0.5 pointer-events-none"
+              />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-semibold text-foreground">
+                  Kaydı Kasadan tamamen kaldır
+                </span>
+                <span className="text-2xs text-muted-foreground leading-relaxed">
+                  {deleteVaultRecord
+                    ? 'Fiş ve bağlantı arşivi kasadan tamamen silinecektir.'
+                    : 'Kapalı: Fiş kasada kalır, yalnızca indirilmiş medya temizlenir ve listeden çıkarılır.'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setVaultItemToDelete(null)}
+              disabled={vaultDeleteBusy}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void handleConfirmDeleteVaultItem()}
+              disabled={vaultDeleteBusy}
+              className="gap-1.5"
+            >
+              <Trash2 className="size-3.5" />
+              {vaultDeleteBusy ? 'Siliniyor…' : 'Medyayı Sil'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* TURBO İNDİRME SİLME DİYALOĞU */}
+      <Dialog
+        open={turboJobToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !turboDeleteBusy) setTurboJobToDelete(null);
         }}
-      />
+      >
+        <DialogContent className="max-w-md gap-4 p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
+              <Trash2 className="size-5" />
+              Turbo İndirmeyi Sil
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              "{turboJobToDelete?.filename}" indirme görevi listeden kaldırılacak.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-1">
+            {turboJobToDelete?.destination_path && (
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-xs">
+                <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                  Hedef Dosya Konumu
+                </span>
+                <p className="font-mono text-2xs break-all text-foreground select-all">
+                  {turboJobToDelete.destination_path}
+                </p>
+              </div>
+            )}
+
+            {/* Seçenek: Bilgisayardan Sil */}
+            <div
+              onClick={() => setDeleteTurboDiskFile((v) => !v)}
+              className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 cursor-pointer hover:bg-muted/30 transition select-none"
+            >
+              <Switch
+                checked={deleteTurboDiskFile}
+                onCheckedChange={(checked) => setDeleteTurboDiskFile(checked)}
+                className="mt-0.5 pointer-events-none"
+              />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-semibold text-foreground">
+                  İndirilen dosyayı bilgisayardan da sil
+                </span>
+                <span className="text-2xs text-muted-foreground leading-relaxed">
+                  Diskte oluşturulan veya indirilen dosya kalıcı olarak silinir.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTurboJobToDelete(null)}
+              disabled={turboDeleteBusy}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void handleConfirmDeleteTurboJob()}
+              disabled={turboDeleteBusy}
+              className="gap-1.5"
+            >
+              <Trash2 className="size-3.5" />
+              {turboDeleteBusy ? 'Siliniyor…' : 'İndirmeyi Sil'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

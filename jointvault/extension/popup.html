@@ -1,123 +1,572 @@
 <!doctype html>
-<html>
+<html lang="tr">
 <head>
-<meta charset="utf-8" />
-<style>
-  :root {
-    --paper: #faf7f1;
-    --card: #fffdf8;
-    --ink: #1c1917;
-    --muted: #6b6259;
-    --line: #e0d7c0;
-    --accent: #9a3412;
-    --accent-ink: #fff7ed;
-    --danger: #b91c1c;
-    --ok: #3f6212;
-  }
-  * { box-sizing: border-box; }
-  body {
-    width: 320px;
-    margin: 0;
-    padding: 14px;
-    background: var(--paper);
-    color: var(--ink);
-    font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
-  }
-  .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .brand svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .brand h1 { font: 600 16px/1.2 Georgia, "Times New Roman", serif; letter-spacing: -0.01em; margin: 0; }
-  .site {
-    display: flex; align-items: center; gap: 7px;
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 8px 10px; margin-bottom: 10px; font-size: 12.5px;
-  }
-  .site .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .site .sub { color: var(--muted); font-size: 12px; }
-  button#collect {
-    width: 100%; border: 0; border-radius: 10px; cursor: pointer;
-    background: var(--accent); color: var(--accent-ink);
-    font-size: 13.5px; font-weight: 600; padding: 9px 12px;
-    transition: filter 150ms ease-out, transform 150ms ease-out;
-  }
-  button#collect:hover:not(:disabled) { filter: brightness(1.08); }
-  button#collect:active:not(:disabled) { transform: translateY(1px); }
-  button#collect:disabled { opacity: 0.6; cursor: wait; }
-  button#collect:focus-visible, input:focus-visible, summary:focus-visible,
-  button#download:focus-visible, select:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 2px;
-  }
-  .dl { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
-  .dl-head { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
-  .dl-row { display: flex; gap: 6px; }
-  .dl-row select {
-    border: 1px solid var(--line); border-radius: 8px; background: var(--card);
-    color: var(--ink); font-size: 12px; padding: 7px 6px;
-  }
-  .dl-row select:disabled { opacity: 0.5; }
-  button#download {
-    flex: 1; border: 0; border-radius: 8px; cursor: pointer;
-    background: var(--accent); color: var(--accent-ink);
-    font-size: 12.5px; font-weight: 600; padding: 7px 10px;
-    transition: filter 150ms ease-out;
-  }
-  button#download:hover:not(:disabled) { filter: brightness(1.08); }
-  button#download:disabled { opacity: 0.6; cursor: wait; }
-  .dl-hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
-  details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
-  summary { cursor: pointer; font-size: 12px; color: var(--muted); }
-  summary:hover { color: var(--ink); }
-  label { display: block; margin: 8px 0 3px; font-size: 12px; color: var(--muted); }
-  input {
-    width: 100%; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--card); color: var(--ink);
-    font-size: 12.5px; padding: 7px 9px;
-  }
-  input::placeholder { color: var(--muted); opacity: 0.8; }
-  #status { margin-top: 10px; min-height: 1.4em; font-size: 12.5px; }
-  #status[data-state="ok"] { color: var(--ok); font-weight: 600; }
-  #status[data-state="error"] { color: var(--danger); }
-  #status[data-state="busy"] { color: var(--muted); }
-</style>
+  <meta charset="utf-8" />
+  <title>JointVault Collector</title>
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --card: #15181f;
+      --card-inner: #1c202a;
+      --border: #262b36;
+      --border-focus: #6366f1;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-ink: #ffffff;
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.12);
+      --success-border: rgba(16, 185, 129, 0.3);
+      --error: #ef4444;
+      --error-bg: rgba(239, 68, 68, 0.12);
+      --error-border: rgba(239, 68, 68, 0.3);
+      --warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.12);
+      --warning-border: rgba(245, 158, 11, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 380px;
+      min-width: 380px;
+      max-width: 380px;
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+      overflow-x: hidden;
+      color-scheme: dark;
+    }
+
+    .container {
+      padding: 14px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 2px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+    }
+
+    .brand-icon svg {
+      width: 14px;
+      height: 14px;
+      stroke: #ffffff;
+      fill: none;
+      stroke-width: 2.2;
+    }
+
+    .brand-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .header-badges {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .server-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .server-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    .server-dot.online {
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+
+    .brand-version {
+      font-size: 10px;
+      font-family: ui-monospace, monospace;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(99, 102, 241, 0.15);
+      color: #818cf8;
+      border: 1px solid rgba(99, 102, 241, 0.25);
+    }
+
+    /* Warning Banner */
+    .banner {
+      display: none;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 9px 11px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      line-height: 1.4;
+    }
+
+    .banner-warning {
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: #fbbf24;
+    }
+
+    .banner-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .banner-text code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 11px;
+    }
+
+    /* Active Tab Context Card */
+    .context-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .platform-badge {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .context-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .context-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .context-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Action Buttons */
+    .btn {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 9px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: all 150ms ease-out;
+      user-select: none;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-ink);
+      box-shadow: 0 2px 10px rgba(79, 70, 229, 0.25);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+    }
+
+    .btn-secondary {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 8px 12px;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--card-inner);
+      border-color: #3b4252;
+    }
+
+    .btn-subtext {
+      font-size: 10.5px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: -6px;
+    }
+
+    /* Single Downloader Section */
+    .dl-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .dl-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .dl-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .dl-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-dim);
+    }
+
+    .dl-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .select-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .select-wrap label {
+      font-size: 10.5px;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    select {
+      width: 100%;
+      height: 32px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 0 8px;
+      outline: none;
+      transition: border-color 150ms;
+    }
+
+    select:focus {
+      border-color: var(--border-focus);
+    }
+
+    select:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-download {
+      background: #272c38;
+      color: var(--text);
+      border: 1px solid #363c4c;
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    .btn-download:hover:not(:disabled) {
+      background: #363c4c;
+      color: #ffffff;
+    }
+
+    .dl-hint {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.35;
+    }
+
+    /* Settings Accordion */
+    details {
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    summary {
+      cursor: pointer;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      user-select: none;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      outline: none;
+    }
+
+    summary:hover {
+      color: var(--text);
+    }
+
+    .settings-body {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .field label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--card);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 0 10px;
+      outline: none;
+      transition: border-color 150ms;
+    }
+
+    input:focus {
+      border-color: var(--border-focus);
+    }
+
+    /* Status Box */
+    #status {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    #status[data-state="ok"] {
+      display: block;
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+      color: #34d399;
+    }
+
+    #status[data-state="error"] {
+      display: block;
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: #f87171;
+    }
+
+    #status[data-state="busy"] {
+      display: block;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      color: #a5b4fc;
+    }
+  </style>
 </head>
 <body>
-  <div class="brand">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="2" y="3" width="20" height="5" rx="1"/>
-      <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
-      <path d="M10 12h4"/>
-    </svg>
-    <h1>JointVault Collector</h1>
-  </div>
-  <div class="site">
-    <span class="dot" id="siteDot" style="background:#a8a29e"></span>
-    <div>
-      <div id="siteName">Sekme okunuyor…</div>
-      <div class="sub" id="siteHint">Kaydedilenler sayfasını açıp Topla'ya bas.</div>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24">
+            <rect x="2" y="3" width="20" height="5" rx="1"/>
+            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+            <path d="M10 12h4"/>
+          </svg>
+        </div>
+        <h1 class="brand-title">JointVault Collector</h1>
+      </div>
+      <div class="header-badges">
+        <div class="server-status" id="serverStatus" title="JointVault Masaüstü Durumu">
+          <span class="server-dot" id="serverDot"></span>
+          <span id="serverStatusText">Bağlantı aranıyor…</span>
+        </div>
+        <span class="brand-version">v0.1</span>
+      </div>
+    </header>
+
+    <!-- Permission Warning Banner -->
+    <div class="banner banner-warning" id="permBanner">
+      <span class="banner-icon">⚠️</span>
+      <div class="banner-text">
+        <strong>İzin Güncellemesi:</strong> Çerez aktarımı için <code>chrome://extensions</code> sayfasından JointVault eklentisindeki 🔄 <strong>Yenile</strong> butonuna bir kez tıklayın.
+      </div>
     </div>
+
+    <!-- Active Tab Context Card -->
+    <section class="context-card" id="contextCard">
+      <div class="platform-badge" id="platformBadge">?</div>
+      <div class="context-info">
+        <div class="context-title" id="siteName">Sekme kontrol ediliyor…</div>
+        <div class="context-hint" id="siteHint">Kaydedilenler sayfasını açıp Topla'ya bas.</div>
+      </div>
+    </section>
+
+    <!-- Main Collect Action -->
+    <button class="btn btn-primary" id="collect">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      <span>Topla (Kaydedilenleri Çek)</span>
+    </button>
+    <p class="btn-subtext">Açık olan sayfadaki tüm yer imlerini otomatik kaydırarak Kasa'ya aktarır.</p>
+
+    <!-- Cookie Sync Action -->
+    <button class="btn btn-secondary" id="sync-cookies">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+      </svg>
+      <span>🔑 Çerezleri JointVault'a Aktar</span>
+    </button>
+    <p class="btn-subtext">YouTube, X ve Instagram oturum çerezlerini aktarır (Chrome kilit sorununu çözer).</p>
+
+    <!-- Single Video / Media Downloader -->
+    <section class="dl-card" id="dlCard">
+      <div class="dl-header">
+        <span class="dl-title">Tekil İçerik İndirici</span>
+        <span class="dl-badge" id="dlBadge">Hazır</span>
+      </div>
+
+      <div class="dl-controls">
+        <div class="select-wrap">
+          <label for="dl-kind">Format</label>
+          <select id="dl-kind" aria-label="Format">
+            <option value="video">Video (MP4)</option>
+            <option value="audio">Ses (MP3)</option>
+          </select>
+        </div>
+        <div class="select-wrap">
+          <label for="dl-quality">Kalite</label>
+          <select id="dl-quality" aria-label="Kalite">
+            <option value="">Algılanıyor…</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn btn-download" id="download" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        <span>Bu İçeriği Kasa'ya İndir</span>
+      </button>
+
+      <div class="dl-hint" id="dlHint">Tekil tweet, Instagram postu veya YouTube videosu sayfasında aktif olur.</div>
+    </section>
+
+    <!-- Collapsible Settings -->
+    <details>
+      <summary>⚙️ Bağlantı & Eşleşme Ayarları</summary>
+      <div class="settings-body">
+        <div class="field">
+          <label for="endpoint">Köprü Adresi</label>
+          <input id="endpoint" type="text" placeholder="http://127.0.0.1:48120/collect" />
+        </div>
+        <div class="field">
+          <label for="token">Eşleşme Anahtarı (Token)</label>
+          <input id="token" type="password" placeholder="JointVault → Ayarlar > Eklenti anahtarı" />
+        </div>
+      </div>
+    </details>
+
+    <!-- Live Status / Feedback Area -->
+    <div id="status" role="status"></div>
   </div>
-  <button id="collect">Topla</button>
-  <div class="dl">
-    <div class="dl-head">Tekil indir</div>
-    <div class="dl-row">
-      <select id="dl-kind" aria-label="Format">
-        <option value="video">Video</option>
-        <option value="audio">Ses</option>
-      </select>
-      <select id="dl-quality" aria-label="Kalite">
-        <option value="">…</option>
-      </select>
-      <button id="download">İndir</button>
-    </div>
-    <div class="dl-hint" id="dlHint">Tekil içerik sayfasında aktif olur.</div>
-  </div>
-  <details>
-    <summary>Bağlantı ayarları</summary>
-    <label for="endpoint">Uygulama adresi</label>
-    <input id="endpoint" placeholder="http://127.0.0.1:48120/collect" />
-    <label for="token">Eşleşme anahtarı</label>
-    <input id="token" type="password" placeholder="JointVault → Eklenti eşleşme" />
-  </details>
-  <div id="status" role="status"></div>
+
   <script src="popup.js"></script>
 </body>
 </html>

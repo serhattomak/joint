@@ -112,3 +112,21 @@ CREATE TABLE IF NOT EXISTS downloads (
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at);
 CREATE INDEX IF NOT EXISTS idx_downloads_category ON downloads(category);
+
+CREATE TABLE IF NOT EXISTS item_articles (
+  item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+  title TEXT,
+  content_text TEXT NOT NULL,
+  content_markdown TEXT,
+  author TEXT,
+  published_at TEXT,
+  reading_time_mins INTEGER NOT NULL DEFAULT 1,
+  lead_image TEXT,
+  images_json TEXT,
+  videos_json TEXT,
+  site_name TEXT,
+  scraped_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_articles_scraped_at ON item_articles(scraped_at);
+

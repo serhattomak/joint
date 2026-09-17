@@ -1,6 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
 import schema from './schema.sql?raw';
-import type { Category, Collection, HybridSearchResult, Item, ItemChunkRow, Tag } from './types';
+import type { Category, Collection, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
 import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
 
 const DB_PATH = 'sqlite:jointvault.db';
@@ -890,3 +890,93 @@ export async function clearCompletedDownloads(): Promise<void> {
   const db = await getDb();
   await db.execute('DELETE FROM downloads WHERE status = $1', ['completed']);
 }
+
+export async function getArticleForItem(itemId: string): Promise<ItemArticle | null> {
+  const db = await getDb();
+  const rows = await db.select<ItemArticle[]>('SELECT * FROM item_articles WHERE item_id = $1', [itemId]);
+  return rows[0] ?? null;
+}
+
+export async function saveArticleForItem(article: ItemArticle): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO item_articles (
+      item_id, title, content_text, content_markdown, author, published_at,
+      reading_time_mins, lead_image, images_json, videos_json, site_name, scraped_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    ON CONFLICT(item_id) DO UPDATE SET
+      title = excluded.title,
+      content_text = excluded.content_text,
+      content_markdown = excluded.content_markdown,
+      author = excluded.author,
+      published_at = excluded.published_at,
+      reading_time_mins = excluded.reading_time_mins,
+      lead_image = excluded.lead_image,
+      images_json = excluded.images_json,
+      videos_json = excluded.videos_json,
+      site_name = excluded.site_name,
+      scraped_at = excluded.scraped_at`,
+    [
+      article.item_id,
+      article.title,
+      article.content_text,
+      article.content_markdown,
+      article.author,
+      article.published_at,
+      article.reading_time_mins,
+      article.lead_image,
+      article.images_json,
+      article.videos_json,
+      article.site_name,
+      article.scraped_at || now(),
+    ],
+  );
+}
+
+export async function deleteArticleForItem(itemId: string): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM item_articles WHERE item_id = $1', [itemId]);
+}
+
+export async function listItemsWithoutArticle(): Promise<Item[]> {
+  const db = await getDb();
+  const rows = await db.select<ItemRow[]>(
+    `SELECT i.* FROM items i
+     LEFT JOIN item_articles a ON i.id = a.item_id
+     WHERE a.item_id IS NULL
+     ORDER BY i.created_at DESC`,
+  );
+  return rows.map(toItem);
+}
+
+export async function hasArticleForItem(itemId: string): Promise<boolean> {
+  const db = await getDb();
+  const rows = await db.select<{ count: number }[]>(
+    'SELECT COUNT(*) as count FROM item_articles WHERE item_id = $1',
+    [itemId],
+  );
+  return (rows[0]?.count ?? 0) > 0;
+}
+
+export async function getArticleItemIds(itemIds?: string[]): Promise<Set<string>> {
+  const db = await getDb();
+  if (itemIds && itemIds.length === 0) return new Set();
+  const query =
+    itemIds && itemIds.length > 0
+      ? `SELECT item_id FROM item_articles WHERE item_id IN (${itemIds.map((_, i) => `$${i + 1}`).join(', ')})`
+      : 'SELECT item_id FROM item_articles';
+  const rows = await db.select<{ item_id: string }[]>(query, itemIds && itemIds.length > 0 ? itemIds : []);
+  return new Set(rows.map((r) => r.item_id));
+}
+
+export async function listDownloadedItems(): Promise<Item[]> {
+  const db = await getDb();
+  const rows = await db.select<ItemRow[]>(
+    `SELECT * FROM items 
+     WHERE download_status = 'done' OR local_path IS NOT NULL OR download_status IN ('active', 'queued')
+     ORDER BY updated_at DESC`,
+  );
+  return rows.map(toItem);
+}
+
+

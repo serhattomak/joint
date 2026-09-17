@@ -1,5 +1,18 @@
 import { memo, useState } from 'react';
-import { Download, ImageOff, Music, Pencil, RotateCcw, Scissors, Star, Trash2 } from 'lucide-react';
+import {
+  BookOpen,
+  Download,
+  ExternalLink,
+  ImageOff,
+  Music,
+  Pencil,
+  Play,
+  RotateCcw,
+  Scissors,
+  Star,
+  Trash2,
+} from 'lucide-react';
+import { openPath } from '@tauri-apps/plugin-opener';
 import { Button } from '@/components/ui/button';
 import {
   Menu,
@@ -30,16 +43,18 @@ export interface ItemViewProps {
   collectionLabel: string | null;
   selected: boolean;
   index: number;
+  hasArticle?: boolean;
   onToggle: (id: string) => void;
   onFavorite: (id: string) => void;
   onDelete: (id: string) => void;
-  /** Fişi aç: kaydın tamamı sağdaki kayıt panelinde görünür. */
-  onOpen: (item: Item) => void;
+  /** Fişi/merkeziyetçi görünümü aç: kaydın tamamı geniş modal pencerede açılır. */
+  onOpen: (item: Item, tab?: 'detail' | 'reader') => void;
   progress: number | undefined;
   meta?: { speed?: string | null; eta?: string | null };
   onAudio: (item: Item, quality: DownloadQuality) => void;
   onPickVideo: (item: Item) => void;
   onConvert: (item: Item) => void;
+  onPlayMedia?: (item: Item) => void;
 }
 
 const platformLabel = (p: string): string =>
@@ -50,29 +65,53 @@ const platformDot = (p: string): string =>
 
 const formatDate = (iso: string): string => new Date(iso).toLocaleDateString('tr-TR');
 
-// 06: Tauri opener plugin — falls back to window.open in dev-browser mode.
-// block + w-full: içindeki truncate/line-clamp zincirinin çalışması için
-// ebeveyn genişliğine sabitlenir (yoksa buton içeriğe göre şişer).
-function OpenLink({ url, children }: { url: string; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={() => void openExternal(url)}
-      className="block w-full min-w-0 cursor-pointer text-left"
-    >
-      {children}
-    </button>
-  );
-}
-
 function ActionButtons({
   item,
+  hasArticle,
   onFavorite,
   onDelete,
   onOpen,
-}: Pick<ItemViewProps, 'item' | 'onFavorite' | 'onDelete' | 'onOpen'>) {
+}: Pick<ItemViewProps, 'item' | 'hasArticle' | 'onFavorite' | 'onDelete' | 'onOpen'>) {
   return (
     <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                void openExternal(item.url);
+              }}
+              aria-label="Tarayıcıda Aç"
+            />
+          }
+        >
+          <ExternalLink className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipContent>Tarayıcıda Aç</TooltipContent>
+      </Tooltip>
+
+      {hasArticle && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-primary hover:bg-primary/10 hover:text-primary"
+                onClick={() => onOpen(item, 'reader')}
+                aria-label="Okuyucu Modunda Oku"
+              />
+            }
+          >
+            <BookOpen className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipContent>Okuyucu Modunda Oku</TooltipContent>
+        </Tooltip>
+      )}
+
       <Tooltip>
         <TooltipTrigger
           render={
@@ -89,23 +128,30 @@ function ActionButtons({
         </TooltipTrigger>
         <TooltipContent>{item.favorite ? 'Favoriden çıkar' : 'Favoriye ekle'}</TooltipContent>
       </Tooltip>
+
       <Tooltip>
         <TooltipTrigger
           render={
-            <Button variant="ghost" size="icon-sm" onClick={() => onOpen(item)} aria-label="Fişi aç" />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onOpen(item, 'detail')}
+              aria-label="Detayları ve Fişi İncele"
+            />
           }
         >
-          <Pencil />
+          <Pencil className="size-3.5" />
         </TooltipTrigger>
-        <TooltipContent>Fişi aç</TooltipContent>
+        <TooltipContent>Detayları ve Fişi İncele</TooltipContent>
       </Tooltip>
+
       <Tooltip>
         <TooltipTrigger
           render={
             <Button variant="ghost" size="icon-sm" onClick={() => onDelete(item.id)} aria-label="Sil" />
           }
         >
-          <Trash2 />
+          <Trash2 className="size-3.5" />
         </TooltipTrigger>
         <TooltipContent>Sil</TooltipContent>
       </Tooltip>
@@ -114,8 +160,8 @@ function ActionButtons({
 }
 
 /*
- * İndirme bölgesi — durum damgası ya da ölçüm. Kalite seçimi artık elle kurulmuş
- * absolute panel değil gerçek bir menü: portala taşınır, klavyeyle gezilir.
+ * İndirme bölgesi — durum damgası ya da ölçüm. Kalite seçimi gerçek bir menü:
+ * portala taşınır, klavyeyle gezilir.
  */
 function DownloadControl({
   item,
@@ -124,7 +170,8 @@ function DownloadControl({
   onAudio,
   onPickVideo,
   onConvert,
-}: Pick<ItemViewProps, 'item' | 'progress' | 'meta' | 'onAudio' | 'onPickVideo' | 'onConvert'>) {
+  onPlayMedia,
+}: Pick<ItemViewProps, 'item' | 'progress' | 'meta' | 'onAudio' | 'onPickVideo' | 'onConvert' | 'onPlayMedia'>) {
   const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
   const status = item.download_status;
 
@@ -134,16 +181,39 @@ function DownloadControl({
         <Stamp state="local" />
         {item.converted_path && <Stamp state="converted" />}
         {item.local_path && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button variant="ghost" size="icon-sm" onClick={() => onConvert(item)} aria-label="Dönüştür" />
-              }
-            >
-              <Scissors />
-            </TooltipTrigger>
-            <TooltipContent>Dönüştür / kırp</TooltipContent>
-          </Tooltip>
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => {
+                      if (onPlayMedia) {
+                        onPlayMedia(item);
+                      } else {
+                        void openPath(item.local_path!);
+                      }
+                    }}
+                    aria-label="Oynat (Sinema Modu)"
+                  />
+                }
+              >
+                <Play className="size-3.5 text-primary" />
+              </TooltipTrigger>
+              <TooltipContent>Oynat (Sinema Modu)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button variant="ghost" size="icon-sm" onClick={() => onConvert(item)} aria-label="Dönüştür / kırp" />
+                }
+              >
+                <Scissors className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipContent>Dönüştür / kırp</TooltipContent>
+            </Tooltip>
+          </>
         )}
       </span>
     );
@@ -181,13 +251,14 @@ function DownloadControl({
               variant={failing ? 'destructive' : 'ghost'}
               size="icon-sm"
               aria-label={failing ? 'Tekrar indir' : 'İndir'}
+              title="İndir"
             />
           }
         >
-          {failing ? <RotateCcw /> : <Download />}
+          {failing ? <RotateCcw className="size-3.5" /> : <Download className="size-3.5" />}
         </MenuTrigger>
         <MenuContent align="end" className="min-w-44">
-          <MenuGroupLabel>Kalite</MenuGroupLabel>
+          <MenuGroupLabel>Kalite Tercihi</MenuGroupLabel>
           {QUALITY_OPTIONS.map((o) => (
             <MenuCheckboxItem
               key={o.value}
@@ -199,7 +270,7 @@ function DownloadControl({
           ))}
           <MenuSeparator />
           <MenuItem onClick={() => onPickVideo(item)}>
-            <Download /> Video…
+            <Download className="size-3.5" /> Video İndir…
           </MenuItem>
           <MenuItem
             onClick={() => {
@@ -207,7 +278,7 @@ function DownloadControl({
               onAudio(item, quality);
             }}
           >
-            <Music /> Ses
+            <Music className="size-3.5" /> Yalnızca Ses
           </MenuItem>
         </MenuContent>
       </Menu>
@@ -247,13 +318,23 @@ function Accession({
   tags,
   categories,
   collectionLabel,
+  hasArticle,
   variant,
-}: Pick<ItemViewProps, 'item' | 'tags' | 'categories' | 'collectionLabel'> & { variant: 'card' | 'row' }) {
-  const hasTaxonomy = Boolean(collectionLabel) || categories.length > 0 || tags.length > 0;
+}: Pick<ItemViewProps, 'item' | 'tags' | 'categories' | 'collectionLabel' | 'hasArticle'> & { variant: 'card' | 'row' }) {
+  const hasTaxonomy = Boolean(collectionLabel) || categories.length > 0 || tags.length > 0 || hasArticle;
   if (variant === 'card' && !hasTaxonomy) return null;
   return (
     <p data-num className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
       {variant === 'row' && <span>{platformLabel(item.platform)}</span>}
+      {hasArticle && (
+        <span
+          className="inline-flex items-center gap-1 rounded-xs bg-primary/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-primary"
+          title="Okunabilir makale/metin içeriği hazır"
+        >
+          <BookOpen className="size-2.5" />
+          Okunabilir
+        </span>
+      )}
       {collectionLabel && <span>· {collectionLabel}</span>}
       {categories.map((c) => (
         <span key={c.id}>· {c.name}</span>
@@ -275,6 +356,7 @@ export const ItemRowView = memo(function ItemRowView({
   categories,
   collectionLabel,
   selected,
+  hasArticle,
   onToggle,
   onFavorite,
   onDelete,
@@ -284,6 +366,7 @@ export const ItemRowView = memo(function ItemRowView({
   onAudio,
   onPickVideo,
   onConvert,
+  onPlayMedia,
 }: ItemViewProps) {
   return (
     <div
@@ -300,29 +383,40 @@ export const ItemRowView = memo(function ItemRowView({
         aria-label="Öğeyi seç"
       />
       <span aria-hidden className={`h-6 w-0.5 shrink-0 ${platformDot(item.platform)}`} />
-      <Thumb
-        src={item.thumbnail}
-        className="size-9 shrink-0 rounded-xs border border-border object-cover"
-        fallback={
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xs border border-dashed border-border font-mono text-2xs text-muted-foreground">
-            —
-          </span>
-        }
-      />
+      <button
+        type="button"
+        onClick={() => onOpen(item, hasArticle ? 'reader' : 'detail')}
+        className="cursor-pointer focus-visible:outline-none"
+        title="Öğeyi Aç"
+      >
+        <Thumb
+          src={item.thumbnail}
+          className="size-9 shrink-0 rounded-xs border border-border object-cover transition-opacity hover:opacity-85"
+          fallback={
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xs border border-dashed border-border font-mono text-2xs text-muted-foreground">
+              —
+            </span>
+          }
+        />
+      </button>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <OpenLink url={item.url}>
+        <button
+          type="button"
+          onClick={() => onOpen(item, hasArticle ? 'reader' : 'detail')}
+          className="block w-full min-w-0 cursor-pointer text-left focus-visible:outline-none"
+        >
           <Tooltip>
             <TooltipTrigger
               render={
-                <p className="truncate text-sm leading-snug font-medium group-hover:underline">
+                <p className="truncate text-sm leading-snug font-medium transition-colors hover:text-primary hover:underline">
                   {item.title || item.url}
                 </p>
               }
             />
             <TooltipContent>{item.title || item.url}</TooltipContent>
           </Tooltip>
-        </OpenLink>
-        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} variant="row" />
+        </button>
+        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="row" />
       </div>
       <DownloadControl
         item={item}
@@ -331,9 +425,10 @@ export const ItemRowView = memo(function ItemRowView({
         onAudio={onAudio}
         onPickVideo={onPickVideo}
         onConvert={onConvert}
+        onPlayMedia={onPlayMedia}
       />
       <div className="flex shrink-0 items-center gap-0.5 transition-opacity duration-150 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
-        <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onOpen={onOpen} />
+        <ActionButtons item={item} hasArticle={hasArticle} onFavorite={onFavorite} onDelete={onDelete} onOpen={onOpen} />
       </div>
     </div>
   );
@@ -346,6 +441,7 @@ export const ItemCardView = memo(function ItemCardView({
   collectionLabel,
   selected,
   index,
+  hasArticle,
   onToggle,
   onFavorite,
   onDelete,
@@ -355,6 +451,7 @@ export const ItemCardView = memo(function ItemCardView({
   onAudio,
   onPickVideo,
   onConvert,
+  onPlayMedia,
 }: ItemViewProps) {
   return (
     <article
@@ -380,27 +477,38 @@ export const ItemCardView = memo(function ItemCardView({
         }`}
       />
 
-      <Thumb
-        src={item.thumbnail}
-        className="h-36 w-full border-b border-border object-cover"
-        fallback={
-          <div className="flex h-36 w-full flex-col items-center justify-center gap-1.5 border-b border-border bg-muted/40 px-4">
-            <ImageOff className="size-4 text-muted-foreground" strokeWidth={1.5} aria-hidden />
-            <p className="font-mono text-2xs tracking-[0.06em] text-muted-foreground uppercase">kapak yok</p>
-            <p className="max-w-[30ch] text-center text-2xs text-muted-foreground/85">
-              Önizleme bulunamadı; başlık ve bağlantı yine de kayıtlı.
-            </p>
-          </div>
-        }
-      />
+      <button
+        type="button"
+        onClick={() => onOpen(item, hasArticle ? 'reader' : 'detail')}
+        className="group/thumb relative w-full cursor-pointer overflow-hidden text-left focus:outline-none"
+        title="Detayları İncele"
+      >
+        <Thumb
+          src={item.thumbnail}
+          className="h-36 w-full border-b border-border object-cover transition-transform duration-300 group-hover/thumb:scale-[1.02]"
+          fallback={
+            <div className="flex h-36 w-full flex-col items-center justify-center gap-1.5 border-b border-border bg-muted/40 px-4">
+              <ImageOff className="size-4 text-muted-foreground" strokeWidth={1.5} aria-hidden />
+              <p className="font-mono text-2xs tracking-[0.06em] text-muted-foreground uppercase">kapak yok</p>
+              <p className="max-w-[30ch] text-center text-2xs text-muted-foreground/85">
+                Önizleme bulunamadı; tıklayarak detayları inceleyin.
+              </p>
+            </div>
+          }
+        />
+      </button>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2 p-3">
-        <OpenLink url={item.url}>
-          <h3 className="line-clamp-2 text-[15px] leading-snug font-medium group-hover:underline">
+        <button
+          type="button"
+          onClick={() => onOpen(item, hasArticle ? 'reader' : 'detail')}
+          className="block w-full min-w-0 cursor-pointer text-left focus-visible:outline-none"
+        >
+          <h3 className="line-clamp-2 text-[15px] leading-snug font-medium transition-colors hover:text-primary hover:underline">
             {item.title || item.url}
           </h3>
-        </OpenLink>
-        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} variant="card" />
+        </button>
+        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="card" />
         <div className="mt-auto flex items-center gap-1 border-t border-border pt-2">
           <DownloadControl
             item={item}
@@ -409,9 +517,10 @@ export const ItemCardView = memo(function ItemCardView({
             onAudio={onAudio}
             onPickVideo={onPickVideo}
             onConvert={onConvert}
+            onPlayMedia={onPlayMedia}
           />
           <div className="ml-auto flex shrink-0 items-center gap-0.5">
-            <ActionButtons item={item} onFavorite={onFavorite} onDelete={onDelete} onOpen={onOpen} />
+            <ActionButtons item={item} hasArticle={hasArticle} onFavorite={onFavorite} onDelete={onDelete} onOpen={onOpen} />
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@ import {
 import { createItem, listItems } from '@/lib/db/client';
 import { startDownload, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
 import { detectPlatform, fetchPreview } from '@/lib/platform';
+import { scrapeAndStoreArticle } from '@/lib/scraper';
 import { canonicalizeUrl, isKnownUrl } from '@/lib/urls';
 
 interface XSyncMeta {
@@ -141,6 +142,9 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
           thumbnail ??= preview?.thumbnail ?? null;
         }
         const item = await createItem({ url: row.url, platform, title, thumbnail });
+        // Arka planda tweet/post içeriğini kazı ve FTS5'e indeksle
+        void scrapeAndStoreArticle(item.id, row.url).catch(() => {});
+
         if (row.wantDownload) {
           // startDownload never throws — failures land in download_error state.
           await startDownload(item.id, row.url, row.kind, row.quality);
