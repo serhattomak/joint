@@ -50,8 +50,11 @@ serif + kiremit aksan) terk edildi; gerekçe: Impeccable'ın kalibrasyonunda ad�
 sağdaki kayıt panelinde açılır, fiş ızgarası hiç terk edilmez.
 
 **OWN-WORLD.** Grafit kart stoğu `#0f1113`, kemik mürekkep `#e8e5dd`, tek ultramarin damga mürekkebi
-`#3d5afe`, soluk kart `#8f8b81`, hairline cetvel `#262a2e`. Kâğıt malzemesi üç araçla kurulur: sabit
-künye bandı + altındaki hairline, rail'de sekme çentiği, yalnızca durum taşıyan perfore delik.
+`#3d5afe`, soluk kart `#8f8b81`, hairline cetvel `#262a2e`. Kâğıt malzemesi iki araçla kurulur: sabit
+künye bandı + altındaki hairline, rail'de sekme çentiği. **Sonradan düzeltme:** sözleşmenin üçüncü
+aracı olan "perfore delik" kurulmadı ve kaldırıldı — durum taşıyan her işaret zaten damga sözlüğünde
+yaşıyor, ikinci bir işaret aynı şeyi iki kez söylerdi. Yerine damga sözlüğü sekiz duruma tamamlandı:
+`favori` ve `dönüştürüldü` eklendi.
 Archivo (UI + başlık) + JetBrains Mono (yol · süre · yüzde · hız · adet). Kesilmiş kâğıt köşesi: radius
 2–4px. Gölge yok — bölme hairline'ı ve kart kenarı var. Durum renk değil **damga**: `— kayıtsız`,
 `◷ kuyrukta`, `▮▮▮ %42 · 1,2 MB/s`, `✓ YEREL`, `✕ HATA` (yalnızca hata kırmızısı `#d9483b`),

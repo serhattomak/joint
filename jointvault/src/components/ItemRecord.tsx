@@ -154,7 +154,10 @@ export function ItemRecord({ item, onClose, onChanged, onPickVideo, onConvert, o
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <Stamp state={favorite ? 'local' : 'none'} title={favorite ? 'Favoride' : 'Favoride değil'}>
+            <Stamp
+              state={favorite ? 'favorite' : 'none'}
+              title={favorite ? 'Favoride' : 'Favoride değil'}
+            >
               {favorite ? 'favori' : 'favori değil'}
             </Stamp>
             <Stamp

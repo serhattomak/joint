@@ -105,15 +105,20 @@ function Harness() {
 
         <Section title="Damga — durum sözlüğü">
           <div className="flex flex-wrap items-center gap-2">
-            {(['none', 'queued', 'active', 'local', 'error', 'duplicate'] as StampState[]).map((s) => (
+            {(
+              [
+                'none',
+                'queued',
+                'active',
+                'local',
+                'error',
+                'duplicate',
+                'favorite',
+                'converted',
+              ] as StampState[]
+            ).map((s) => (
               <Stamp key={s} state={s} />
             ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Stamp state="local" title="Favoride">
-              favori
-            </Stamp>
-            <Stamp state="none">dönüştürüldü</Stamp>
           </div>
         </Section>
 

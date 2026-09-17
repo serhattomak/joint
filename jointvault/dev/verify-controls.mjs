@@ -132,6 +132,28 @@ check('damga çizildi (Tanılama)', (await page.locator('[data-state="none"]').c
 
 await page.screenshot({ path: 'D:/serhatdev/joint/.impeccable/review/verify-settings.png' });
 
+// ---------- 5. Damga sözlüğü tam mı (tezgâh gerçeği çiziyor mu) ----------
+await page.goto('about:blank');
+await page.goto('http://localhost:5173/dev/kitchen-sink.html', { waitUntil: 'load', timeout: 30000 });
+await page.waitForTimeout(800);
+const dict = await page.evaluate(() =>
+  [...document.querySelectorAll('[data-state]')].map((el) => el.getAttribute('data-state')),
+);
+for (const s of ['none', 'queued', 'active', 'local', 'error', 'duplicate', 'favorite', 'converted']) {
+  check(`sozlukte durum: ${s}`, dict.includes(s), true);
+}
+
+/* Asıl kusur: favori "local" yeşilini giyiyordu; dönüştürüldü de yeşil giymemeli. */
+const colors = await page.evaluate(() => {
+  const pick = (st) => {
+    const el = document.querySelector(`[data-state="${st}"]`);
+    return el ? getComputedStyle(el).color : null;
+  };
+  return { favorite: pick('favorite'), local: pick('local'), converted: pick('converted') };
+});
+check('favori arsiv yesilini giymiyor', colors.favorite !== colors.local, true);
+check('donusturuldu arsiv yesilini giymiyor', colors.converted !== colors.local, true);
+
 // ---------- rapor ----------
 console.log(results.join('\n'));
 console.log('\n--- sayfa hataları ---');

@@ -1,4 +1,4 @@
-import { ArrowDown, Check, Clock3, Copy, Minus, X } from 'lucide-react';
+import { ArrowDown, Check, Clock3, Copy, FileOutput, Minus, Star, X } from 'lucide-react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from 'cn';
 import { PLATFORM_META } from '@/lib/platform';
@@ -7,8 +7,9 @@ import { PLATFORM_META } from '@/lib/platform';
  * Damga — durum renkle değil mühürle bildirilir.
  * Kataloğun kendi sözlüğü: arşive girmiş fiş damgalanır, eksik olan işaretlenir.
  * İşaretler tek ikon ailesinden (lucide) ve tek kalınlıktan gelir; glif/emoji yok,
- * çünkü durum okunur olmalı, süslenmiş değil. `⊕ perfore delik` yalnızca durum
- * taşıdığı yerde kullanılır.
+ * çünkü durum okunur olmalı, süslenmiş değil.
+ * Sözlük sekiz durumdur ve tamamı burada yaşar: bir durumu başka bir durumun rengiyle
+ * taklit etmek yasaktır (favoriyi "yerel" yeşiliyle basmak gibi).
  */
 const stampVariants = cva(
   'inline-flex h-5 shrink-0 items-center gap-1 rounded-xs border px-1.5 font-mono text-2xs font-medium tracking-[0.06em] whitespace-nowrap uppercase',
@@ -21,6 +22,10 @@ const stampVariants = cva(
         local: 'border-state-acquired/45 bg-state-acquired/10 text-state-acquired',
         error: 'border-state-error/45 bg-state-error/10 text-state-error',
         duplicate: 'border-dashed border-border text-muted-foreground',
+        /* Favori bir arşiv durumu değil, bir işarettir: ultramarin (tek damga). */
+        favorite: 'border-primary/45 bg-primary/10 text-primary',
+        /* Dönüştürüldü bir olgudur, kazanım değil; bu yüzden yeşil giymez. */
+        converted: 'border-border text-muted-foreground',
       },
     },
     defaultVariants: { state: 'none' },
@@ -36,6 +41,8 @@ const STAMP_MARK: Record<StampState, React.ComponentType<{ className?: string; s
   local: Check,
   error: X,
   duplicate: Copy,
+  favorite: Star,
+  converted: FileOutput,
 };
 
 const STAMP_LABEL: Record<StampState, string> = {
@@ -45,6 +52,8 @@ const STAMP_LABEL: Record<StampState, string> = {
   local: 'yerel',
   error: 'hata',
   duplicate: 'yinelenen',
+  favorite: 'favori',
+  converted: 'dönüştürüldü',
 };
 
 interface StampProps extends VariantProps<typeof stampVariants> {

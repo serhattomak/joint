@@ -134,10 +134,11 @@ inen bir kuyruk, binlerce fiş. Zemin kâğıt değil grafittir (`#0f1113`); kâ
 kendisidir (`#171a1d`). Gündüz karşılığı soğuk kemik kâğıttır (`#eceae4`) — eski sıcak krem
 (`#faf7f1`) bilerek terk edildi, çünkü aynı sıcaklıkta bir zemin eski dünyayı hatırlatırdı.
 
-Malzeme hiçbir yerde doku resmiyle taklit edilmez. Kâğıt üç yapısal araçla kurulur: fişin üstünde
-**sabit yükseklikte mono künye bandı** ve altındaki hairline cetvel, rayda **çekmece sekmesi çentiği**,
-ve yalnızca durum taşıdığı yerde **perfore delik**. Süs yok: gölge yok, gradyan yok, cam yok,
-parlama yok. Derinlik yalnızca üstte duran yapraklara (açılır panel, diyalog) aittir.
+Malzeme hiçbir yerde doku resmiyle taklit edilmez. Kâğıt **iki** yapısal araçla kurulur: fişin üstünde
+**sabit yükseklikte mono künye bandı** ve altındaki hairline cetvel, rayda **çekmece sekmesi çentiği**.
+(Üçüncü aday — "perfore delik" — bu sürümde kaldırıldı: durum taşıyan her işaret zaten damga
+sözlüğünde yaşıyor, ikinci bir işaret aynı şeyi iki kez söylemek olurdu.) Süs yok: gölge yok,
+gradyan yok, cam yok, parlama yok. Derinlik yalnızca üstte duran yapraklara (açılır panel, diyalog) aittir.
 
 **Key Characteristics:**
 - Düz mürekkep disiplini: tek aksan (ultramarin damga mürekkebi), tek hata rengi (damga kırmızısı), tek arşiv yeşili.

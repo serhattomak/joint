@@ -132,7 +132,7 @@ function DownloadControl({
     return (
       <span className="flex items-center gap-1">
         <Stamp state="local" />
-        {item.converted_path && <Stamp state="none">dönüştürüldü</Stamp>}
+        {item.converted_path && <Stamp state="converted" />}
         {item.local_path && (
           <Tooltip>
             <TooltipTrigger
