@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { TagPicker } from '@/components/TagPicker';
 
 declare global {
   interface Window {
@@ -132,10 +133,25 @@ function DefaultTone() {
   );
 }
 
+/* Etiket anahtarları: Badge'e taşındı — hap biçimi ve dolu aksan gitmeli. */
+function TagPickerCases() {
+  const [sel, setSel] = useState<string[]>(['alpha']);
+  return (
+    <div className="w-80 p-6">
+      <TagPicker
+        selected={sel}
+        onChange={setSel}
+        loadNames={() => Promise.resolve([{ name: 'alpha' }, { name: 'beta' }, { name: 'gama' }])}
+      />
+    </div>
+  );
+}
+
 function App() {
   return (
     <>
       <SelectCases />
+      <TagPickerCases />
       <DefaultTone />
       <NestedConfirm />
     </>

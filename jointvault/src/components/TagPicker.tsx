@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 
 interface TagPickerProps {
@@ -37,20 +38,23 @@ export function TagPicker({ selected, onChange, loadNames, placeholder }: TagPic
         <div className="flex flex-wrap gap-1.5">
           {all.map((name) => {
             const active = selected.includes(name);
+            /*
+             * Etiket bir sınıflandırmadır, durum değil — bu yüzden damga değil Badge.
+             * Hap biçimi yasak (DESIGN.md 251): Badge zaten 2px radius, mono 11px, 20px.
+             * Seçili hâl dolgu değil ultramarin ton; sıra hâlinde dolu aksan dünyayı
+             * panoya çevirirdi (Tek Damga Kuralı).
+             */
             return (
-              <button
+              <Badge
                 key={name}
-                type="button"
-                onClick={() => toggle(name)}
-                aria-pressed={active}
-                className={`rounded-full border px-2.5 py-1 text-xs transition ${
-                  active
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border text-muted-foreground hover:border-input hover:text-foreground'
-                }`}
+                variant={active ? 'default' : 'outline'}
+                className={active ? undefined : 'transition-colors hover:border-input hover:text-foreground'}
+                render={
+                  <button type="button" onClick={() => toggle(name)} aria-pressed={active} />
+                }
               >
                 #{name}
-              </button>
+              </Badge>
             );
           })}
         </div>

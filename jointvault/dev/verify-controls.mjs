@@ -61,6 +61,24 @@ await toneBtn.click();
 await page.waitForTimeout(300);
 check('tone çağrısı çalıştı', (await log()).includes('confirm:tone-default'), true);
 
+// ---------- 2b. Etiket anahtarları (Badge'e taşındı) ----------
+const alphaChip = page.getByRole('button', { name: '#alpha' });
+check('etiket çipi buton olarak çizildi', (await page.getByRole('button', { name: '#gama' }).count()) === 1, true);
+check('seçili çip aria-pressed=true', await alphaChip.getAttribute('aria-pressed'), 'true');
+
+const alphaClass = (await alphaChip.getAttribute('class')) ?? '';
+check('seçili çip ultramarin tonlu', alphaClass.includes('bg-primary/10'), true);
+check('hap biçimi kalmadı (seçili)', alphaClass.includes('rounded-full'), false);
+
+const betaChip = page.getByRole('button', { name: '#beta' });
+const betaClass = (await betaChip.getAttribute('class')) ?? '';
+check('hap biçimi kalmadı (seçili değil)', betaClass.includes('rounded-full'), false);
+check('seçili olmayan çip nötr', betaClass.includes('border-border'), true);
+
+await betaChip.click();
+await page.waitForTimeout(250);
+check('tıklama seçimi değiştirdi', await betaChip.getAttribute('aria-pressed'), 'true');
+
 // ---------- 3. Dialog içinde ConfirmDialog ----------
 await page.locator('button[aria-label="open-organize"]').click();
 await page.waitForTimeout(350);
