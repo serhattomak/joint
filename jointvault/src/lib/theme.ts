@@ -27,6 +27,21 @@ export function applyTheme(theme: Theme): void {
   localStorage.setItem(KEY, theme);
 }
 
+export function initTheme(): void {
+  const theme = getTheme();
+  applyTheme(theme);
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', () => {
+      if (getTheme() === 'system') {
+        applyTheme('system');
+      }
+    });
+  } catch {
+    // SSR / test fallback
+  }
+}
+
 export function cycleTheme(): Theme {
   const next = THEME_ORDER[(THEME_ORDER.indexOf(getTheme()) + 1) % THEME_ORDER.length];
   applyTheme(next);
