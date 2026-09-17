@@ -53,7 +53,7 @@ function useNavEntries(props: SidebarProps): NavEntry[] {
   return [
     { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome },
     viewBtn('favorites', <Star />, 'Favoriler'),
-    viewBtn('downloads', <Download />, 'İndirilenler'),
+    viewBtn('downloads', <Download />, 'İndirme Yöneticisi'),
     viewBtn('collections', <FolderKanban />, 'Koleksiyonlar'),
     viewBtn('ai', <Sparkles />, 'Kasa Asistanı'),
     viewBtn('converter', <Clapperboard />, 'Dönüştürücü'),

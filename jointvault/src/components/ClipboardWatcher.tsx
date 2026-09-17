@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link2, X } from 'lucide-react';
+import { Link2, X, Zap } from 'lucide-react';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { Button } from '@/components/ui/button';
 import { createItem, listItems } from '@/lib/db/client';
@@ -16,9 +16,20 @@ function canonicalKey(u: string): string {
   return u.trim().toLowerCase();
 }
 
+function isDirectDownloadUrl(url: string): boolean {
+  const clean = url.split('?')[0].toLowerCase();
+  return /\.(zip|rar|7z|tar|gz|bz2|xz|iso|dmg|exe|msi|apk|pdf|mp4|mkv|avi|mov|mp3|flac|wav)$/i.test(clean);
+}
+
 // App açıkken (gizli pencerede bile JS çalışır) panoyu yoklar:
-// platform linki görülürse kaydetme önerisi çıkarır.
-export function ClipboardWatcher({ onDone }: { onDone: () => void }) {
+// platform linki veya dosya indirme linki görülürse kaydetme/indirme önerisi çıkarır.
+export function ClipboardWatcher({
+  onDone,
+  onDownload,
+}: {
+  onDone: () => void;
+  onDownload?: (url: string) => void;
+}) {
   const [candidate, setCandidate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const lastRef = useRef('');
@@ -36,7 +47,11 @@ export function ClipboardWatcher({ onDone }: { onDone: () => void }) {
         }
         if (!text || text === lastRef.current) return;
         lastRef.current = text;
-        if (!/^https?:\/\//i.test(text) || detectPlatform(text) === 'other') return;
+        if (!/^https?:\/\//i.test(text)) return;
+        const isPlatform = detectPlatform(text) !== 'other';
+        const isFile = isDirectDownloadUrl(text);
+        if (!isPlatform && !isFile) return;
+
         if (dismissedRef.current.has(canonicalKey(text))) return;
         try {
           const existing = (await listItems()).map((i) => i.url);
@@ -48,7 +63,6 @@ export function ClipboardWatcher({ onDone }: { onDone: () => void }) {
       })();
     }, 2500);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate]);
 
   if (!candidate) return null;
@@ -70,15 +84,33 @@ export function ClipboardWatcher({ onDone }: { onDone: () => void }) {
     setCandidate(null);
   };
 
+  const isFile = isDirectDownloadUrl(candidate);
+
   return (
-    <div className="animate-rise fixed top-3 left-1/2 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-lift">
+    <div className="animate-rise fixed top-3 left-1/2 z-40 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 shadow-lift">
       <Link2 className="size-4 shrink-0 text-primary" />
       <p className="min-w-0 flex-1 truncate text-sm">
-        Panoda link var — kaydedilsin mi?
+        {isFile ? 'Panoda indirilebilir dosya var:' : 'Panoda link var:'}
       </p>
-      <span className="hidden max-w-48 truncate font-mono text-xs text-muted-foreground sm:inline">{candidate}</span>
+      <span className="hidden max-w-44 truncate font-mono text-xs text-muted-foreground sm:inline">
+        {candidate}
+      </span>
+      {onDownload && (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="gap-1 font-medium"
+          onClick={() => {
+            const url = candidate;
+            dismiss();
+            onDownload(url);
+          }}
+        >
+          <Zap className="size-3.5 text-primary" /> İndir
+        </Button>
+      )}
       <Button size="sm" onClick={() => void save()} disabled={saving}>
-        {saving ? '…' : 'Kaydet'}
+        {saving ? '…' : 'Kasaya Ekle'}
       </Button>
       <Button variant="ghost" size="icon-sm" onClick={dismiss} aria-label="Yoksay">
         <X />

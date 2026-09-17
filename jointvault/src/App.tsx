@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench } from 'lucide-react';
+import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench, Zap } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { CaptureBar } from '@/components/CaptureBar';
@@ -7,6 +7,7 @@ import { ClipboardWatcher } from '@/components/ClipboardWatcher';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
 import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
+import { DownloadsView } from '@/components/DownloadsView';
 import { DuplicatesView } from '@/components/DuplicatesView';
 import { WelcomeDialog, isOnboarded } from '@/components/WelcomeDialog';
 import { OnboardingWizard } from '@/components/OnboardingWizard';
@@ -17,6 +18,7 @@ import { ItemRecord } from '@/components/ItemRecord';
 import { MergeTool } from '@/components/MergeTool';
 import { GifTool } from '@/components/GifTool';
 import { CollectionsView } from '@/components/CollectionsView';
+import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
 import { AiAssistantView } from '@/components/AiAssistantView';
 import { SettingsView, type SettingsTab } from '@/components/SettingsView';
 import { Sidebar, SidebarStrip, type SidebarView } from '@/components/Sidebar';
@@ -56,6 +58,8 @@ function App() {
   const [tagId, setTagId] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [downloadedOnly, setDownloadedOnly] = useState(false);
+  const [quickDlOpen, setQuickDlOpen] = useState(false);
+  const [quickDlUrl, setQuickDlUrl] = useState('');
   const [converterOnly, setConverterOnly] = useState(false);
   const [toolboxOnly, setToolboxOnly] = useState(false);
   const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates' | null>(null);
@@ -123,7 +127,7 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly;
+  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly && !downloadedOnly;
 
   const showAll = (): void => {
     setPlatform('all');
@@ -219,19 +223,8 @@ function App() {
   };
 
   const goDownloads = (): void => {
+    showAll();
     setDownloadedOnly(true);
-    setPlatform('all');
-    setCollectionId('all');
-    setCategoryId('all');
-    setTagId('all');
-    setFavoritesOnly(false);
-    setConverterOnly(false);
-    setToolboxOnly(false);
-    setToolboxTool(null);
-    setStatsOnly(false);
-    setAiOnly(false);
-    setSettingsOnly(false);
-    setCollectionsOnly(false);
   };
 
   // Yakala çubuğu her ekranda durur. Bir araç yüzeyindeyken yazmaya başlamak
@@ -242,6 +235,7 @@ function App() {
   };
 
   const paletteCommands: PaletteCommand[] = [
+    { id: 'turbo-dl', label: 'Hızlı İndir (Turbo IDM)', icon: <Zap className="size-4" />, run: () => { setQuickDlUrl(''); setQuickDlOpen(true); } },
     { id: 'add', label: 'Yeni öğe ekle', icon: <Plus className="size-4" />, run: () => { setAddUrl(''); setAddOpen(true); } },
     { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
@@ -256,7 +250,7 @@ function App() {
     { id: 'stats', label: 'İstatistikler', icon: <BarChart3 className="size-4" />, run: openStats },
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
     { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
-    { id: 'dl', label: 'İndirilenler', icon: <Download className="size-4" />, run: goDownloads },
+    { id: 'dl', label: 'İndirme Yöneticisi', icon: <Download className="size-4" />, run: goDownloads },
     { id: 'organize', label: 'Koleksiyonlar', icon: <SlidersHorizontal className="size-4" />, run: openCollections },
     { id: 'settings', label: 'Ayarlar', icon: <Settings className="size-4" />, run: () => openSettings() },
     { id: 'tour', label: 'Karşılama turu', icon: <Sparkles className="size-4" />, run: () => setTourOpen(true) },
@@ -420,6 +414,10 @@ function App() {
                     </aside>
                   )}
                 </>
+              ) : downloadedOnly ? (
+                <div className="min-w-0 flex-1">
+                  <DownloadsView onClose={showAll} />
+                </div>
               ) : aiOnly ? (
                 <div className="min-w-0 flex-1">
                   <AiAssistantView
@@ -562,7 +560,22 @@ function App() {
             onOpenChange={setWizardOpen}
             onOpenSettings={() => openSettings('ai')}
           />
-          <ClipboardWatcher onDone={refresh} />
+          <QuickDownloadDialog
+            open={quickDlOpen}
+            onOpenChange={setQuickDlOpen}
+            initialUrl={quickDlUrl}
+            onStarted={() => {
+              goDownloads();
+              refresh();
+            }}
+          />
+          <ClipboardWatcher
+            onDone={refresh}
+            onDownload={(url) => {
+              setQuickDlUrl(url);
+              setQuickDlOpen(true);
+            }}
+          />
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
         </div>
       </TooltipProvider>

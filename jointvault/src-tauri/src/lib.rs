@@ -13,6 +13,7 @@ mod silence;
 mod tray;
 mod whisper;
 mod ai;
+mod turbo_download;
 
 use tauri::Manager;
 
@@ -68,7 +69,11 @@ pub fn run() {
       ai::ai_suggest_tags,
       ai::ai_summarize,
       ai::ai_warmup,
-      ai::ai_categorize_and_tag
+      ai::ai_categorize_and_tag,
+      turbo_download::turbo_probe_url,
+      turbo_download::turbo_start_download,
+      turbo_download::turbo_pause_download,
+      turbo_download::turbo_cancel_download
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

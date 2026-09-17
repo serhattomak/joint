@@ -91,3 +91,24 @@ CREATE VIRTUAL TABLE IF NOT EXISTS item_chunks_fts USING fts5(
   chunk_text,
   tokenize = 'unicode61'
 );
+
+CREATE TABLE IF NOT EXISTS downloads (
+  id TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  destination_path TEXT NOT NULL,
+  file_size INTEGER NOT NULL DEFAULT 0,
+  downloaded_size INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  category TEXT NOT NULL DEFAULT 'other',
+  threads INTEGER NOT NULL DEFAULT 8,
+  speed_bps INTEGER NOT NULL DEFAULT 0,
+  eta_secs INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at);
+CREATE INDEX IF NOT EXISTS idx_downloads_category ON downloads(category);

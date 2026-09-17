@@ -758,3 +758,135 @@ export async function listTagsWithCounts(): Promise<TagWithCount[]> {
     count: countMap.get(t.id) ?? 0,
   }));
 }
+
+// --- IDM Turbo Download Jobs ---
+
+export type DownloadStatus = 'active' | 'queued' | 'paused' | 'completed' | 'error';
+export type DownloadCategory = 'video' | 'audio' | 'archive' | 'document' | 'program' | 'other';
+
+export interface DownloadJob {
+  id: string;
+  url: string;
+  filename: string;
+  destination_path: string;
+  file_size: number;
+  downloaded_size: number;
+  status: DownloadStatus;
+  category: DownloadCategory;
+  threads: number;
+  speed_bps: number;
+  eta_secs: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewDownloadJob {
+  id?: string;
+  url: string;
+  filename: string;
+  destination_path: string;
+  file_size?: number;
+  threads?: number;
+  category?: DownloadCategory;
+  status?: DownloadStatus;
+}
+
+export function detectCategoryFromFilename(name: string): DownloadCategory {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  if (['mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'wmv', 'm4v', '3gp'].includes(ext)) return 'video';
+  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'opus', 'wma'].includes(ext)) return 'audio';
+  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'iso', 'dmg'].includes(ext)) return 'archive';
+  if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'epub'].includes(ext)) return 'document';
+  if (['exe', 'msi', 'apk', 'deb', 'rpm', 'appimage'].includes(ext)) return 'program';
+  return 'other';
+}
+
+export async function createDownloadJob(input: NewDownloadJob): Promise<DownloadJob> {
+  const db = await getDb();
+  const id = input.id ?? crypto.randomUUID();
+  const category = input.category ?? detectCategoryFromFilename(input.filename);
+  const row: DownloadJob = {
+    id,
+    url: input.url,
+    filename: input.filename,
+    destination_path: input.destination_path,
+    file_size: input.file_size ?? 0,
+    downloaded_size: 0,
+    status: input.status ?? 'active',
+    category,
+    threads: input.threads ?? 8,
+    speed_bps: 0,
+    eta_secs: 0,
+    error_message: null,
+    created_at: now(),
+    updated_at: now(),
+  };
+
+  await db.execute(
+    `INSERT INTO downloads (id, url, filename, destination_path, file_size, downloaded_size, status, category, threads, speed_bps, eta_secs, error_message, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    [
+      row.id,
+      row.url,
+      row.filename,
+      row.destination_path,
+      row.file_size,
+      row.downloaded_size,
+      row.status,
+      row.category,
+      row.threads,
+      row.speed_bps,
+      row.eta_secs,
+      row.error_message,
+      row.created_at,
+      row.updated_at,
+    ],
+  );
+  return row;
+}
+
+export async function listDownloadJobs(statusFilter?: DownloadStatus): Promise<DownloadJob[]> {
+  const db = await getDb();
+  if (statusFilter) {
+    return db.select<DownloadJob[]>('SELECT * FROM downloads WHERE status = $1 ORDER BY created_at DESC', [statusFilter]);
+  }
+  return db.select<DownloadJob[]>('SELECT * FROM downloads ORDER BY created_at DESC');
+}
+
+export async function getDownloadJob(id: string): Promise<DownloadJob | null> {
+  const db = await getDb();
+  const rows = await db.select<DownloadJob[]>('SELECT * FROM downloads WHERE id = $1', [id]);
+  return rows[0] ?? null;
+}
+
+export async function updateDownloadJob(id: string, patch: Partial<DownloadJob>): Promise<void> {
+  const db = await getDb();
+  const sets: string[] = ['updated_at = $1'];
+  const values: unknown[] = [now()];
+  let idx = 2;
+
+  if (patch.filename !== undefined) { sets.push(`filename = $${idx++}`); values.push(patch.filename); }
+  if (patch.destination_path !== undefined) { sets.push(`destination_path = $${idx++}`); values.push(patch.destination_path); }
+  if (patch.file_size !== undefined) { sets.push(`file_size = $${idx++}`); values.push(patch.file_size); }
+  if (patch.downloaded_size !== undefined) { sets.push(`downloaded_size = $${idx++}`); values.push(patch.downloaded_size); }
+  if (patch.status !== undefined) { sets.push(`status = $${idx++}`); values.push(patch.status); }
+  if (patch.category !== undefined) { sets.push(`category = $${idx++}`); values.push(patch.category); }
+  if (patch.threads !== undefined) { sets.push(`threads = $${idx++}`); values.push(patch.threads); }
+  if (patch.speed_bps !== undefined) { sets.push(`speed_bps = $${idx++}`); values.push(patch.speed_bps); }
+  if (patch.eta_secs !== undefined) { sets.push(`eta_secs = $${idx++}`); values.push(patch.eta_secs); }
+  if (patch.error_message !== undefined) { sets.push(`error_message = $${idx++}`); values.push(patch.error_message); }
+
+  values.push(id);
+  await db.execute(`UPDATE downloads SET ${sets.join(', ')} WHERE id = $${idx}`, values);
+}
+
+export async function removeDownloadJob(id: string): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM downloads WHERE id = $1', [id]);
+}
+
+export async function clearCompletedDownloads(): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM downloads WHERE status = $1', ['completed']);
+}
