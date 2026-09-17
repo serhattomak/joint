@@ -43,3 +43,21 @@ export interface Category {
   created_at: string;
   updated_at: string;
 }
+
+export interface ItemChunkRow {
+  id: string;
+  item_id: string;
+  chunk_type: 'meta' | 'note' | 'transcript';
+  chunk_text: string;
+  start_seconds: number | null;
+  end_seconds: number | null;
+  embedding: string | null;
+  created_at: string;
+}
+
+export interface HybridSearchResult {
+  chunk: ItemChunkRow;
+  item: Item;
+  score: number;
+  matchSource: 'fts' | 'vector' | 'both';
+}

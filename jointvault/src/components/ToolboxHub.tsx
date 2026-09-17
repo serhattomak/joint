@@ -1,13 +1,19 @@
-import { Captions, ChevronRight, Combine, Film, Scissors, Wrench } from 'lucide-react';
+import { Captions, ChevronRight, Combine, Copy, Film, Scissors, Wrench } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
-export type ToolboxToolId = 'merge' | 'silence' | 'gif' | 'subtitle';
+export type ToolboxToolId = 'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates';
 
 interface ToolboxHubProps {
   onPick: (toolId: ToolboxToolId) => void;
 }
 
 const TOOLS: { id: ToolboxToolId; icon: React.ReactNode; title: string; desc: string }[] = [
+  {
+    id: 'duplicates',
+    icon: <Copy className="size-4" />,
+    title: 'Yinelenenler & Temizlik',
+    desc: 'Kopya URL, dosya tekrarları ve yetim dosyaları temizle.',
+  },
   {
     id: 'merge',
     icon: <Combine className="size-4" />,

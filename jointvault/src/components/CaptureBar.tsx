@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CornerDownLeft, Link2, Plus, Search } from 'lucide-react';
+import { CornerDownLeft, Link2, Plus, Search, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,9 +28,11 @@ interface CaptureBarProps {
   onQuery: (query: string) => void;
   onSaved: () => void;
   onDetailed: (url: string) => void;
+  semantic?: boolean;
+  onSemanticToggle?: () => void;
 }
 
-export function CaptureBar({ onQuery, onSaved, onDetailed }: CaptureBarProps) {
+export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticToggle }: CaptureBarProps) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const notice = useNotice();
@@ -88,6 +90,8 @@ export function CaptureBar({ onQuery, onSaved, onDetailed }: CaptureBarProps) {
       <div className="relative min-w-0 flex-1">
         {capture ? (
           <Link2 className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-primary" aria-hidden />
+        ) : semantic ? (
+          <Sparkles className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-primary" aria-hidden />
         ) : (
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         )}
@@ -102,8 +106,14 @@ export function CaptureBar({ onQuery, onSaved, onDetailed }: CaptureBarProps) {
             if (e.key === 'Escape') reset();
           }}
           aria-label={capture ? 'Link kaydet' : 'Arşivde ara'}
-          placeholder={capture ? 'Enter ile kaydet — önizleme sonra çekilir' : 'Arşivde ara: başlık · not · URL'}
-          className="h-[38px] pl-8 text-[0.9375rem]"
+          placeholder={
+            capture
+              ? 'Enter ile kaydet — önizleme sonra çekilir'
+              : semantic
+                ? 'Arşivde semantik ara: doğal dil, kavramlar, transkriptler…'
+                : 'Arşivde ara: başlık · not · URL'
+          }
+          className={`h-[38px] pl-8 text-[0.9375rem] ${semantic && !capture ? 'border-primary/50' : ''}`}
         />
       </div>
 
@@ -123,11 +133,26 @@ export function CaptureBar({ onQuery, onSaved, onDetailed }: CaptureBarProps) {
           </Button>
         </span>
       ) : (
-        <span className="hidden shrink-0 items-center gap-1.5 font-mono text-2xs text-muted-foreground sm:flex">
-          <kbd className="rounded-xs border border-border px-1 py-px">Ctrl</kbd>
-          <kbd className="rounded-xs border border-border px-1 py-px">K</kbd>
-          <span>palet</span>
-        </span>
+        <div className="flex items-center gap-2">
+          {onSemanticToggle && (
+            <Button
+              type="button"
+              variant={semantic ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={onSemanticToggle}
+              className="h-7 gap-1 px-2 text-2xs"
+              title={semantic ? 'Semantik Arama Devrede (BGE-M3 + FTS5)' : 'Semantik Arama Moduna Geç'}
+            >
+              <Sparkles className={`size-3 ${semantic ? 'text-primary' : 'text-muted-foreground'}`} />
+              <span className={semantic ? 'font-medium text-foreground' : 'text-muted-foreground'}>Semantik</span>
+            </Button>
+          )}
+          <span className="hidden shrink-0 items-center gap-1.5 font-mono text-2xs text-muted-foreground sm:flex">
+            <kbd className="rounded-xs border border-border px-1 py-px">Ctrl</kbd>
+            <kbd className="rounded-xs border border-border px-1 py-px">K</kbd>
+            <span>palet</span>
+          </span>
+        </div>
       )}
     </div>
   );

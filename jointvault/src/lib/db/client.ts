@@ -1,6 +1,7 @@
 import Database from '@tauri-apps/plugin-sql';
 import schema from './schema.sql?raw';
-import type { Category, Collection, Item, Tag } from './types';
+import type { Category, Collection, HybridSearchResult, Item, ItemChunkRow, Tag } from './types';
+import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
 
 const DB_PATH = 'sqlite:jointvault.db';
 
@@ -110,6 +111,12 @@ export async function listItems(): Promise<Item[]> {
   const db = await getDb();
   const rows = await db.select<ItemRow[]>('SELECT * FROM items ORDER BY created_at DESC');
   return rows.map(toItem);
+}
+
+export async function getItem(id: string): Promise<Item | null> {
+  const db = await getDb();
+  const rows = await db.select<ItemRow[]>('SELECT * FROM items WHERE id = $1', [id]);
+  return rows[0] ? toItem(rows[0]) : null;
 }
 
 export type ItemPatch = Partial<
@@ -457,4 +464,297 @@ export async function importVault(data: VaultBackup): Promise<{ added: number }>
     }
   }
   return { added };
+}
+
+// --- item_chunks & hybrid semantic search ---
+
+export async function saveItemChunks(itemId: string, chunks: ItemChunk[]): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM item_chunks WHERE item_id = $1', [itemId]);
+  try {
+    await db.execute('DELETE FROM item_chunks_fts WHERE item_id = $1', [itemId]);
+  } catch {
+    // FTS table might not be initialized yet in edge cases
+  }
+
+  for (const chunk of chunks) {
+    const chunkId = chunk.id || crypto.randomUUID();
+    await db.execute(
+      `INSERT INTO item_chunks (id, item_id, chunk_type, chunk_text, start_seconds, end_seconds, embedding, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        chunkId,
+        itemId,
+        chunk.chunkType,
+        chunk.chunkText,
+        chunk.startSeconds ?? null,
+        chunk.endSeconds ?? null,
+        chunk.embedding ?? null,
+        chunk.createdAt ?? now(),
+      ],
+    );
+
+    try {
+      await db.execute(
+        `INSERT INTO item_chunks_fts (chunk_id, item_id, chunk_text) VALUES ($1, $2, $3)`,
+        [chunkId, itemId, chunk.chunkText],
+      );
+    } catch {
+      // ignore FTS insert errors if virtual table is unavailable
+    }
+  }
+}
+
+export async function deleteItemChunks(itemId: string): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM item_chunks WHERE item_id = $1', [itemId]);
+  try {
+    await db.execute('DELETE FROM item_chunks_fts WHERE item_id = $1', [itemId]);
+  } catch {
+    // ignore
+  }
+}
+
+export async function getChunksByItem(itemId: string): Promise<ItemChunkRow[]> {
+  const db = await getDb();
+  return db.select<ItemChunkRow[]>(
+    'SELECT * FROM item_chunks WHERE item_id = $1 ORDER BY COALESCE(start_seconds, 0) ASC',
+    [itemId],
+  );
+}
+
+export async function getChunksMissingEmbeddings(limit = 100): Promise<ItemChunkRow[]> {
+  const db = await getDb();
+  return db.select<ItemChunkRow[]>(
+    'SELECT * FROM item_chunks WHERE embedding IS NULL OR embedding = "" LIMIT $1',
+    [limit],
+  );
+}
+
+export async function updateChunkEmbedding(id: string, embeddingBase64: string): Promise<void> {
+  const db = await getDb();
+  await db.execute('UPDATE item_chunks SET embedding = $1 WHERE id = $2', [embeddingBase64, id]);
+}
+
+export async function getAllChunksWithEmbeddings(): Promise<ItemChunkRow[]> {
+  const db = await getDb();
+  return db.select<ItemChunkRow[]>(
+    'SELECT * FROM item_chunks WHERE embedding IS NOT NULL AND embedding != ""',
+  );
+}
+
+/**
+ * Reciprocal Rank Fusion (RRF) ile hibrit arama.
+ * FTS5 tam metin eşleşmesi ve BGE-M3 kosinüs benzerliğini harmanlar.
+ */
+export async function searchHybridChunks(
+  query: string,
+  queryEmbedding: number[] | Float32Array | null,
+  limit = 20,
+): Promise<HybridSearchResult[]> {
+  const db = await getDb();
+  const ftsScores = new Map<string, number>();
+  const vectorScores = new Map<string, { score: number; chunk: ItemChunkRow }>();
+
+  const cleanQuery = query.trim().replace(/['"*^]/g, ' ');
+  if (cleanQuery) {
+    try {
+      const tokens = cleanQuery.split(/\s+/).filter(Boolean);
+      if (tokens.length > 0) {
+        const ftsQuery = tokens.map((t) => `"${t}"*`).join(' OR ');
+        const rows = await db.select<{ chunk_id: string }[]>(
+          `SELECT chunk_id FROM item_chunks_fts WHERE item_chunks_fts MATCH $1 LIMIT 50`,
+          [ftsQuery],
+        );
+        rows.forEach((r, idx) => {
+          ftsScores.set(r.chunk_id, idx + 1);
+        });
+      }
+    } catch {
+      try {
+        const rows = await db.select<{ id: string }[]>(
+          `SELECT id FROM item_chunks WHERE chunk_text LIKE $1 LIMIT 50`,
+          [`%${cleanQuery}%`],
+        );
+        rows.forEach((r, idx) => {
+          ftsScores.set(r.id, idx + 1);
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  let allChunks: ItemChunkRow[] = [];
+  if (queryEmbedding && queryEmbedding.length > 0) {
+    allChunks = await getAllChunksWithEmbeddings();
+    const queryVec = queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding);
+
+    const scored = allChunks.map((c) => {
+      let sim = 0;
+      if (c.embedding) {
+        try {
+          const cVec = base64ToVector(c.embedding);
+          sim = cosineSimilarity(queryVec, cVec);
+        } catch {
+          sim = 0;
+        }
+      }
+      return { chunk: c, sim };
+    });
+
+    scored.sort((a, b) => b.sim - a.sim);
+    const topVec = scored.slice(0, 50);
+    topVec.forEach((s) => {
+      vectorScores.set(s.chunk.id, { score: s.sim, chunk: s.chunk });
+    });
+  }
+
+  const k = 60;
+  const chunkMap = new Map<string, { chunk?: ItemChunkRow; rrf: number; source: 'fts' | 'vector' | 'both' }>();
+
+  for (const [id, rank] of ftsScores.entries()) {
+    const entry = chunkMap.get(id) ?? { rrf: 0, source: 'fts' };
+    entry.rrf += 1 / (k + rank);
+    entry.source = 'fts';
+    chunkMap.set(id, entry);
+  }
+
+  let vecRank = 1;
+  for (const [id, data] of vectorScores.entries()) {
+    const entry = chunkMap.get(id);
+    if (entry) {
+      entry.rrf += 1 / (k + vecRank);
+      entry.source = 'both';
+      entry.chunk = data.chunk;
+    } else {
+      chunkMap.set(id, {
+        chunk: data.chunk,
+        rrf: 1 / (k + vecRank),
+        source: 'vector',
+      });
+    }
+    vecRank++;
+  }
+
+  const missingIds = Array.from(chunkMap.keys()).filter((id) => !chunkMap.get(id)?.chunk);
+  if (missingIds.length > 0) {
+    const inClause = missingIds.map((_, i) => `$${i + 1}`).join(', ');
+    const fetched = await db.select<ItemChunkRow[]>(
+      `SELECT * FROM item_chunks WHERE id IN (${inClause})`,
+      missingIds,
+    );
+    for (const ch of fetched) {
+      const entry = chunkMap.get(ch.id);
+      if (entry) entry.chunk = ch;
+    }
+  }
+
+  const sorted = Array.from(chunkMap.entries())
+    .filter(([_, val]) => val.chunk !== undefined)
+    .sort((a, b) => b[1].rrf - a[1].rrf)
+    .slice(0, limit);
+
+  const itemIds = Array.from(new Set(sorted.map(([_, v]) => v.chunk!.item_id)));
+  if (itemIds.length === 0) return [];
+
+  const inItemsClause = itemIds.map((_, i) => `$${i + 1}`).join(', ');
+  const itemRows = await db.select<ItemRow[]>(
+    `SELECT * FROM items WHERE id IN (${inItemsClause})`,
+    itemIds,
+  );
+  const itemMap = new Map<string, Item>();
+  for (const ir of itemRows) {
+    itemMap.set(ir.id, toItem(ir));
+  }
+
+  const results: HybridSearchResult[] = [];
+  for (const [_, entry] of sorted) {
+    const ch = entry.chunk!;
+    const it = itemMap.get(ch.item_id);
+    if (it) {
+      results.push({
+        chunk: ch,
+        item: it,
+        score: entry.rrf,
+        matchSource: entry.source,
+      });
+    }
+  }
+
+  return results;
+}
+
+// --- Taksonomi & Koleksiyon Özetleri (CollectionsView için) ---
+
+export interface CollectionWithCount extends Collection {
+  count: number;
+  previewThumbnails: string[];
+}
+
+export interface CategoryWithCount extends Category {
+  count: number;
+}
+
+export interface TagWithCount extends Tag {
+  count: number;
+}
+
+export async function listCollectionsWithCounts(): Promise<CollectionWithCount[]> {
+  const db = await getDb();
+  const cols = await listCollections();
+  const counts = await db.select<{ collection_id: string; count: number }[]>(
+    'SELECT collection_id, COUNT(*) as count FROM items WHERE collection_id IS NOT NULL GROUP BY collection_id',
+  );
+  const previews = await db.select<{ collection_id: string; thumbnail: string }[]>(
+    'SELECT collection_id, thumbnail FROM items WHERE collection_id IS NOT NULL AND thumbnail IS NOT NULL AND thumbnail != "" ORDER BY created_at DESC',
+  );
+
+  const countMap = new Map<string, number>();
+  for (const c of counts) countMap.set(c.collection_id, c.count);
+
+  const previewMap = new Map<string, string[]>();
+  for (const p of previews) {
+    const list = previewMap.get(p.collection_id) ?? [];
+    if (list.length < 4) {
+      list.push(p.thumbnail);
+      previewMap.set(p.collection_id, list);
+    }
+  }
+
+  return cols.map((col) => ({
+    ...col,
+    count: countMap.get(col.id) ?? 0,
+    previewThumbnails: previewMap.get(col.id) ?? [],
+  }));
+}
+
+export async function listCategoriesWithCounts(): Promise<CategoryWithCount[]> {
+  const db = await getDb();
+  const cats = await listCategories();
+  const counts = await db.select<{ category_id: string; count: number }[]>(
+    'SELECT category_id, COUNT(*) as count FROM item_categories GROUP BY category_id',
+  );
+  const countMap = new Map<string, number>();
+  for (const c of counts) countMap.set(c.category_id, c.count);
+
+  return cats.map((cat) => ({
+    ...cat,
+    count: countMap.get(cat.id) ?? 0,
+  }));
+}
+
+export async function listTagsWithCounts(): Promise<TagWithCount[]> {
+  const db = await getDb();
+  const tags = await listTags();
+  const counts = await db.select<{ tag_id: string; count: number }[]>(
+    'SELECT tag_id, COUNT(*) as count FROM item_tags GROUP BY tag_id',
+  );
+  const countMap = new Map<string, number>();
+  for (const c of counts) countMap.set(c.tag_id, c.count);
+
+  return tags.map((t) => ({
+    ...t,
+    count: countMap.get(t.id) ?? 0,
+  }));
 }

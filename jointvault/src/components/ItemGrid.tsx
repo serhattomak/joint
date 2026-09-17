@@ -11,15 +11,18 @@ import {
   getAllTagsByItem,
   listItemsPage,
   removeItem,
+  searchHybridChunks,
   setDownloadState,
   toggleFavorite,
   type ItemSort,
 } from '@/lib/db/client';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
+import { generateEmbeddings, getAiStatus } from '@/lib/ai';
 import { startDownload, useDownloadProgress, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
 
 interface ItemGridProps {
   query: string;
+  semantic?: boolean;
   platform: string; // 'all' or a platform slug
   collectionId: string; // 'all' or a collection id
   categoryId: string; // 'all' or a category id
@@ -56,6 +59,7 @@ export function readPageSize(): number {
 
 export function ItemGrid({
   query,
+  semantic,
   platform,
   collectionId,
   categoryId,
@@ -109,6 +113,25 @@ export function ItemGrid({
   // Sayfa çekimi: arama+filtre+sayfa+boyut+sıralama+refresh değişince tek tur.
   const fetchPage = useCallback(
     async (p: number, size: number): Promise<void> => {
+      const q = debouncedQuery.trim();
+      if (semantic && q) {
+        try {
+          const status = await getAiStatus();
+          let queryEmbedding: number[] | null = null;
+          if (status.embed_ready && status.engine_available) {
+            const embeds = await generateEmbeddings([q]).catch(() => []);
+            if (embeds.length > 0) queryEmbedding = embeds[0];
+          }
+          const results = await searchHybridChunks(q, queryEmbedding, size);
+          setRows(results.map((r) => r.item));
+          setTotal(results.length);
+          setLoaded(true);
+          return;
+        } catch (e) {
+          console.warn('[ItemGrid:semanticSearchFallback]', e);
+        }
+      }
+
       const res = await listItemsPage(size, p * size, {
         query: debouncedQuery,
         platform,
@@ -127,7 +150,7 @@ export function ItemGrid({
       setTotal(res.total);
       setLoaded(true);
     },
-    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, sort],
+    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, sort, semantic],
   );
 
   useEffect(() => {

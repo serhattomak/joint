@@ -16,9 +16,10 @@ import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
 import { ItemRecord } from '@/components/ItemRecord';
 import { MergeTool } from '@/components/MergeTool';
 import { GifTool } from '@/components/GifTool';
-import { OrganizeDialog } from '@/components/OrganizeDialog';
-import { SettingsDialog } from '@/components/SettingsDialog';
-import { Sidebar, SidebarStrip } from '@/components/Sidebar';
+import { CollectionsView } from '@/components/CollectionsView';
+import { AiAssistantView } from '@/components/AiAssistantView';
+import { SettingsView, type SettingsTab } from '@/components/SettingsView';
+import { Sidebar, SidebarStrip, type SidebarView } from '@/components/Sidebar';
 import { SilenceTool } from '@/components/SilenceTool';
 import { SubtitleTool } from '@/components/SubtitleTool';
 import { ToolboxHub } from '@/components/ToolboxHub';
@@ -26,7 +27,7 @@ import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
 import { Button } from '@/components/ui/button';
 import { NoticeProvider } from '@/components/ui/notice';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { listCategories, listCollections, listTags, type ItemSort } from '@/lib/db/client';
+import { listCategories, listCollections, listItems, listTags, type ItemSort } from '@/lib/db/client';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { startDownload, type DownloadQuality } from '@/lib/downloads';
 import { cycleTheme } from '@/lib/theme';
@@ -48,6 +49,7 @@ function readSort(): ItemSort {
 
 function App() {
   const [query, setQuery] = useState('');
+  const [semantic, setSemantic] = useState(false);
   const [platform, setPlatform] = useState('all');
   const [collectionId, setCollectionId] = useState('all');
   const [categoryId, setCategoryId] = useState('all');
@@ -56,9 +58,12 @@ function App() {
   const [downloadedOnly, setDownloadedOnly] = useState(false);
   const [converterOnly, setConverterOnly] = useState(false);
   const [toolboxOnly, setToolboxOnly] = useState(false);
-  const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | null>(null);
-  const [duplicatesOnly, setDuplicatesOnly] = useState(false);
+  const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates' | null>(null);
   const [statsOnly, setStatsOnly] = useState(false);
+  const [aiOnly, setAiOnly] = useState(false);
+  const [settingsOnly, setSettingsOnly] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai');
+  const [collectionsOnly, setCollectionsOnly] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -71,8 +76,6 @@ function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [addUrl, setAddUrl] = useState('');
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [organizeOpen, setOrganizeOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [urlDlOpen, setUrlDlOpen] = useState(false);
   const [formatTarget, setFormatTarget] = useState<FormatTarget | null>(null);
   const [editorSource, setEditorSource] = useState<EditorSource | null>(null);
@@ -107,7 +110,7 @@ function App() {
     void listCollections().then(setCollections);
     void listCategories().then(setCategories);
     void listTags().then(setTags);
-  }, [refreshKey, organizeOpen]);
+  }, [refreshKey, collectionsOnly]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -120,7 +123,7 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const isVault = !converterOnly && !toolboxOnly && !duplicatesOnly && !statsOnly;
+  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly;
 
   const showAll = (): void => {
     setPlatform('all');
@@ -132,8 +135,26 @@ function App() {
     setConverterOnly(false);
     setToolboxOnly(false);
     setToolboxTool(null);
-    setDuplicatesOnly(false);
     setStatsOnly(false);
+    setAiOnly(false);
+    setSettingsOnly(false);
+    setCollectionsOnly(false);
+  };
+
+  const openAi = (): void => {
+    showAll();
+    setAiOnly(true);
+  };
+
+  const openSettings = (initialTab: SettingsTab = 'ai'): void => {
+    showAll();
+    setSettingsOnly(true);
+    setSettingsTab(initialTab);
+  };
+
+  const openCollections = (): void => {
+    showAll();
+    setCollectionsOnly(true);
   };
 
   const openConverter = (): void => {
@@ -172,7 +193,8 @@ function App() {
 
   const openDuplicates = (): void => {
     showAll();
-    setDuplicatesOnly(true);
+    setToolboxOnly(true);
+    setToolboxTool('duplicates');
   };
 
   const openStats = (): void => {
@@ -190,8 +212,10 @@ function App() {
     setConverterOnly(false);
     setToolboxOnly(false);
     setToolboxTool(null);
-    setDuplicatesOnly(false);
     setStatsOnly(false);
+    setAiOnly(false);
+    setSettingsOnly(false);
+    setCollectionsOnly(false);
   };
 
   const goDownloads = (): void => {
@@ -204,8 +228,10 @@ function App() {
     setConverterOnly(false);
     setToolboxOnly(false);
     setToolboxTool(null);
-    setDuplicatesOnly(false);
     setStatsOnly(false);
+    setAiOnly(false);
+    setSettingsOnly(false);
+    setCollectionsOnly(false);
   };
 
   // Yakala çubuğu her ekranda durur. Bir araç yüzeyindeyken yazmaya başlamak
@@ -219,6 +245,7 @@ function App() {
     { id: 'add', label: 'Yeni öğe ekle', icon: <Plus className="size-4" />, run: () => { setAddUrl(''); setAddOpen(true); } },
     { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
+    { id: 'ai', label: 'Kasa Asistanı (AI)', icon: <Sparkles className="size-4" />, run: openAi },
     { id: 'converter', label: 'Dönüştürücü', icon: <Clapperboard className="size-4" />, run: openConverter },
     { id: 'toolbox', label: 'Araç Kutusu', icon: <Wrench className="size-4" />, run: openToolbox },
     { id: 'tool-merge', label: 'Araç: Birleştir', icon: <Combine className="size-4" />, run: openMerge },
@@ -230,8 +257,8 @@ function App() {
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
     { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
     { id: 'dl', label: 'İndirilenler', icon: <Download className="size-4" />, run: goDownloads },
-    { id: 'organize', label: 'Koleksiyonlar', icon: <SlidersHorizontal className="size-4" />, run: () => setOrganizeOpen(true) },
-    { id: 'settings', label: 'Ayarlar', icon: <Settings className="size-4" />, run: () => setSettingsOpen(true) },
+    { id: 'organize', label: 'Koleksiyonlar', icon: <SlidersHorizontal className="size-4" />, run: openCollections },
+    { id: 'settings', label: 'Ayarlar', icon: <Settings className="size-4" />, run: () => openSettings() },
     { id: 'tour', label: 'Karşılama turu', icon: <Sparkles className="size-4" />, run: () => setTourOpen(true) },
     { id: 'theme', label: 'Tema değiştir', icon: <Sun className="size-4" />, run: () => cycleTheme() },
     { id: 'grid', label: 'Kart görünümü', icon: <LayoutGrid className="size-4" />, run: () => switchView('grid') },
@@ -244,8 +271,10 @@ function App() {
     setConverterOnly(false);
     setToolboxOnly(false);
     setToolboxTool(null);
-    setDuplicatesOnly(false);
     setStatsOnly(false);
+    setAiOnly(false);
+    setSettingsOnly(false);
+    setCollectionsOnly(false);
   };
   const pickPlatform = (p: string): void => {
     setPlatform(p);
@@ -265,19 +294,23 @@ function App() {
   };
 
   const sidebarProps = {
-    view: (converterOnly
+    view: (settingsOnly
+      ? 'settings'
+      : collectionsOnly
+      ? 'collections'
+      : aiOnly
+      ? 'ai'
+      : converterOnly
       ? 'converter'
       : toolboxOnly
         ? 'toolbox'
-        : duplicatesOnly
-          ? 'duplicates'
-          : statsOnly
-            ? 'stats'
-            : favoritesOnly
-              ? 'favorites'
-              : downloadedOnly
-                ? 'downloads'
-                : 'all') as 'all' | 'favorites' | 'downloads' | 'converter' | 'toolbox' | 'duplicates' | 'stats',
+        : statsOnly
+          ? 'stats'
+          : favoritesOnly
+            ? 'favorites'
+            : downloadedOnly
+              ? 'downloads'
+              : 'all') as SidebarView,
     homeActive:
       platform === 'all' &&
       collectionId === 'all' &&
@@ -287,19 +320,22 @@ function App() {
       !downloadedOnly &&
       !converterOnly &&
       !toolboxOnly &&
-      !duplicatesOnly &&
-      !statsOnly,
+      !statsOnly &&
+      !aiOnly &&
+      !settingsOnly &&
+      !collectionsOnly,
     onHome: showAll,
-    onView: (v: Exclude<'all' | 'favorites' | 'downloads' | 'converter' | 'toolbox' | 'duplicates' | 'stats', 'all'>) => {
-      if (v === 'favorites') goFavorites();
+    onView: (v: Exclude<SidebarView, 'all'>) => {
+      if (v === 'ai') openAi();
+      else if (v === 'settings') openSettings();
+      else if (v === 'collections') openCollections();
+      else if (v === 'favorites') goFavorites();
       else if (v === 'downloads') goDownloads();
       else if (v === 'converter') openConverter();
       else if (v === 'toolbox') openToolbox();
-      else if (v === 'duplicates') openDuplicates();
       else openStats();
     },
-    onOrganize: () => setOrganizeOpen(true),
-    onSettings: () => setSettingsOpen(true),
+    onSettings: () => openSettings(),
   };
 
   return (
@@ -317,6 +353,8 @@ function App() {
                 setAddUrl(url);
                 setAddOpen(true);
               }}
+              semantic={semantic}
+              onSemanticToggle={() => setSemantic((s) => !s)}
             />
 
             <main className="flex min-h-0 flex-1">
@@ -325,6 +363,7 @@ function App() {
                   <div className="flex min-w-0 flex-1 flex-col">
                     <ItemGrid
                       query={query}
+                      semantic={semantic}
                       platform={platform}
                       collectionId={collectionId}
                       categoryId={categoryId}
@@ -381,16 +420,70 @@ function App() {
                     </aside>
                   )}
                 </>
+              ) : aiOnly ? (
+                <div className="min-w-0 flex-1">
+                  <AiAssistantView
+                    onOpenSettings={() => openSettings('ai')}
+                    onOpenItem={(itemId) => {
+                      void listItems().then((all) => {
+                        const found = all.find((i) => i.id === itemId);
+                        if (found) {
+                          showAll();
+                          setRecord(found);
+                        }
+                      });
+                    }}
+                  />
+                </div>
+              ) : settingsOnly ? (
+                <div className="min-w-0 flex-1">
+                  <SettingsView
+                    pageSize={pageSize}
+                    pageSizes={PAGE_SIZES}
+                    onPageSizeChange={(n) => {
+                      window.localStorage.setItem('jv-page-size', String(n));
+                      setPageSize(n);
+                    }}
+                    onReplayTour={() => setTourOpen(true)}
+                    onClose={showAll}
+                    initialTab={settingsTab}
+                  />
+                </div>
+              ) : collectionsOnly ? (
+                <div className="min-w-0 flex-1">
+                  <CollectionsView
+                    onClose={showAll}
+                    onSelectCollection={(colId) => {
+                      showAll();
+                      setCollectionId(colId);
+                    }}
+                    onSelectCategory={(catId) => {
+                      showAll();
+                      setCategoryId(catId);
+                    }}
+                    onSelectTag={(tId) => {
+                      showAll();
+                      setTagId(tId);
+                    }}
+                  />
+                </div>
               ) : (
                 <div className="min-w-0 flex-1 px-4 py-5">
                   {statsOnly ? (
                     <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
                       <StatsView refreshKey={refreshKey} />
                     </Suspense>
-                  ) : duplicatesOnly ? (
-                    <DuplicatesView onDone={refresh} />
                   ) : converterOnly ? (
                     <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
+                  ) : toolboxTool === 'duplicates' ? (
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                          <ArrowLeft /> Araç Kutusu&apos;na dön
+                        </Button>
+                      </div>
+                      <DuplicatesView onDone={refresh} />
+                    </div>
                   ) : toolboxTool === 'merge' ? (
                     <div className="flex flex-col gap-3">
                       <div>
@@ -434,6 +527,7 @@ function App() {
                         else if (toolId === 'silence') setToolboxTool('silence');
                         else if (toolId === 'gif') setToolboxTool('gif');
                         else if (toolId === 'subtitle') setToolboxTool('subtitle');
+                        else if (toolId === 'duplicates') setToolboxTool('duplicates');
                         else openConverter();
                       }}
                     />
@@ -461,24 +555,12 @@ function App() {
           <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
           <EditorDialog source={editorSource} onClose={() => setEditorSource(null)} onDone={refresh} />
           <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
-          <OrganizeDialog open={organizeOpen} onOpenChange={setOrganizeOpen} onChanged={refresh} />
-          <SettingsDialog
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            pageSize={pageSize}
-            pageSizes={PAGE_SIZES}
-            onPageSizeChange={(n) => {
-              window.localStorage.setItem('jv-page-size', String(n));
-              setPageSize(n);
-            }}
-            onReplayTour={() => setTourOpen(true)}
-          />
           <XSyncReviewDialog onDone={refresh} />
           <WelcomeDialog open={tourOpen} onOpenChange={setTourOpen} />
           <OnboardingWizard
             open={wizardOpen}
             onOpenChange={setWizardOpen}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => openSettings('ai')}
           />
           <ClipboardWatcher onDone={refresh} />
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />

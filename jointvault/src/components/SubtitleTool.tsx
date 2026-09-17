@@ -4,7 +4,8 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { listItems, updateItem } from '@/lib/db/client';
+import { getItem, getTagsForItem, listItems, updateItem } from '@/lib/db/client';
+import { applyCategorization, categorizeAndTagItem, getAiStatus, indexItemChunks } from '@/lib/ai';
 import type { Item } from '@/lib/db/types';
 import {
   embedSubtitle,
@@ -64,6 +65,13 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
   const [transcript, setTranscript] = useState<TranscriptData | null>(null);
   const [customSrt, setCustomSrt] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<SubtitleOutput[]>([]);
+  const [aiNotice, setAiNotice] = useState<{
+    message: string;
+    status: 'applied' | 'suggested';
+    categories?: string[];
+    tags?: string[];
+    itemId?: string;
+  } | null>(null);
   const jobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -127,6 +135,7 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
     }
     setBusy('transcribe');
     setError(null);
+    setAiNotice(null);
     setPercent(0);
     const transcribeJob = crypto.randomUUID();
     jobIdRef.current = transcribeJob;
@@ -140,6 +149,44 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
     // A7: transkript SADECE önizleme — arşive otomatik yazılmaz.
     setTranscript(res.data);
     setBusy('');
+
+    // Whisper bittiğinde: Kayıtlı kasa öğesi ise arka planda chunk indeksleme ve akıllı analiz tetikle
+    if (selected.itemId) {
+      const itemId = selected.itemId;
+      const srtData = res.data;
+      void (async () => {
+        try {
+          const item = await getItem(itemId);
+          if (!item) return;
+          const tags = await getTagsForItem(itemId);
+          // 1. Chunk & Vektör indeksleme
+          await indexItemChunks(item, tags.map((t) => t.name), srtData.preview);
+
+          // 2. AI motoru hazırsa otomatik kategori/etiketleme analizi
+          const aiStat = await getAiStatus().catch(() => null);
+          if (aiStat?.engine_available && aiStat.llm_ready) {
+            const catResult = await categorizeAndTagItem(item);
+            if (aiStat.auto_apply_tags && (catResult.categories.length > 0 || catResult.tags.length > 0)) {
+              await applyCategorization(itemId, catResult.categories, catResult.tags);
+              setAiNotice({
+                message: `Otomatik uygulandı: ${catResult.categories.join(', ')} / ${catResult.tags.map((t) => '#' + t).join(' ')}`,
+                status: 'applied',
+              });
+            } else if (catResult.categories.length > 0 || catResult.tags.length > 0) {
+              setAiNotice({
+                message: `AI Önerisi: ${catResult.categories.join(', ')} / ${catResult.tags.map((t) => '#' + t).join(' ')}`,
+                status: 'suggested',
+                categories: catResult.categories,
+                tags: catResult.tags,
+                itemId,
+              });
+            }
+          }
+        } catch (err) {
+          console.error('[SubtitleTool] Post-whisper AI analizi hatası:', err);
+        }
+      })();
+    }
   };
 
   const runEmbed = async (srtPath: string | null): Promise<void> => {
@@ -310,6 +357,31 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
                     <p className="text-xs text-muted-foreground">
                       Önizleme yalnızca ilk 40 satır — arşive otomatik yazılmaz.
                     </p>
+
+                    {aiNotice && (
+                      <div className="mt-2 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/10 p-2.5 text-xs text-foreground">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="size-4 shrink-0 text-primary" />
+                          <span>{aiNotice.message}</span>
+                        </div>
+                        {aiNotice.status === 'suggested' && aiNotice.itemId && aiNotice.categories && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="h-6 px-2 text-3xs font-medium"
+                            onClick={async () => {
+                              await applyCategorization(aiNotice.itemId!, aiNotice.categories!, aiNotice.tags || []);
+                              setAiNotice({
+                                message: 'Kategoriler ve etiketler kasaya başarıyla uygulandı.',
+                                status: 'applied',
+                              });
+                            }}
+                          >
+                            Uygula
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </>

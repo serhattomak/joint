@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Download, ExternalLink, Music, Scissors, Trash2, X } from 'lucide-react';
+import { Download, ExternalLink, Music, Scissors, Sparkles, Trash2, X } from 'lucide-react';
+import {
+  categorizeAndTagItem,
+  indexItemChunks,
+  suggestTags,
+  summarizeText,
+  type CategorizeAndTagResult,
+} from '@/lib/ai';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, SettingRow } from '@/components/ui/field';
@@ -42,13 +49,9 @@ interface ItemRecordProps {
 
 function DataRow({ label, value, mono = true }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="flex min-w-0 items-baseline justify-between gap-3 py-1.5">
-      <span className="shrink-0 text-micro text-muted-foreground">{label}</span>
-      <span
-        data-num={mono || undefined}
-        className="min-w-0 truncate text-right text-micro"
-        title={typeof value === 'string' ? value : undefined}
-      >
+    <div className="flex items-center justify-between gap-2 py-1 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={mono ? 'truncate font-mono text-xs' : 'truncate text-sm'} title={String(value)}>
         {value}
       </span>
     </div>
@@ -67,6 +70,9 @@ export function ItemRecord({ item, onClose, onChanged, onPickVideo, onConvert, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [aiSuggestion, setAiSuggestion] = useState<CategorizeAndTagResult | null>(null);
 
   useEffect(() => {
     setTitle(item.title ?? '');
@@ -74,10 +80,68 @@ export function ItemRecord({ item, onClose, onChanged, onPickVideo, onConvert, o
     setCollectionId(item.collection_id ?? '');
     setFavorite(item.favorite);
     setError(null);
+    setTagSuggestions([]);
+    setAiSuggestion(null);
     void listCollections().then(setCollections);
     void getTagsForItem(item.id).then((ts) => setTags(ts.map((t) => t.name)));
     void getCategoriesForItem(item.id).then((cs) => setCategories(cs.map((c) => c.name)));
   }, [item]);
+
+  const handleAiSummarize = async () => {
+    setAiBusy(true);
+    try {
+      const textToSummarize = `Başlık: ${title}\nNot: ${note}\nURL: ${item.url}`;
+      const summary = await summarizeText(textToSummarize);
+      if (summary) {
+        setNote((prev) => (prev ? `${prev}\n\n[AI Özeti]: ${summary}` : summary));
+      }
+    } catch (e) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Özet üretilemedi.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleAiSuggestTags = async () => {
+    setAiBusy(true);
+    try {
+      const allTags = (await listTags()).map((t) => t.name);
+      const text = `Başlık: ${title}\nNot: ${note}\nPlatform: ${item.platform}`;
+      const suggested = await suggestTags(text, allTags);
+      setTagSuggestions(suggested.filter((s) => !tags.includes(s)));
+    } catch (e) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Etiket önerilemedi.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleAiCategorizeAndTag = async () => {
+    setAiBusy(true);
+    setError(null);
+    try {
+      const res = await categorizeAndTagItem(item);
+      setAiSuggestion(res);
+    } catch (e) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'AI analizi başarısız oldu.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const handleApplyAllSuggestions = () => {
+    if (!aiSuggestion) return;
+    if (aiSuggestion.categories.length > 0) {
+      setCategories((prev) => Array.from(new Set([...prev, ...aiSuggestion.categories])));
+    }
+    if (aiSuggestion.tags.length > 0) {
+      setTags((prev) => Array.from(new Set([...prev, ...aiSuggestion.tags])));
+    }
+    if (aiSuggestion.summary && !note.includes(aiSuggestion.summary)) {
+      setNote((prev) => (prev ? `${prev}\n\n[AI Özeti]: ${aiSuggestion.summary}` : aiSuggestion.summary));
+    }
+    setAiSuggestion(null);
+  };
 
   const dirty =
     title.trim() !== (item.title ?? '') ||
@@ -99,6 +163,7 @@ export function ItemRecord({ item, onClose, onChanged, onPickVideo, onConvert, o
       await setTagsForItem(item.id, tagIds.map((t) => t.id));
       const catIds = await Promise.all(categories.map((name) => getOrCreateCategory(name)));
       await setCategoriesForItem(item.id, catIds.map((c) => c.id));
+      void indexItemChunks(saved, tags).catch(() => null);
       onChanged();
     } catch (e) {
       console.error('[record:save]', e);
@@ -179,15 +244,26 @@ export function ItemRecord({ item, onClose, onChanged, onPickVideo, onConvert, o
             <Field label="Başlık" htmlFor="rec-title" className="py-2">
               <Input id="rec-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Başlık" />
             </Field>
-            <Field label="Not" htmlFor="rec-note" className="py-2">
-              <Textarea
-                id="rec-note"
-                rows={3}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Bu fişle ilgili not"
-              />
-            </Field>
+            <div className="flex items-center justify-between pt-2 pb-0.5">
+              <span className="text-micro font-medium text-foreground">Not</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => void handleAiSummarize()}
+                disabled={aiBusy}
+                className="h-6 gap-1 px-1.5 text-3xs text-primary"
+              >
+                <Sparkles className="size-3" /> {aiBusy ? 'Özetleniyor…' : 'AI ile Özetle'}
+              </Button>
+            </div>
+            <Textarea
+              id="rec-note"
+              rows={3}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Bu fişle ilgili not"
+            />
             <SettingRow label="Koleksiyon" htmlFor="rec-collection">
               <Select
                 label="Koleksiyon"
@@ -203,9 +279,137 @@ export function ItemRecord({ item, onClose, onChanged, onPickVideo, onConvert, o
             <SettingRow label="Favori" htmlFor="rec-fav">
               <Switch checked={favorite} onCheckedChange={setFavorite} aria-labelledby="rec-fav" />
             </SettingRow>
-            <Field label="Etiketler" className="py-2">
-              <TagPicker selected={tags} onChange={setTags} loadNames={listTags} placeholder="Etiket seç veya yaz" />
-            </Field>
+
+            {/* AI Akıllı Analiz & Öneri Kartı */}
+            <div className="pt-2">
+              <div className="flex items-center justify-between pb-1.5">
+                <span className="text-micro font-medium text-foreground">Yapay Zekâ Analizi</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => void handleAiCategorizeAndTag()}
+                  disabled={aiBusy}
+                  className="h-6 gap-1 px-2 text-3xs font-medium text-primary border-primary/30 hover:bg-primary/10"
+                >
+                  <Sparkles className="size-3" /> {aiBusy ? 'Analiz Ediliyor…' : 'AI ile Kategorize Et'}
+                </Button>
+              </div>
+
+              {aiSuggestion && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                      <Sparkles className="size-3.5" />
+                      <span>Önerilen Taksonomi</span>
+                      <span className="text-3xs text-muted-foreground font-normal">
+                        (%{Math.round((aiSuggestion.confidence || 0.9) * 100)} güven)
+                      </span>
+                    </div>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-6 gap-1 px-2 text-3xs font-medium"
+                      onClick={handleApplyAllSuggestions}
+                    >
+                      Tümünü Uygula
+                    </Button>
+                  </div>
+
+                  {aiSuggestion.summary && (
+                    <div className="text-xs text-muted-foreground bg-background/60 rounded p-2 border border-border/50">
+                      <span className="font-medium text-foreground">Özet: </span>
+                      {aiSuggestion.summary}
+                    </div>
+                  )}
+
+                  {aiSuggestion.categories.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-3xs font-medium text-muted-foreground">Kategori:</span>
+                      {aiSuggestion.categories.map((cat) => {
+                        const isAdded = categories.includes(cat);
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            disabled={isAdded}
+                            onClick={() => {
+                              if (!isAdded) setCategories((prev) => [...prev, cat]);
+                            }}
+                            className={`rounded-full border px-2 py-0.5 text-3xs font-medium transition ${
+                              isAdded
+                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 opacity-80 cursor-default'
+                                : 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20'
+                            }`}
+                          >
+                            {isAdded ? '✓' : '+'} {cat}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {aiSuggestion.tags.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-3xs font-medium text-muted-foreground">Etiketler:</span>
+                      {aiSuggestion.tags.map((tg) => {
+                        const isAdded = tags.includes(tg);
+                        return (
+                          <button
+                            key={tg}
+                            type="button"
+                            disabled={isAdded}
+                            onClick={() => {
+                              if (!isAdded) setTags((prev) => [...prev, tg]);
+                            }}
+                            className={`rounded-full border px-2 py-0.5 text-3xs font-medium transition ${
+                              isAdded
+                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 opacity-80 cursor-default'
+                                : 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20'
+                            }`}
+                          >
+                            {isAdded ? '✓' : '+'} #{tg}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between pt-2 pb-0.5">
+              <span className="text-micro font-medium text-foreground">Etiketler</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => void handleAiSuggestTags()}
+                disabled={aiBusy}
+                className="h-6 gap-1 px-1.5 text-3xs text-primary"
+              >
+                <Sparkles className="size-3" /> {aiBusy ? 'Öneriliyor…' : 'Etiket Öner'}
+              </Button>
+            </div>
+            {tagSuggestions.length > 0 && (
+              <div className="mb-1.5 flex flex-wrap items-center gap-1">
+                <span className="text-3xs text-muted-foreground">Öneriler:</span>
+                {tagSuggestions.map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => {
+                      setTags((prev) => [...prev, st]);
+                      setTagSuggestions((prev) => prev.filter((x) => x !== st));
+                    }}
+                    className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-3xs font-medium text-primary transition hover:bg-primary/20"
+                    title="Tıklayarak ekle"
+                  >
+                    + {st}
+                  </button>
+                ))}
+              </div>
+            )}
+            <TagPicker selected={tags} onChange={setTags} loadNames={listTags} placeholder="Etiket seç veya yaz" />
             <Field label="Kategoriler" className="py-2">
               <TagPicker
                 selected={categories}

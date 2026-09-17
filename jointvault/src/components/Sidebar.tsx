@@ -1,24 +1,25 @@
+import { useEffect, useState } from 'react';
 import {
   Archive,
   BarChart3,
   Clapperboard,
-  Copy,
   Download,
+  FolderKanban,
   LayoutGrid,
   Settings,
-  SlidersHorizontal,
+  Sparkles,
   Star,
   Wrench,
 } from 'lucide-react';
+import { getAiStatus, useAiWarmupStatus } from '@/lib/ai';
 
-export type SidebarView = 'all' | 'favorites' | 'downloads' | 'converter' | 'toolbox' | 'duplicates' | 'stats';
+export type SidebarView = 'all' | 'favorites' | 'downloads' | 'collections' | 'converter' | 'toolbox' | 'stats' | 'ai' | 'settings';
 
 interface SidebarProps {
   view: SidebarView;
   homeActive: boolean;
   onHome: () => void;
   onView: (view: Exclude<SidebarView, 'all'>) => void;
-  onOrganize: () => void;
   onSettings: () => void;
 }
 
@@ -53,16 +54,22 @@ function useNavEntries(props: SidebarProps): NavEntry[] {
     { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome },
     viewBtn('favorites', <Star />, 'Favoriler'),
     viewBtn('downloads', <Download />, 'İndirilenler'),
-    viewBtn('duplicates', <Copy />, 'Yinelenenler'),
+    viewBtn('collections', <FolderKanban />, 'Koleksiyonlar'),
+    viewBtn('ai', <Sparkles />, 'Kasa Asistanı'),
     viewBtn('converter', <Clapperboard />, 'Dönüştürücü'),
     viewBtn('toolbox', <Wrench />, 'Araç Kutusu'),
     viewBtn('stats', <BarChart3 />, 'İstatistikler'),
-    { key: 'organize', label: 'Koleksiyonlar', icon: <SlidersHorizontal />, active: false, run: props.onOrganize },
-    { key: 'settings', label: 'Ayarlar', icon: <Settings />, active: false, run: props.onSettings },
+    viewBtn('settings', <Settings />, 'Ayarlar'),
   ];
 }
 
-function NavButton({ entry }: { entry: NavEntry }) {
+function NavButton({
+  entry,
+  aiStatus,
+}: {
+  entry: NavEntry;
+  aiStatus?: { ready: boolean; loading: boolean };
+}) {
   return (
     <button
       type="button"
@@ -76,6 +83,24 @@ function NavButton({ entry }: { entry: NavEntry }) {
     >
       {entry.icon}
       <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+      {entry.key === 'ai' && aiStatus && (
+        <span
+          className={`size-2 shrink-0 rounded-full transition-all ${
+            aiStatus.ready
+              ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+              : aiStatus.loading
+              ? 'animate-pulse bg-amber-400'
+              : 'bg-muted-foreground/30'
+          }`}
+          title={
+            aiStatus.ready
+              ? 'Yapay Zekâ Hazır (VRAM Aktif)'
+              : aiStatus.loading
+              ? 'Yapay Zekâ Yükleniyor…'
+              : 'Yapay Zekâ Uyku Modunda (On-Demand)'
+          }
+        />
+      )}
       {entry.active && (
         <span aria-hidden className="absolute top-1/2 -right-px h-4 w-1 -translate-y-1/2 bg-card" />
       )}
@@ -94,6 +119,28 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar(props: SidebarProps) {
   const entries = useNavEntries(props);
   const byKey = (k: string): NavEntry => entries.find((e) => e.key === k) as NavEntry;
+  const warmup = useAiWarmupStatus();
+  const [chatRunning, setChatRunning] = useState(false);
+
+  useEffect(() => {
+    let timer: number;
+    const check = async () => {
+      try {
+        const s = await getAiStatus();
+        setChatRunning(s.chat_server_running);
+      } catch {
+        // ignore
+      }
+    };
+    void check();
+    timer = window.setInterval(check, 10000);
+    return () => clearInterval(timer);
+  }, [warmup.status]);
+
+  const aiStatusInfo = {
+    ready: chatRunning || warmup.status === 'ready',
+    loading: warmup.status === 'loading',
+  };
 
   return (
     <aside className="sticky top-0 hidden h-screen w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border bg-rail text-rail-foreground md:flex">
@@ -105,14 +152,13 @@ export function Sidebar(props: SidebarProps) {
       <nav className="flex flex-1 flex-col gap-0.5 px-2 pb-4">
         <GroupLabel>Kasa</GroupLabel>
         {entries.slice(0, 4).map((e) => (
-          <NavButton key={e.key} entry={e} />
+          <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
         ))}
         <GroupLabel>Araçlar</GroupLabel>
-        {entries.slice(4, 7).map((e) => (
-          <NavButton key={e.key} entry={e} />
+        {entries.slice(4, 8).map((e) => (
+          <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
         ))}
         <GroupLabel>Sistem</GroupLabel>
-        <NavButton entry={byKey('organize')} />
         <NavButton entry={byKey('settings')} />
       </nav>
     </aside>

@@ -70,3 +70,24 @@ CREATE INDEX IF NOT EXISTS idx_items_platform ON items(platform);
 -- Bilesik PK'nin ondeki sutunu item_id, ters sira ile suzmek gerekir.
 CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag_id, item_id);
 CREATE INDEX IF NOT EXISTS idx_item_categories_cat ON item_categories(category_id, item_id);
+
+CREATE TABLE IF NOT EXISTS item_chunks (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  chunk_type TEXT NOT NULL,
+  chunk_text TEXT NOT NULL,
+  start_seconds REAL,
+  end_seconds REAL,
+  embedding TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_item_id ON item_chunks(item_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_type ON item_chunks(chunk_type);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS item_chunks_fts USING fts5(
+  chunk_id UNINDEXED,
+  item_id UNINDEXED,
+  chunk_text,
+  tokenize = 'unicode61'
+);
