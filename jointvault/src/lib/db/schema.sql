@@ -56,14 +56,17 @@ CREATE TABLE IF NOT EXISTS item_categories (
 
 -- Indeksler. Olculdu: dev/bench-items-query.mjs
 -- Sema her acilista bastan calistigi icin IF NOT EXISTS hem yeni hem mevcut
--- veritabanina uygulanir; ayri goc gerekmez.
+-- veritabanina uygulanir, ayri goc gerekmez.
 -- (created_at, title) siralamayi karsilar: LIMIT 48 artik sadece 48 indeks
 -- girdisi okur, tablo boyutundan bagimsiz hale gelir.
+-- Not: bu dosya noktali virgul ile bolunerek calistirilir. initDb bolmeden once
+-- yorum satirlarini dusurur (stripCommentLines), boylece bir yorumun icindeki
+-- ayirac parcayi ortadan kesemez.
 CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at);
 CREATE INDEX IF NOT EXISTS idx_items_title_nocase ON items(title COLLATE NOCASE);
 -- FK sutunu: SQLite cocuk sutuna otomatik indeks kurmaz.
 CREATE INDEX IF NOT EXISTS idx_items_collection ON items(collection_id);
 CREATE INDEX IF NOT EXISTS idx_items_platform ON items(platform);
--- Bilesik PK'nin ondeki sutunu item_id; etiket/kategori ile suzmek icin ters sira.
+-- Bilesik PK'nin ondeki sutunu item_id, ters sira ile suzmek gerekir.
 CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag_id, item_id);
 CREATE INDEX IF NOT EXISTS idx_item_categories_cat ON item_categories(category_id, item_id);

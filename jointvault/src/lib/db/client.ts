@@ -12,10 +12,20 @@ const now = (): string => new Date().toISOString();
 
 let dbPromise: Promise<Database> | null = null;
 
+/*
+ * Yalnızca-yorum satırlarını düşürür.
+ *
+ * Şema ';' ile bölünerek çalıştırılır (execute() çok ifadeli metni kabul etmeyebilir).
+ * Bir yorumun İÇİNDEKİ ';' parçayı ortadan keser: artık satır yorum olmaktan çıkar
+ * ve sözdizimi hatası verir. Bu tam olarak yaşandı — initDb patladı, getDb()
+ * reddetti ve uygulama hiçbir kaydı gösteremedi. Satır yorumlarını bölmeden önce
+ * düşürmek, sınıfı tümden kapatır.
+ */
+const stripCommentLines = (sql: string): string => sql.replace(/^[ \t]*--[^\n]*$/gm, '');
+
 async function initDb(): Promise<Database> {
   const db = await Database.load(DB_PATH);
-  // ponytail: split on ';' so init works whether execute() allows multi-statement or not.
-  for (const stmt of schema.split(';')) {
+  for (const stmt of stripCommentLines(schema).split(';')) {
     const sql = stmt.trim();
     if (sql) await db.execute(sql);
   }
