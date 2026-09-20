@@ -23,6 +23,7 @@
     "verify:components": "node dev/verify-components.mjs",
     "verify:component-download": "node dev/verify-component-download.mjs",
     "verify:missing-component": "node dev/verify-missing-component.mjs",
+    "verify:component-gate": "node dev/verify-component-gate.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

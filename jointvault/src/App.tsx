@@ -5,6 +5,7 @@ import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { CaptureBar } from '@/components/CaptureBar';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
+import { ComponentInstallerProvider } from '@/components/ComponentInstaller';
 import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
 import { DownloadsView } from '@/components/DownloadsView';
@@ -394,6 +395,11 @@ function App() {
 
   return (
     <NoticeProvider>
+      {/* Kurulum akışı NoticeProvider'ın İÇİNDE olmak zorunda: ComponentInstallerProvider
+          useNotice() çağırır ve bildirim bağlamı olmadan throw eder. ErrorBoundary'nin
+          DIŞINDA ama CrashScreen dalını da sarmalayacak konumda bağlanır: kasa
+          açılamadığında da kurulum ve bildirim aynı yolda çalışsın. Tam olarak BİR kez. */}
+      <ComponentInstallerProvider>
       <ErrorBoundary>
       {/* Kasa açılamadıysa kabuğu çizmek yerine nedeni söylenir. */}
       {bootError ? (
@@ -684,6 +690,7 @@ function App() {
       </TooltipProvider>
       )}
       </ErrorBoundary>
+      </ComponentInstallerProvider>
     </NoticeProvider>
   );
 }

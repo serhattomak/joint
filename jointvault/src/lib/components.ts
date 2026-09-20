@@ -115,3 +115,110 @@ export async function cancelComponentDownload(jobId: string): Promise<boolean> {
     return false;
   }
 }
+
+// --- Eksik bileşen sinyali ---------------------------------------------------
+//
+// 7c-1'den itibaren ffmpeg'e bağlı her komut, aracı çözemezse şu TEL biçiminde
+// reddeder: `BILESEN_EKSIK:<id>` + satır sonu + kullanıcıya hazır Türkçe cümle.
+// Önek makine-okunurdur ve kullanıcıya ASLA gösterilmez; arayüzde onu tanıyan ve
+// soyan tek yer burasıdır.
+//
+// Önek Rust'taki `MISSING_PREFIX` İLE AYNI olmak zorundadır: iki taraf ayrışırsa
+// arayüz sessizce kör kalır ve kullanıcı ham makine metnini görür. Bu yüzden
+// önek burada TEK kez tanımlanır; ayrıştırıcı ve metin yardımcısı onu paylaşır.
+
+/** Eksik bileşen sinyalinin öneki. Makine-okunur; kullanıcıya GÖSTERİLMEZ. */
+export const MISSING_COMPONENT_PREFIX = 'BILESEN_EKSIK:';
+
+/*
+ * Önekin işaretçi gövdesi (`BILESEN_EKSIK`) sabitten TÜRETİLİR: bağımsız bir
+ * literal yazmak, kaçınmaya çalıştığımız ikinci bir tanım olurdu. Yalnızca
+ * güvenlik ağıdır — bozuk bir sinyal id/detail içine işaretçi gömerse kullanıcı
+ * metnine sızmasın diye kullanılır.
+ */
+const MISSING_COMPONENT_MARKER = MISSING_COMPONENT_PREFIX.replace(/:+$/, '');
+
+/** Ayrıştırılmış eksik-bileşen sinyali. `detail` yoksa `''` — asla `undefined`. */
+export interface MissingComponent {
+  id: string;
+  detail: string;
+}
+
+/*
+ * `describeError` ile aynı öncelik: boş olmayan string, yoksa Error mesajı.
+ * Fark: burada yedek metin YOKTUR — tanınmayan girdi boş string'e düşer ki
+ * ayrıştırıcı fail-closed kalabilsin (throw etmez, `null` döner).
+ */
+const missingSignalText = (error: unknown): string => {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  return '';
+};
+
+/** İşaretçiyi metinden sıyırır (önekin kullanıcı metnine sızma yolu kapanır). */
+const withoutMarker = (value: string): string =>
+  value.split(MISSING_COMPONENT_MARKER).join('').trim();
+
+/*
+ * Tel sinyalini ayrıştırır (saf). Önek, kenar boşlukları atıldıktan SONRA BAŞTA
+ * olmalıdır; ortada/sonda geçen önek eşleşmez. Yalnızca ilk satır id'dir ve boş
+ * olamaz — bozuk sinyal asla geçerli sayılmaz (fail closed). `detail`, ilk satır
+ * sonrasının tamamıdır (trim); satır yoksa `''`. Hiçbir girdi throw ettirmez.
+ */
+export function parseMissingComponent(error: unknown): MissingComponent | null {
+  const rest = missingSignalText(error).trim();
+  if (!rest.startsWith(MISSING_COMPONENT_PREFIX)) return null;
+  const [idLine = '', ...detailLines] = rest.slice(MISSING_COMPONENT_PREFIX.length).split(/\r?\n/);
+  const id = idLine.trim();
+  if (id.length === 0) return null;
+  return { id, detail: detailLines.join('\n').trim() };
+}
+
+/*
+ * Bilinen id'ler için yedek cümleler. Metin kasıtlı olarak backend'in gömülü
+ * ayrıntısıyla AYNI tutulur: ayrıntı satırı bir gün düşse bile kullanıcı aynı
+ * dürüst cümleyi görür. Rust `missing_message` ile birebir eşleşir.
+ */
+const MISSING_COMPONENT_FALLBACKS = new Map<string, string>([
+  [
+    'ffmpeg',
+    'ffmpeg kurulu değil. Dönüştürme, GIF, birleştirme, sessizlik, önizleme ve altyazı işlemleri bu aracı kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'ffprobe',
+    'ffprobe kurulu değil. Medya süresi ve biçim bilgisi bu araçla okunur; ffmpeg ile aynı pakette gelir. Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'yt-dlp',
+    'yt-dlp kurulu değil. İndirme Yöneticisi bu araç olmadan çalışamaz; uygulamayla birlikte gelir, eksikse kurulumu onarman gerekir.',
+  ],
+  [
+    'whisper',
+    'Whisper motoru kurulu değil. Altyazı işlemleri bu motoru kullanır; Ayarlar → Konuşma bölümünden indirebilirsin.',
+  ],
+]);
+
+const MISSING_COMPONENT_HINT =
+  'Ayarlar → Bileşenler bölümünden bileşen durumunu denetleyebilirsin.';
+
+/*
+ * Bilinmeyen id'de dürüst genel cümle: ne olduğunu uydurmaz. id de işaretçiden
+ * arındırılır ki çıktı hiçbir koşulda öneki taşımasın.
+ */
+const genericMissingComponentText = (id: string): string =>
+  id.length > 0
+    ? `'${id}' bileşeni kayıtlı değil ya da kurulu değil. ${MISSING_COMPONENT_HINT}`
+    : `Bileşen kayıtlı değil ya da kurulu değil. ${MISSING_COMPONENT_HINT}`;
+
+/*
+ * Kullanıcıya dönük tek cümle: önce backend'in gömülü ayrıntısı (canlı, tek
+ * doğru kaynak), yoksa bilinen id için sabit cümle, hiçbiri yoksa genel cümle.
+ * Dönüş değeri ASLA öneki içermez — hem detail hem id işaretçiden arındırılır.
+ */
+export function missingComponentText(parsed: MissingComponent): string {
+  const detail = withoutMarker(parsed.detail);
+  if (detail.length > 0) return detail;
+  const known = MISSING_COMPONENT_FALLBACKS.get(parsed.id);
+  if (known !== undefined) return known;
+  return genericMissingComponentText(withoutMarker(parsed.id));
+}

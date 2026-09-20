@@ -7,6 +7,9 @@ import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startMerge, useMergeProgress } from '@/lib/merge';
 import { basenameOf, mergeOutputPath } from '@/lib/convert-path';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 import { toVaultSources } from '@/lib/vault-sources';
 
 interface MergeSource {
@@ -34,6 +37,7 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
   const [outputs, setOutputs] = useState<MergeOutput[]>([]);
   const jobIdRef = useRef<string | null>(null);
   const dragFromRef = useRef<number | null>(null);
+  const installer = useComponentInstaller();
 
   useEffect(() => {
     void listItems()
@@ -95,7 +99,16 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
     );
     jobIdRef.current = res.jobId;
     if (!res.ok) {
-      setError(res.error ?? 'Birleştirme başarısız.');
+      const missing = parseMissingComponent(res.error);
+      if (missing) {
+        // Eksik bileşen: kurulum akışını aç; kurulunca birleştirmeyi otomatik yeniden dene.
+        setBusy(false);
+        const outcome = await installer.request(missing.id, () => void run());
+        // İndirilemeyen bileşende diyalog açılmaz; dürüst metne düşülür.
+        if (outcome === 'unavailable') setError(missingComponentText(missing));
+        return;
+      }
+      setError(describeError(res.error, 'Birleştirme başarısız.'));
       setBusy(false);
       return;
     }

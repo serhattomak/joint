@@ -35,6 +35,18 @@ export interface DownloadProgressEvent {
   eta?: string | null;
 }
 
+/**
+ * `items.download_error` alanına yazılan ham metin (şema TEXT kalır; DEĞİŞMEZ).
+ *
+ * Neden ham saklanır: backend bir bileşen eksikken `BILESEN_EKSIK:<id>` makine
+ * işareti döndürür. İşaret yalnızca "hangi bileşen eksik" bilgisini taşır ve
+ * yeniden deneme/gösterim için bu id GEREKLİDİR; bu yüzden kayıt anında soyulmaz.
+ * Önek kullanıcıya ASLA gösterilmez: her gösterim sınırında `parseMissingComponent`
+ * ile ayrıştırılıp `missingComponentText` ile okunabilir cümleye çevrilir
+ * (bkz. src/lib/components.ts).
+ */
+export type StoredDownloadError = string;
+
 // Frontend owns queued/active/done/error via setDownloadState. Resolves done,
 // maps the reject string into error state; never throws.
 // Rust komutu tek `payload` nesnesi alır (sürüm kaymalarına dayanıklı);
@@ -67,6 +79,9 @@ export async function startDownload(
     await setDownloadState(itemId, { status: 'done', local_path: localPath, error: null });
     return localPath;
   } catch (e) {
+    // Ham mesaj (varsa `BILESEN_EKSIK:<id>` işaretiyle) DB'ye AYNEN yazılır:
+    // böylece id korunur ve gösterim sınırında soyulup kurulum akışına bağlanabilir
+    // (bkz. StoredDownloadError).
     const message = typeof e === 'string' ? e : e instanceof Error ? e.message : 'İndirme başarısız.';
     await setDownloadState(itemId, { status: 'error', error: message });
     return null;

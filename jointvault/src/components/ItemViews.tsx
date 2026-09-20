@@ -26,12 +26,14 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Stamp, PlatformRule } from '@/components/ui/stamp';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
 import {
   QUALITY_OPTIONS,
   getDefaultQuality,
   setDefaultQuality,
   type DownloadQuality,
 } from '@/lib/downloads';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
 import { openExternal } from '@/lib/external';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
 import type { Category, Item, Tag } from '@/lib/db/types';
@@ -174,6 +176,7 @@ function DownloadControl({
 }: Pick<ItemViewProps, 'item' | 'progress' | 'meta' | 'onAudio' | 'onPickVideo' | 'onConvert' | 'onPlayMedia'>) {
   const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
   const { open } = useOpenTarget();
+  const installer = useComponentInstaller();
   const status = item.download_status;
 
   if (status === 'done') {
@@ -238,11 +241,16 @@ function DownloadControl({
 
   const failing = status === 'error';
 
+  // Depolanan hata ham `BILESEN_EKSIK:<id>` işareti taşıyabilir; önek kullanıcıya
+  // gösterilmez — okunabilir cümle çıkar, id kurulum eylemi için saklanır.
+  const missing = parseMissingComponent(item.download_error);
+  const failureText = missing ? missingComponentText(missing) : item.download_error ?? 'Hata';
+
   return (
     <div className="flex min-w-0 items-center gap-1">
       {failing && (
-        <span className="max-w-40 truncate text-2xs text-state-error" title={item.download_error ?? 'Hata'}>
-          {item.download_error ?? 'Hata'}
+        <span className="max-w-40 truncate text-2xs text-state-error" title={failureText}>
+          {failureText}
         </span>
       )}
       <Menu>
@@ -281,6 +289,16 @@ function DownloadControl({
           >
             <Music className="size-3.5" /> Yalnızca Ses
           </MenuItem>
+          {missing && (
+            <>
+              {/* Ölü diyalog değil: sinyal varsa kurulum akışı açılır; başarıda
+                  indirme seçimi yeniden sunulur (yeniden deneme). */}
+              <MenuSeparator />
+              <MenuItem onClick={() => void installer.request(missing.id, () => onPickVideo(item))}>
+                <Download className="size-3.5" /> Bileşeni kur
+              </MenuItem>
+            </>
+          )}
         </MenuContent>
       </Menu>
     </div>

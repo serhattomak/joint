@@ -7,6 +7,9 @@ import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startSilence, useSilenceProgress, type SilencePreset } from '@/lib/silence';
 import { basenameOf, silenceOutputPath } from '@/lib/convert-path';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 import { toVaultSources } from '@/lib/vault-sources';
 
 interface SilenceSource {
@@ -42,6 +45,7 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
   const [error, setError] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<SilenceOutput[]>([]);
   const jobIdRef = useRef<string | null>(null);
+  const installer = useComponentInstaller();
 
   useEffect(() => {
     void listItems()
@@ -76,7 +80,16 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
     const res = await startSilence(selected.inputPath, output, preset, preview);
     jobIdRef.current = res.jobId;
     if (!res.ok) {
-      setError(res.error ?? 'Sessizlik kırpma başarısız.');
+      const missing = parseMissingComponent(res.error);
+      if (missing) {
+        // Eksik bileşen: kurulum akışını aç; kurulunca AYNI işi (önizleme/tam) otomatik dene.
+        setBusy(false);
+        const outcome = await installer.request(missing.id, () => void run(preview));
+        // İndirilemeyen bileşende diyalog açılmaz; dürüst metne düşülür.
+        if (outcome === 'unavailable') setError(missingComponentText(missing));
+        return;
+      }
+      setError(describeError(res.error, 'Sessizlik kırpma başarısız.'));
       setBusy(false);
       return;
     }

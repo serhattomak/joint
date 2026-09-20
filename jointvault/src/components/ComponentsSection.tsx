@@ -6,26 +6,24 @@
  * neyin kurulu olduğunu GERÇEK kontrolden okur (dosya + `-version` çalıştırma);
  * sabit bir liste değildir.
  *
- * İndirme (7b): tek motordan geçer. ffmpeg + ffprobe AYNI arşivden geldiği için
- * (bundle) iki ayrı ~186 MB indirme DEĞİL, tek indirme olarak sunulur; ilerleme
- * `component-download-progress` olayından gelir ve `jobId` ile süzülür.
+ * İndirme kablolaması (7b/7c-2) burada DEĞİL: tek iş, jobId süzgeci, iptal ve
+ * ilerleme `ComponentInstaller`'da tek yerde yaşar; bu bölüm onu
+ * `useComponentInstaller()` üzerinden tüketir. ffmpeg + ffprobe AYNI arşivden
+ * geldiği için (bundle) iki ayrı ~186 MB indirme DEĞİL, tek indirme olarak
+ * sunulur. Kurulum başarısında satırlar `components_status` yeniden okunarak
+ * `kurulu`ya döner.
  */
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FolderOpen, PackageCheck, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Stamp } from '@/components/ui/stamp';
 import { useNotice } from '@/components/ui/notice';
+import { useComponentInstaller, type ActiveInstall } from '@/components/ComponentInstaller';
 import { describeError } from '@/lib/errors';
 import { useOpenTarget } from '@/lib/open-target';
-import {
-  cancelComponentDownload,
-  downloadComponent,
-  useComponentDownloadProgress,
-  type ComponentDownloadPhase,
-  type ComponentStatus,
-} from '@/lib/components';
+import type { ComponentStatus } from '@/lib/components';
 
 const SOURCE_LABEL: Record<'downloaded' | 'bundled', string> = {
   downloaded: 'indirildi',
@@ -106,11 +104,18 @@ function downloadTarget(group: ComponentGroup): ComponentStatus {
   return group.rows.find((row) => row.downloadable && !row.installed) ?? group.primary;
 }
 
-interface ActiveDownload {
-  jobId: string;
-  groupKey: string;
-  percent: number;
-  phase: ComponentDownloadPhase;
+/*
+ * Çalışan işin hangi gruba ait olduğunu satır id'sinden türetir: provider işi
+ * başlatırken satır id'sini bilir, groupsa bundle kimliğiyle çizilir. Eşleşmeyen
+ * (ör. liste henüz gelmemiş) iş hiçbir gruba düşmez; yanlış şerit çizilmez.
+ */
+function activeGroupKeyFor(
+  components: ComponentStatus[],
+  active: ActiveInstall | null,
+): string | null {
+  if (!active) return null;
+  const row = components.find((component) => component.id === active.componentId);
+  return row ? groupKeyOf(row) : null;
 }
 
 /** Tek bileşen satırı — mevcut üç durumlu damga + sürüm/kaynak dili korunur. */
@@ -189,7 +194,7 @@ function DownloadAction({
   onCancel,
 }: {
   group: ComponentGroup;
-  download: ActiveDownload | null;
+  download: ActiveInstall | null;
   disabled: boolean;
   onStart: (group: ComponentGroup) => void;
   onCancel: (jobId: string) => void;
@@ -252,21 +257,9 @@ export function ComponentsSection() {
   const { reveal } = useOpenTarget();
   const [components, setComponents] = useState<ComponentStatus[]>([]);
   const [busy, setBusy] = useState(false);
-  const [active, setActive] = useState<ActiveDownload | null>(null);
-
-  // Aynı anda tek indirme: hem çift başlatmayı engeller hem olayları jobId'ye bağlar.
-  const activeJobRef = useRef<string | null>(null);
-  // İptali biz istedik: backend'in reddini hata gibi göstermemek için.
-  const cancelledRef = useRef<string | null>(null);
-
-  useComponentDownloadProgress((event) => {
-    if (event.jobId !== activeJobRef.current) return; // başka/eski işin olayı
-    setActive((prev) =>
-      prev && prev.jobId === event.jobId
-        ? { ...prev, percent: event.percent, phase: event.phase }
-        : prev,
-    );
-  });
+  // İndirme durumu paylaşılan akıştan gelir: bu bölüm kendi iş/iptal ref'lerini
+  // ve olay aboneliğini TUTMAZ. Tek kaynak ComponentInstallerProvider'dır.
+  const { install, cancel, active } = useComponentInstaller();
 
   const refresh = useCallback(async (): Promise<ComponentStatus[]> => {
     setBusy(true);
@@ -286,47 +279,18 @@ export function ComponentsSection() {
     void refresh();
   }, [refresh]);
 
+  /*
+   * Satır içi kurulum: tek iş, iptal ve bildirimleri provider yönetir (bu yüzden
+   * burada ikinci bir hata/başarı bildirimi YOK). Yalnızca gerçek başarıda
+   * listeyi tazeleriz; başarısız veya iptal edilen iş satırları değiştirmez.
+   */
   const startDownload = async (group: ComponentGroup): Promise<void> => {
-    if (activeJobRef.current) return; // çift başlatma koruması
-    const jobId = crypto.randomUUID();
-    const target = downloadTarget(group);
-    activeJobRef.current = jobId;
-    cancelledRef.current = null;
-    setActive({ jobId, groupKey: group.key, percent: -1, phase: 'downloading' });
-
-    const result = await downloadComponent(target.id, jobId);
-    const wasCancelled = cancelledRef.current === jobId;
-    cancelledRef.current = null;
-    activeJobRef.current = null;
-    setActive(null);
-
-    if (!result.ok) {
-      notice.push({
-        text: wasCancelled
-          ? describeError(result.error, 'İptal edildi.')
-          : describeError(result.error, 'Bileşen indirilemedi.'),
-        tone: wasCancelled ? 'info' : 'error',
-      });
-      return;
-    }
-
-    const fresh = await refresh();
-    if (fresh.length === 0) return; // durum okunamadı; hata refresh'te bildirildi
-    const rows = fresh.filter((row) => groupKeyOf(row) === group.key);
-    if (rows.length > 0 && rows.every(isUsable)) {
-      notice.push({ text: `${group.label} kuruldu.`, tone: 'ok' });
-    } else {
-      // Kurulum "başarılı" dönse de satırlar kullanılamıyorsa yeşil damga basma.
-      notice.push({ text: `${group.label} hâlâ kullanılamıyor.`, tone: 'error' });
-    }
-  };
-
-  const cancelDownload = (jobId: string): void => {
-    cancelledRef.current = jobId;
-    void cancelComponentDownload(jobId);
+    const outcome = await install(downloadTarget(group).id);
+    if (outcome.kind === 'ok') await refresh();
   };
 
   const groups = groupComponents(components);
+  const activeGroupKey = activeGroupKeyFor(components, active);
   const missing = components.filter((component) => !component.installed);
 
   return (
@@ -361,10 +325,10 @@ export function ComponentsSection() {
             {group.needsInstall && (
               <DownloadAction
                 group={group}
-                download={active && active.groupKey === group.key ? active : null}
+                download={active && activeGroupKey === group.key ? active : null}
                 disabled={active !== null}
                 onStart={(target) => void startDownload(target)}
-                onCancel={cancelDownload}
+                onCancel={cancel}
               />
             )}
           </Fragment>

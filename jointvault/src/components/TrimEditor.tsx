@@ -3,6 +3,9 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { Loader2, Pause, Play, Repeat, StepBack, StepForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 
 // Rust MediaProbeResult: duration_secs + thumbs + wave are plain OS paths,
 // jobId is serde-renamed — frontend maps every path via convertFileSrc.
@@ -38,6 +41,9 @@ export function TrimEditor({ inputPath, from, to, onFromChange, onToChange, disa
   const dragMode = useRef<'scrub' | 'in' | 'out' | null>(null);
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
+  // Probe yeniden denemesi: elle "Tekrar dene" butonu yok; nonce effect'i tetikler.
+  const [probeAttempt, setProbeAttempt] = useState(0);
+  const installer = useComponentInstaller();
   const [duration, setDuration] = useState(0);
   const [thumbs, setThumbs] = useState<string[]>([]);
   const [wave, setWave] = useState('');
@@ -49,6 +55,9 @@ export function TrimEditor({ inputPath, from, to, onFromChange, onToChange, disa
 
   const hasDuration = Number.isFinite(duration) && duration > 0;
   const clampT = (n: number): number => (hasDuration ? Math.max(0, Math.min(duration, n)) : 0);
+
+  // Kurulum tamamlanınca probe'u yeniden çalıştıran nonce artırıcı (effect bağımlılığı).
+  const retryProbe = (): void => setProbeAttempt((n) => n + 1);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,10 +88,18 @@ export function TrimEditor({ inputPath, from, to, onFromChange, onToChange, disa
         onToChange(res.duration_secs);
         setProbing(false);
       })
-      .catch((e: unknown) => {
+      .catch(async (e: unknown) => {
         if (cancelled) return;
-        const message = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Önizleme üretilemedi.';
-        setProbeError(message);
+        const missing = parseMissingComponent(e);
+        if (missing) {
+          // Eksik bileşen: kurulum akışını aç; kurulunca probe nonce ile otomatik yeniden çalışır.
+          setProbing(false);
+          const outcome = await installer.request(missing.id, retryProbe);
+          // İndirilemeyen/okunamayan durumda diyalog açılmaz; dürüst metne düşülür.
+          if (!cancelled && outcome === 'unavailable') setProbeError(missingComponentText(missing));
+          return;
+        }
+        setProbeError(describeError(e, 'Önizleme üretilemedi.'));
         setProbing(false);
       });
     return () => {
@@ -90,7 +107,7 @@ export function TrimEditor({ inputPath, from, to, onFromChange, onToChange, disa
       if (probeJobId) void invoke('media_probe_cleanup', { payload: { jobId: probeJobId } }).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputPath]);
+  }, [inputPath, probeAttempt]);
 
   const seekTo = (t: number): void => {
     const v = videoRef.current;

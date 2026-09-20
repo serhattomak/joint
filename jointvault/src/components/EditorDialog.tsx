@@ -10,6 +10,9 @@ import {
 } from '@/components/ui/dialog';
 import { updateItem } from '@/lib/db/client';
 import { startConvert, useConvertProgress } from '@/lib/convert';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 import { TrimEditor } from '@/components/TrimEditor';
 
 export interface EditorSource {
@@ -44,6 +47,7 @@ export function EditorDialog({ source, onClose, onDone }: EditorDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const convertJobRef = useRef<string | null>(null);
+  const installer = useComponentInstaller();
 
   useConvertProgress((e) => {
     if (e.jobId === convertJobRef.current) setPercent(Math.round(e.percent));
@@ -66,7 +70,16 @@ export function EditorDialog({ source, onClose, onDone }: EditorDialogProps) {
     const res = await startConvert(source.inputPath, output, 'trim', String(from), String(to), true);
     convertJobRef.current = res.jobId;
     if (!res.ok) {
-      setError(res.error ?? 'Kırpma başarısız.');
+      const missing = parseMissingComponent(res.error);
+      if (missing) {
+        // Eksik bileşen: kurulum akışını aç; kurulunca kırpmayı otomatik yeniden dene.
+        setBusy(false);
+        const outcome = await installer.request(missing.id, () => void run());
+        // İndirilemeyen bileşende diyalog açılmaz; dürüst metne düşülür.
+        if (outcome === 'unavailable') setError(missingComponentText(missing));
+        return;
+      }
+      setError(describeError(res.error, 'Kırpma başarısız.'));
       setBusy(false);
       return;
     }

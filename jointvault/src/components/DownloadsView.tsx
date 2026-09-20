@@ -22,6 +22,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -52,6 +53,7 @@ import {
 import type { Item } from '@/lib/db/types';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
 import { formatBytes } from '@/lib/downloads';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
 import {
   cancelTurboDownload,
   formatEta,
@@ -75,6 +77,7 @@ type FilterCategory = 'all' | DownloadCategory;
 
 export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: DownloadsViewProps) {
   const { open, reveal } = useOpenTarget();
+  const installer = useComponentInstaller();
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -758,6 +761,11 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
 
                 const chunks = liveChunks[job.id] ?? [];
 
+                // Turbo satırının hata alanı da makine işareti taşıyabilir; önek
+                // asla gösterilmez. İşaret varsa okunabilir cümle + kurulum eylemi.
+                const missingError = parseMissingComponent(job.error_message);
+                const errorText = missingError ? missingComponentText(missingError) : job.error_message;
+
                 return (
                   <div
                     key={job.id}
@@ -907,10 +915,20 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                       </div>
                     )}
 
-                    {job.error_message && (
-                      <p className="text-xs text-destructive bg-destructive/10 p-2 rounded-md font-mono">
-                        Hata: {job.error_message}
-                      </p>
+                    {errorText && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-destructive/10 p-2">
+                        <p className="font-mono text-xs text-destructive">Hata: {errorText}</p>
+                        {missingError && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 text-2xs"
+                            onClick={() => void installer.request(missingError.id, () => void handleResume(job))}
+                          >
+                            <Download className="size-3" /> Bileşeni kur
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 );

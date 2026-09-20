@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button';
 import { TrimEditor } from '@/components/TrimEditor';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
 import { startConvert, useConvertProgress, type ConvertOp } from '@/lib/convert';
 import { OP_LABEL, basenameOf, outputPathFor } from '@/lib/convert-path';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 import { toVaultSources } from '@/lib/vault-sources';
 
 interface StudioSource {
@@ -39,6 +42,7 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
   const [error, setError] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<StudioOutput[]>([]);
   const jobIdRef = useRef<string | null>(null);
+  const installer = useComponentInstaller();
 
   useEffect(() => {
     void listItems()
@@ -81,7 +85,16 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
     );
     jobIdRef.current = res.jobId;
     if (!res.ok) {
-      setError(res.error ?? 'Dönüştürme başarısız.');
+      const missing = parseMissingComponent(res.error);
+      if (missing) {
+        // Eksik bileşen sessiz ölüm olmasın: kurulum akışını aç, kurulunca aynı işi otomatik dene.
+        setBusy(false);
+        const outcome = await installer.request(missing.id, () => void run());
+        // İndirilemeyen bileşende (ör. whisper) diyalog açılmaz; dürüst metne düşülür.
+        if (outcome === 'unavailable') setError(missingComponentText(missing));
+        return;
+      }
+      setError(describeError(res.error, 'Dönüştürme başarısız.'));
       setBusy(false);
       return;
     }

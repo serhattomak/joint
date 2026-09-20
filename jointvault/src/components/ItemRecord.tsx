@@ -63,6 +63,8 @@ import { QUALITY_OPTIONS, getDefaultQuality, useDownloadProgress, type DownloadQ
 import { openExternal } from '@/lib/external';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
 import { scrapeAndStoreArticle } from '@/lib/scraper';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
 
 interface ItemRecordProps {
   item: Item;
@@ -103,6 +105,7 @@ export function ItemRecord({
   onPlayMedia,
 }: ItemRecordProps) {
   const { open, reveal } = useOpenTarget();
+  const installer = useComponentInstaller();
   const [title, setTitle] = useState(item.title ?? '');
   const [note, setNote] = useState(item.note ?? '');
   const [collectionId, setCollectionId] = useState(item.collection_id ?? '');
@@ -187,6 +190,19 @@ export function ItemRecord({
       [item.id, onChanged],
     ),
   );
+
+  // Depolanan ham hata makine işareti taşıyabilir; önek kullanıcıya gösterilmez.
+  const missingComponent = parseMissingComponent(downloadError);
+  const downloadErrorText = missingComponent ? missingComponentText(missingComponent) : downloadError;
+
+  // Hatayı temizleyip indirme seçimini yeniden sunar; "kur → yeniden dene" de
+  // aynı yolu kullanır (kurulum başarısında çağrılır).
+  const retryDownload = (): void => {
+    setDownloadStatus('queued');
+    setDownloadProgress(0);
+    setDownloadError(null);
+    onPickVideo(item);
+  };
 
   const handleScrape = async () => {
     setScrapeBusy(true);
@@ -761,21 +777,28 @@ export function ItemRecord({
                           <div className="flex items-center justify-between text-xs text-destructive">
                             <span className="font-medium">İndirme Başarısız Oldu</span>
                           </div>
-                          {downloadError && <p className="line-clamp-2 text-3xs text-destructive/80">{downloadError}</p>}
+                          {downloadErrorText && (
+                            <p className="line-clamp-2 text-3xs text-destructive/80">{downloadErrorText}</p>
+                          )}
                           <div className="flex gap-2 pt-1">
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                setDownloadStatus('queued');
-                                setDownloadProgress(0);
-                                setDownloadError(null);
-                                onPickVideo(item);
-                              }}
+                              onClick={retryDownload}
                               className="flex-1 gap-1.5 text-xs"
                             >
                               <RotateCcw className="size-3.5" /> Tekrar Dene
                             </Button>
+                            {missingComponent && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void installer.request(missingComponent.id, retryDownload)}
+                                className="flex-1 gap-1.5 text-xs"
+                              >
+                                <Download className="size-3.5" /> Bileşeni kur
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ) : (

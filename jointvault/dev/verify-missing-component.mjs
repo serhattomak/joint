@@ -134,11 +134,26 @@ const getDownloadDir = async (page) => {
   return result.ok ? String(result.value) : null;
 };
 
+/*
+ * Bileşenler sekmesini aç ve BÖLÜMÜN GERÇEKTEN ÇİZİLMESİNİ BEKLE.
+ *
+ * Sabit `sleep` yetmiyordu: ilk koşuda bir kez "0 satır" yanlış-düşüşü üretti
+ * (sekme geçişi bir yarışta kayboldu). Ölçüt artık gözlemlenebilir bir DOM
+ * durumu: bölüm başlığı/uyarısı görünene kadar bekle. Sonda yanlış şeyi
+ * bildirirse kanıt da yanlış olur.
+ */
 const openComponentsSection = async (page) => {
   await page.getByRole('button', { name: 'Ayarlar' }).first().click().catch(() => {});
-  await sleep(800);
+  await sleep(600);
   await page.getByRole('button', { name: 'Bileşenler' }).first().click().catch(() => {});
-  await sleep(700);
+  // "Durumu yenile" düğmesi yalnız Bileşenler bölümü çizilince var olur.
+  const ready = page.getByRole('button', { name: 'Durumu yenile', exact: true }).first();
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    if (await ready.isVisible().catch(() => false)) return;
+    if (Date.now() > deadline) return; // bölüm açılamadı: çağıran yine de raporlar
+    await sleep(300);
+  }
 };
 
 /* --- senaryolar ------------------------------------------------------------ */
@@ -479,8 +494,15 @@ const stepScreenshot = async (ctx) => {
   const { page, report, errors } = ctx;
   try {
     await openComponentsSection(page);
-    await sleep(800);
-    const eksikRows = await page.getByText('eksik').count();
+    // Satırlar `components_status` dönünce çizilir: sabit bekleme yerine damgayı
+    // gözlemle (yarış yok). Bölüm zaten açıksa ilk turda döner.
+    let eksikRows = 0;
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      eksikRows = await page.getByText('eksik').count();
+      if (eksikRows > 0 || Date.now() > deadline) break;
+      await sleep(300);
+    }
     report('arayüz: Bileşenler bölümü eksik durumu gösteriyor', eksikRows > 0, `${eksikRows} satır`);
     await ctx.shot('missing-component-ayarlar.png');
   } catch (error) {

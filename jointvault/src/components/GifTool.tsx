@@ -8,6 +8,9 @@ import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startGif, useGifProgress, type GifFormat } from '@/lib/gif';
 import { basenameOf, gifOutputPath } from '@/lib/convert-path';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 import { toVaultSources } from '@/lib/vault-sources';
 
 interface GifSource {
@@ -43,6 +46,7 @@ export function GifTool({ refreshKey, onDone }: GifToolProps) {
   const [error, setError] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<GifOutput[]>([]);
   const jobIdRef = useRef<string | null>(null);
+  const installer = useComponentInstaller();
 
   useEffect(() => {
     void listItems()
@@ -90,7 +94,16 @@ export function GifTool({ refreshKey, onDone }: GifToolProps) {
     const res = await startGif(selected.inputPath, output, { format, from, to, width, fps });
     jobIdRef.current = res.jobId;
     if (!res.ok) {
-      setError(res.error ?? 'GIF/WebM üretimi başarısız.');
+      const missing = parseMissingComponent(res.error);
+      if (missing) {
+        // Eksik bileşen: kurulum akışını aç; kurulunca üretimi otomatik yeniden dene.
+        setBusy(false);
+        const outcome = await installer.request(missing.id, () => void run());
+        // İndirilemeyen bileşende diyalog açılmaz; dürüst metne düşülür.
+        if (outcome === 'unavailable') setError(missingComponentText(missing));
+        return;
+      }
+      setError(describeError(res.error, 'GIF/WebM üretimi başarısız.'));
       setBusy(false);
       return;
     }

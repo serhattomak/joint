@@ -20,6 +20,8 @@ import {
 } from '@/lib/whisper';
 import { basenameOf, embedOutputPath, splitPath, stemOf, transcriptSrtPath } from '@/lib/convert-path';
 import { toVaultSources } from '@/lib/vault-sources';
+import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { missingComponentText, parseMissingComponent } from '@/lib/components';
 
 interface SubtitleSource {
   label: string;
@@ -74,6 +76,7 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
     itemId?: string;
   } | null>(null);
   const jobIdRef = useRef<string | null>(null);
+  const installer = useComponentInstaller();
 
   useEffect(() => {
     void listItems()
@@ -113,11 +116,47 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
     }
   };
 
+  /*
+   * Hızlı yol (ön kontrol): whisper durumu BİLİNİYORSA çağrıyı hiç başlatmadan
+   * dürüst yönlendirmeyi gösterir. Sinyal-tabanlı akışın (handleMissingComponent)
+   * yerine geçmez, onu TAMAMLAR: durum okunamadıysa/eskimişse kararı backend'in
+   * döndürdüğü işaret verir. İkisi çakışmaz — burada `false` dönersek backend
+   * ÇAĞRILMAZ, dolayısıyla ikinci bir mesaj üretilemez (çift mesaj yok).
+   */
   const guardReady = (): boolean => {
     if (status && !status.whisper_available) {
       setError('whisper motoru kurulu değil. Ayarlar → Konuşma bölümünden motoru indir.');
       return false;
     }
+    return true;
+  };
+
+  /*
+   * Backend'in `BILESEN_EKSIK:<id>` tel sinyalini TEK akışa bağlar. Dönüş `true`
+   * ise hata tüketilmiştir; çağıran ham metni göstermez.
+   *
+   * - ffmpeg: indirilebilir bileşen. Kurulum diyaloğu açılır; kurulum başarısında
+   *   başarısız eylem `retry` ile kendiliğinden yeniden denenir. Diyalog
+   *   açılamazsa (durum okunamadı / downloadable=false) dürüst cümleye düşülür.
+   * - whisper: BİLİNÇLİ istisna. Bu dilimde (7c-2) whisper Bileşenler ekranından
+   *   indirilemez (`components_status.downloadable === false`; indirme yolu
+   *   7c-3'te gelecek). `request('whisper')` her hâlükârda 'unavailable' döneceği
+   *   için ÖLÜ bir diyalog açmak yerine hiç çağrılmaz; mevcut dürüst
+   *   "Ayarlar → Konuşma" yönlendirmesi korunur. Bu bir gözden kaçma DEĞİLDİR.
+   *
+   * Önek hiçbir dalda DOM'a ulaşmaz: metin daima missingComponentText'ten gelir
+   * (id ve detail işaretçiden arındırılır).
+   */
+  const handleMissingComponent = (rawError: unknown, retry: () => void): boolean => {
+    const parsed = parseMissingComponent(rawError);
+    if (!parsed) return false;
+    if (parsed.id === 'whisper') {
+      setError(missingComponentText(parsed));
+      return true;
+    }
+    void installer.request(parsed.id, retry).then((result) => {
+      if (result === 'unavailable') setError(missingComponentText(parsed));
+    });
     return true;
   };
 
@@ -136,6 +175,10 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
     jobIdRef.current = transcribeJob;
     const res = await startTranscribe(selected.inputPath, model, lang, transcribeJob);
     if (!res.ok || !res.data) {
+      if (handleMissingComponent(res.error, () => void runTranscribe())) {
+        setBusy('');
+        return;
+      }
       setError(res.error ?? 'Transkript üretilemedi.');
       setBusy('');
       return;
@@ -195,6 +238,10 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
     jobIdRef.current = embedJob;
     const res = await embedSubtitle(selected.inputPath, srtPath, output, embedJob);
     if (!res.ok) {
+      if (handleMissingComponent(res.error, () => void runEmbed(srtPath))) {
+        setBusy('');
+        return;
+      }
       setError(res.error ?? 'Altyazı gömülemedi.');
       setBusy('');
       return;
@@ -226,6 +273,10 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
     jobIdRef.current = extractJob;
     const res = await extractSubtitle(selected.inputPath, output, extractJob, 0);
     if (!res.ok) {
+      if (handleMissingComponent(res.error, () => void runExtract())) {
+        setBusy('');
+        return;
+      }
       setError(res.error ?? 'Altyazı çıkarılamadı.');
       setBusy('');
       return;
