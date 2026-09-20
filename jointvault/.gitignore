@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Kanıt çıktıları (dev/out) — üretilen görseller repoya girmez
+dev/out

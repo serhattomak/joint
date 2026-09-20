@@ -2,6 +2,7 @@ import Database from '@tauri-apps/plugin-sql';
 import schema from './schema.sql?raw';
 import type { Category, Collection, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
 import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
+import { splitSqlStatements } from './sql-split';
 
 const DB_PATH = 'sqlite:jointvault.db';
 
@@ -13,22 +14,10 @@ const now = (): string => new Date().toISOString();
 
 let dbPromise: Promise<Database> | null = null;
 
-/*
- * Yalnızca-yorum satırlarını düşürür.
- *
- * Şema ';' ile bölünerek çalıştırılır (execute() çok ifadeli metni kabul etmeyebilir).
- * Bir yorumun İÇİNDEKİ ';' parçayı ortadan keser: artık satır yorum olmaktan çıkar
- * ve sözdizimi hatası verir. Bu tam olarak yaşandı — initDb patladı, getDb()
- * reddetti ve uygulama hiçbir kaydı gösteremedi. Satır yorumlarını bölmeden önce
- * düşürmek, sınıfı tümden kapatır.
- */
-const stripCommentLines = (sql: string): string => sql.replace(/^[ \t]*--[^\n]*$/gm, '');
-
 async function initDb(): Promise<Database> {
   const db = await Database.load(DB_PATH);
-  for (const stmt of stripCommentLines(schema).split(';')) {
-    const sql = stmt.trim();
-    if (sql) await db.execute(sql);
+  for (const sql of splitSqlStatements(schema)) {
+    await db.execute(sql);
   }
   await ensureDownloadColumns(db);
   await ensureConvertedPath(db);

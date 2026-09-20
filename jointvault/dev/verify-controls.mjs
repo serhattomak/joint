@@ -1,13 +1,15 @@
 /*
  * Kontrol doğrulaması — üretim kodu DEĞİL.
- * `npm run dev` çalışırken: node dev/verify-controls.mjs
+ * Tek başına: `npm run dev` çalışırken `node dev/verify-controls.mjs`
+ * Topyekûn: `npm run evidence:harness` (dev sunucusunu kendisi ayağa kaldırır)
+ * SENTETİK: bileşen sözleşmelerini doğrular, gerçek arşiv verisi kullanmaz.
  */
-import { chromium } from 'playwright-core';
+import { APP_URL, ensureOutDir, launchEvidenceBrowser } from './lib/browser.mjs';
 
-const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const URL = 'http://localhost:5173/dev/verify-controls.html';
+const URL = `${APP_URL}/dev/verify-controls.html`;
+const OUT = ensureOutDir('shots');
 
-const browser = await chromium.launch({ executablePath: EDGE });
+const browser = await launchEvidenceBrowser();
 const ctx = await browser.newContext({
   viewport: { width: 1200, height: 900 },
   colorScheme: 'dark',
@@ -113,28 +115,29 @@ await page.getByRole('button', { name: 'Sil' }).click();
 await page.waitForTimeout(400);
 check('DOĞRU iş çalıştı (collection)', (await log()).at(-1), 'confirm:collection');
 
-// ---------- 4. Yüzey dumanı: gerçek SettingsDialog ----------
+// ---------- 4. Yüzey dumanı: gerçek Ayarlar yüzeyi ----------
 /* Aynı belgede yalnızca hash değiştirmek reload tetiklemez; önce boşalt. */
 await page.goto('about:blank');
 await page.goto(`${URL}#surfaces`, { waitUntil: 'load', timeout: 30000 });
 await page.evaluate(() => document.fonts.ready);
-await page.waitForTimeout(700);
+await page.waitForTimeout(900);
 
-check('yüzey modunda diyalog açıldı', (await page.locator('[data-slot="dialog-content"]').count()) === 1, true);
+/* Yüzey artık diyalog değil tam sayfa görünüm (SettingsDialog → SettingsView);
+   bu yüzden "diyalog pencereden taşmıyor" ölçümü kaldırıldı — karşılığı yok.
+   NOT: sekme şeridi bugün düz <button> (role="tab" yok) — erişilebilirlik borcu,
+   Faz 15'te kapanacak. Tezgâh bugünkü gerçeği ölçer, olması gerekeni değil. */
+const tabButtons = await page.locator('aside nav button').count();
+check('sekme şeridi çizildi (sol menü)', tabButtons >= 5, true);
 
-const dialogBox = await page.locator('[data-slot="dialog-content"]').boundingBox();
-const viewport = page.viewportSize();
-check(
-  'diyalog pencereden taşmıyor (SettingRow sonrası)',
-  dialogBox !== null && dialogBox.height <= viewport.height - 48 + 1,
-  true,
-);
-
-const settingRows = await page.locator('[data-slot="dialog-content"] .min-h-9').count();
-check('SettingRow satırları çizildi', settingRows >= 5, true);
-
-await page.getByRole('tab', { name: 'Konuşma' }).click();
+/* SettingRow 'Görünüm' sekmesinde yaşar; yapay zekâ sekmesi kart düzeni kullanır. */
+await page.getByRole('button', { name: 'Görünüm' }).click();
 await page.waitForTimeout(500);
+const settingRows = await page.locator('[data-slot="setting-row"]').count();
+check('SettingRow çizildi (Görünüm)', settingRows >= 4, true);
+console.log(`         (bilgi) Görünüm sekmesinde ${settingRows} SettingRow`);
+
+await page.getByRole('button', { name: 'Konuşma (Whisper)' }).click();
+await page.waitForTimeout(600);
 check('damga çizildi (Konuşma)', (await page.locator('[data-state="none"]').count()) >= 1, true);
 /* Tauri yok → model durumu bilinmiyor → her model "eksik" damgası taşır. */
 check('damga sözcüğü basıldı: eksik', await page.getByText('eksik', { exact: true }).first().isVisible(), true);
@@ -144,15 +147,15 @@ check(
   true,
 );
 
-await page.getByRole('tab', { name: 'Tanılama' }).click();
-await page.waitForTimeout(600);
+await page.getByRole('button', { name: 'Tanılama' }).click();
+await page.waitForTimeout(700);
 check('damga çizildi (Tanılama)', (await page.locator('[data-state="none"]').count()) >= 1, true);
 
-await page.screenshot({ path: 'D:/serhatdev/joint/.impeccable/review/verify-settings.png' });
+await page.screenshot({ path: `${OUT}/verify-settings.png` });
 
 // ---------- 5. Damga sözlüğü tam mı (tezgâh gerçeği çiziyor mu) ----------
 await page.goto('about:blank');
-await page.goto('http://localhost:5173/dev/kitchen-sink.html', { waitUntil: 'load', timeout: 30000 });
+await page.goto(`${APP_URL}/dev/kitchen-sink.html`, { waitUntil: 'load', timeout: 30000 });
 await page.waitForTimeout(800);
 const dict = await page.evaluate(() =>
   [...document.querySelectorAll('[data-state]')].map((el) => el.getAttribute('data-state')),

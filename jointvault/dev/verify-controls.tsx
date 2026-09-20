@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, type SelectOption } from '@/components/ui/select';
-import { SettingsDialog } from '@/components/SettingsDialog';
+import { SettingsView } from '@/components/SettingsView';
 import { TagPicker } from '@/components/TagPicker';
 
 declare global {
@@ -159,15 +159,13 @@ function App() {
 }
 
 /*
- * Yüzey dumanı: Batch A (damga/etiket) + Batch D (SettingRow) gerçekten çiziliyor mu,
- * ve satırlar büyüdüğü için diyalog pencereden taşıyor mu?
+ * Yüzey dumanı: gerçek Ayarlar yüzeyi çiziliyor mu ve SettingRow satırları
+ * beklenen sayıda mı? (Ayarlar artık diyalog değil, tam sayfa görünüm:
+ * SettingsDialog kaldırıldı, yerine SettingsView geldi.)
  */
 function SurfacesApp() {
-  const [open, setOpen] = useState(true);
   return (
-    <SettingsDialog
-      open={open}
-      onOpenChange={setOpen}
+    <SettingsView
       pageSize={48}
       pageSizes={[24, 48, 96]}
       onPageSizeChange={noop}

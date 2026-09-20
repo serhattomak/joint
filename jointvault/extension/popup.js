@@ -236,7 +236,7 @@ document.getElementById("collect").addEventListener("click", async () => {
 
     const raw = (injected && injected[0] && injected[0].result) || [];
     const items = Array.isArray(raw) ? raw : raw.items || [];
-    const debug = Array.isArray(raw) ? null : raw.debug;
+    const _debug = Array.isArray(raw) ? null : raw.debug;
 
     if (!items.length) {
       statusEl.dataset.state = "error";
