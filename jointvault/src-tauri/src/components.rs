@@ -363,32 +363,51 @@ const LLAMA_ENGINE_APPROX_MB: u32 = 242;
 /// bu yüzden liste tam olmalıdır. `GGML_BACKEND_DL` açık: `ggml-*.dll` dosyaları
 /// çalışma anında exe yanından yüklenir; bu yüzden CPU varyantlarının tamamı
 /// listelenir (desteklenmeyen varyant yalnızca yüklenmez). `libomp.dll` OpenMP
-/// çalışma zamanı; `llama.dll` ve `mtmd.dll` `llama-server.exe`'nin bağlı olduğu
-/// kütüphanelerdir.
+/// `llama-server.exe`'nin çalışması için gereken dosyalar: kendisi + arşivdeki
+/// **TÜM DLL'ler**.
+///
+/// Neden elle seçilmiyor? 7c-3'te bu liste llama.cpp'nın yayın yapılandırmasından
+/// TÜRETİLMİŞTİ ve **iki yönden de yanlıştı**: arşivde OLMAYAN `ggml-cpu.dll`
+/// yazıyordu ve çalışma zamanında GEREKEN `llama-server-impl.dll` ile
+/// `llama-common.dll` yazmıyordu — yani kurulum sessizce yarım kalır ve
+/// `llama-server.exe` hiç başlamazdı. Bu, 7c-3 raporunda "DOĞRULANMADI" diye
+/// işaretlenen maddenin ta kendisiydi.
+///
+/// Liste artık `dev/verify-engine-archive.mjs` ile **gerçek arşivden** üretildi ve
+/// o sonda her koşuda kayıtla arşivi karşılaştırır. (7c-3 öncesi kod da tüm DLL'leri
+/// alıyordu; daraltma gereksiz bir riskti.)
 const LLAMA_ENGINE_WANTED: &[&str] = &[
     "llama-server.exe",
-    "llama.dll",
-    "mtmd.dll",
     "ggml.dll",
     "ggml-base.dll",
-    "ggml-cpu.dll",
+    "ggml-cpu-alderlake.dll",
+    "ggml-cpu-cannonlake.dll",
+    "ggml-cpu-cascadelake.dll",
+    "ggml-cpu-cooperlake.dll",
+    "ggml-cpu-haswell.dll",
+    "ggml-cpu-icelake.dll",
+    "ggml-cpu-ivybridge.dll",
+    "ggml-cpu-piledriver.dll",
+    "ggml-cpu-sandybridge.dll",
+    "ggml-cpu-sapphirerapids.dll",
+    "ggml-cpu-skylakex.dll",
+    "ggml-cpu-sse42.dll",
+    "ggml-cpu-x64.dll",
+    "ggml-cpu-zen4.dll",
     "ggml-cuda.dll",
     "ggml-rpc.dll",
     "libomp.dll",
-    "ggml-cpu-x64.dll",
-    "ggml-cpu-sse42.dll",
-    "ggml-cpu-sandybridge.dll",
-    "ggml-cpu-ivybridge.dll",
-    "ggml-cpu-piledriver.dll",
-    "ggml-cpu-haswell.dll",
-    "ggml-cpu-skylakex.dll",
-    "ggml-cpu-cannonlake.dll",
-    "ggml-cpu-cascadelake.dll",
-    "ggml-cpu-icelake.dll",
-    "ggml-cpu-cooperlake.dll",
-    "ggml-cpu-zen4.dll",
-    "ggml-cpu-alderlake.dll",
-    "ggml-cpu-sapphirerapids.dll",
+    "llama.dll",
+    "llama-batched-bench-impl.dll",
+    "llama-bench-impl.dll",
+    "llama-cli-impl.dll",
+    "llama-common.dll",
+    "llama-completion-impl.dll",
+    "llama-fit-params-impl.dll",
+    "llama-perplexity-impl.dll",
+    "llama-quantize-impl.dll",
+    "llama-server-impl.dll",
+    "mtmd.dll",
 ];
 
 const LLAMA_CUDART_BUNDLE: &str = "llama-cudart";

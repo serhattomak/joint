@@ -21,8 +21,7 @@
     {
       "identifier": "shell:allow-execute",
       "allow": [
-        { "name": "yt-dlp", "sidecar": true },
-        { "name": "whisper", "sidecar": true }
+        { "name": "yt-dlp", "sidecar": true }
       ]
     }
   ]

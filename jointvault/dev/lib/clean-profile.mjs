@@ -160,7 +160,17 @@ export const backupShadows = (plan, backupDir) => {
   return entries;
 };
 
-export const removeTestArtifacts = (componentsDir, pristine) => {
+/**
+ * Temizlik: sondanın ürettiği test artıklarını siler.
+ *
+ * `shadowNames` NEDEN VAR: varsayılan davranış (ffmpeg/ffprobe adlarını) yalnız
+ * onları GÖLGELEYEN sondalar için doğrudur — o zaman bileşenler klasöründe kalan
+ * her ffmpeg/ffprobe testindir. Bir sonda bu adları KASITLI olarak gölgelemezse
+ * (ör. ffmpeg'i gerçek transkript kanıtı için kurulu bırakan whisper sondası),
+ * varsayılan liste kullanıcının kurulu ffmpeg'ini SİLERDİ. Bu yüzden sonda hangi
+ * adları gölgelediyse onu bildirir; varsayılan eski davranışı AYNEN korur.
+ */
+export const removeTestArtifacts = (componentsDir, pristine, shadowNames = COMPONENT_SHADOW_NAMES) => {
   const removed = [];
   let names = [];
   try {
@@ -169,8 +179,9 @@ export const removeTestArtifacts = (componentsDir, pristine) => {
     return removed;
   }
   for (const name of names) {
-    // Yedeklenmiş olsun olmasın: temiz profilde kalan her ffmpeg/ffprobe testindir.
-    const testShadow = COMPONENT_SHADOW_NAMES.includes(name);
+    // Gölgelenmiş (ya da gölgelenmesi beklenen) bir ad ise temiz profilde kalanı
+    // test artığıdır; `.part` ise zaten sonda indirmesi olabilir (pristine değil).
+    const testShadow = shadowNames.includes(name);
     const testPart = name.endsWith('.part') && !pristine.has(name);
     if (testShadow || testPart) {
       rmSync(join(componentsDir, name), { force: true });
@@ -212,7 +223,13 @@ export const cleanupProfile = (ctx, tmpDirs = DEFAULT_TMP_DIRS) => {
   state.cleaned = true;
 
   if (state.componentsDir) {
-    state.removed = removeTestArtifacts(state.componentsDir, state.pristine);
+    // Sonda hangi adları gölgelediyse YALNIZ onlar silinir; aksi hâlde gölge
+    // planından kasıtlı çıkarılmış kurulu bir araç (ör. ffmpeg) yok edilirdi.
+    state.removed = removeTestArtifacts(
+      state.componentsDir,
+      state.pristine,
+      state.componentShadowNames ?? COMPONENT_SHADOW_NAMES,
+    );
     if (state.removed.length > 0) {
       console.log(`     test artıkları silindi (bileşenler klasörü): ${state.removed.join(', ')}`);
     }

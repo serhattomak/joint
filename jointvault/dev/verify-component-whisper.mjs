@@ -1,30 +1,48 @@
 /*
- * Bileşen birleştirme sondası (Faz 7c-3) — üretim kodu DEĞİL.
+ * Bileşen birleştirme + GERÇEK TRANSKRİPSİYON sondası (Faz 7c-3 → 8a) — üretim
+ * kodu DEĞİL.
  *
  * NE KANITLAR:
  *  1. Kayıt/indirilebilirlik: whisper, üç whisper modeli, llama motoru, CUDA
  *     çalışma zamanı, Qwen ve BGE'nin TAMAMI Bileşenler'den indirilebilir;
  *     yt-dlp paketle gömülü kalır ve İNDİRİLEMEZ (tek istisna).
- *  2. MANŞET: bileşen-yönetimli whisper kurulumu ÇALIŞTIRILABİLİR. Gömülü
- *     `whisper.exe` DLL'leri olmadan durur (0xC0000135 → `runnable=false`);
- *     Bileşenler'den kurulan kopya DLL'leriyle `components/`e iner →
- *     `runnable=true` ve `whisper_status.whisper_available=true`. Kanıt GERÇEK
- *     ~4 MB indirmeyle yapılır (varsayılan; ucuz olduğu için --quick'te bile koşar).
- *  3. Asset satırı: kurulu bir veri dosyası (`.bin`/`.gguf`, cudart DLL kümesi)
+ *  2. TEK YOL (8a): repoda (`src-tauri/binaries/`) gömülü whisper YOKTUR; whisper
+ *     yalnızca Bileşenler'den indirilerek çalışır. 7c-3'te gömülü kopya DLL'siz
+ *     olduğu için 0xC0000135 ile çöküyordu; tek yol kalınca bu kusur inşa gereği
+ *     imkânsız olur. Bu yüzden sonda artık "gömülü whisper kurulu olmalı" gibi bir
+ *     DÜNYA HÂLİ varsaymaz (7d dersi): gömülü kopyanın YOKLUĞU doğru durumdur ve
+ *     yalnız DEĞİŞMEZ sınanır.
+ *  3. MANSET — GERÇEK TRANSKRİPSİYON: arayüzden indirilen motor, ffmpeg ile
+ *     üretilen kısa bir ses üzerinde `transcribe`i UÇTAN UCA tamamlar ve bir `.srt`
+ *     dosyası üretir. Kanıtlanan: motor ÇALIŞIR ve boru hattı biter (0xC0000135
+ *     DLL çökmesi YOKTUR). DİKKAT: ses bir SİNÜS TONUDUR, içinde KONUŞMA YOKTUR;
+ *     transkriptin İÇERİĞİ anlamsızdır ve KANIT SAYILMAZ. ffmpeg ya da kurulu
+ *     model yoksa bu adım DÜRÜSTÇE atlanır (GEÇTİ değil).
+ *  4. Asset satırı: kurulu bir veri dosyası (`.bin`/`.gguf`, cudart DLL kümesi)
  *     "kurulu" gösterir, "çalıştırılamıyor" DEĞİL; ve bir daha indirmeye
  *     sunulmaz. Kurulu asset yoksa `whisper-model-tiny` (74 MB) ile kurulum
  *     kanıtlanır (--quick/JV_REAL_DOWNLOAD=0 bu indirmeyi atlar → "kanıtlanmadı").
- *  4. Eksik yt-dlp: `list_formats` yapılandırılmış `BILESEN_EKSIK:yt-dlp` +
+ *  5. Eksik yt-dlp: `list_formats` yapılandırılmış `BILESEN_EKSIK:yt-dlp` +
  *     okunabilir Türkçe ayrıntı döndürür (ham OS hatası yok).
- *  5. Bileşenler ekranı TÜM kaydı çizer: 11 bileşen / 10 paket grubu; gösterilen
+ *  6. Bileşenler ekranı TÜM kaydı çizer: 11 bileşen / 10 paket grubu; gösterilen
  *     boyutlar KAYITTAN gelir (`components.rs` → `components_status` → DOM);
  *     arayüzde sabit sayı yok.
  *
  * NEDEN TEMİZ PROFİL (gölge): `resolve()` önce `components/`e, sonra exe yanındaki
- * gömülü kopyaya bakar. Geliştirme makinesinde gömülü `whisper.exe`/`yt-dlp.exe`
- * HEP vardır; gölgelenmezlerse `is_installed` kısa yolu gerçek indirmeyi atlar ve
- * sonda hiçbir şey kanıtlamaz. Gölge mekanizması `dev/lib/clean-profile.mjs`'te TEK
- * yerde yaşar; bu sonda onu whisper/yt-dlp EK gölgeleriyle kullanır.
+ * gömülü kopyaya bakar. Geliştirme makinesinde indirilmiş whisper ve gömülü
+ * `yt-dlp.exe` HEP vardır; gölgelenmezlerse `is_installed` kısa yolu gerçek
+ * indirmeyi atlar ve sonda hiçbir şey kanıtlamaz. Gölge mekanizması
+ * `dev/lib/clean-profile.mjs`'te TEK yerde yaşar.
+ *
+ * NEDEN ffmpeg GÖLGELENMEZ: transkript boru hattı GERÇEK ffmpeg ister (16 kHz mono
+ * WAV'a çevirme). ffmpeg'i de gölgelersek `transcribe` `BILESEN_EKSIK:ffmpeg` ile
+ * durur ve MANŞET kanıtı imkânsız olur. Bu sonda whisper'ın tek yolunu sınadığı
+ * için yalnız whisper + yt-dlp gölgelenir, ffmpeg kurulu kalır (7d'den beri zaten
+ * repoda gömülü gelmez). Gölgelenmeyen ffmpeg'i temizlik de SİLMEZ: bu yüzden
+ * `cleanupProfile`e `componentShadowNames` listesi geçirilir (bkz. clean-profile).
+ *
+ * GÜVENLİK: sonda yalnızca kendi ürettiği test artıklarını (geçici ses/`.srt`,
+ * indirdiği model) siler; kullanıcı dosyalarına dokunmaz.
  *
  * Kullanım:
  *   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222"
@@ -34,17 +52,21 @@
  *
  * Bayraklar / ortam değişkenleri:
  *   --quick                model (asset) indirmesini atlar; ~4 MB motor YİNE kurulur
- *   JV_REAL_DOWNLOAD=0     TÜM gerçek indirmeleri atlar (motor dâhil)
+ *   JV_REAL_DOWNLOAD=0     TÜM gerçek indirmeleri atlar (motor dâhil); transkript
+ *                          adımı da dürüstçe atlanır (motor kurulu olmaz)
  *   JV_REAL_DOWNLOAD=1     model indirmesini zorla (--quick'i geçersiz kılar)
  *   --with-regressions      sondadan SONRA 3 regresyon komutunu koşar
  *   JV_CDP / JV_APP_EXE_DIR / JV_OUT   diğer sondalarla aynı
+ *
+ * Transkript adımı GERÇEK ffmpeg + diskte kurulu bir whisper modeli ister; ikisi
+ * de yoksa "atlandı/kanıtlanmadı" yazılır (KALDI değil).
  *
  * Çıkış kodları: 0 tümü geçti · 1 kalan kontrol/hata · 2 uygulama kapalı.
  * Atlanan kontrol "GEÇTİ" SAYILMAZ; `skips` listesinde raporlanır.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
   OUT_DIR,
   PROJECT_ROOT,
@@ -57,12 +79,22 @@ import {
   backupShadows,
   cleanupProfile,
   findAppExeDir,
+  isBundledShadow,
   planShadows,
   writeManifest,
 } from './lib/clean-profile.mjs';
 
 const CDP = process.env.JV_CDP ?? 'http://127.0.0.1:9222';
 const COMPONENTS_RS = resolve(PROJECT_ROOT, 'src-tauri/src/components.rs');
+// 8a değişmezi: paketleme kaynağı. Burada whisper izi OLMAMALI (tek yol: indirme).
+// `target/` bir inşa çıktısıdır (dünya hâli) ama `binaries/` kaynak ağacıdır →
+// burada sınanabilir bir değişmezdir.
+const BINARIES_DIR = resolve(PROJECT_ROOT, 'src-tauri/binaries');
+// Transkript boru hattı gerçek ffmpeg ister: ffmpeg/ffprobe adları gölge planından
+// ÇIKARILIR. Ad eşleştirmesi ortak `isBundledShadow` kuralıyla yapılır (düz ad ya
+// da `ffmpeg-<üçlü>.exe`) — elle liste, bir gün eklenen varyantı kaçırırdı.
+// Transkript için tercih sırası: diskte OLAN ilk model kullanılır (base dengeli).
+const TRANSCRIBE_MODEL_ORDER = ['base', 'tiny', 'small'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* --- mod seçimi ------------------------------------------------------------ */
@@ -405,6 +437,21 @@ const collectExtraShadows = (exeDir, componentsDir) => {
 };
 
 /**
+ * Verilen klasörlerdeki whisper izlerini topla (`matchesShadowName` kuralıyla:
+ * düz ad ya da `<kök>-*.exe`). `binaries/` için bu bir DEĞİŞMEZ sınamasıdır
+ * (kaynak ağacı), exe yanı için yalnız envanterdir (inşa çıktısı = dünya hâli).
+ */
+const collectWhisperArtifacts = (dirs) => {
+  const found = [];
+  for (const dir of dirs) {
+    for (const name of listDirNames(dir)) {
+      if (matchesShadowName(name, WHISPER_ARTIFACT_NAMES)) found.push(join(dir, name));
+    }
+  }
+  return found;
+};
+
+/**
  * Sondanın KENDİ indirdiği test artıklarını siler (kullanıcı verisine dokunmaz):
  * gölge öncesi listeye (`pristine`) girmeyen whisper/`yt-dlp` adları, `.part`
  * dosyaları ve sonda tarafından indirilmiş model. Silinmezse gölge geri
@@ -473,12 +520,44 @@ const stepBaseline = async (ctx) => {
     `yt-dlp downloadable=${byId[YTDLP_ID]?.downloadable}`,
   );
 
-  // Gömülü whisper DLL'siz durur → taban `runnable=false` beklenir (kusurun kanıtı).
+  /*
+   * 8a (7d dersi): "dünya hâli" varsayımı YOK. Artık gömülü whisper YOKTUR ve
+   * yokluğu DOĞRU durumdur. Sınanan değişmezler:
+   *   - whisper indirilebilir olmalı (tek yol: indirme),
+   *   - kaynak ağacında (`binaries/`) gömülü whisper izi OLMAMALI.
+   * Tabanın o anki durumu (daha önce indirilmişse kurulu olabilir) yalnızca KAYIT
+   * olarak raporlanır; "kurulu olmalı" DENMEZ.
+   */
   const whisper = byId[WHISPER_ID];
   report(
-    'taban: gömülü whisper kurulu (dosya var — DLL kusuru ön koşulu)',
-    whisper?.installed === true,
+    'taban: whisper durumu kaydedildi (8a: gömülü kopya yok, indirme tek yol)',
+    true,
     `installed=${whisper?.installed} · source=${whisper?.source ?? '-'} · runnable=${whisper?.runnable}`,
+  );
+  report(
+    'taban: whisper indirilebilir (downloadable=true — tek yol)',
+    whisper?.downloadable === true,
+    `downloadable=${whisper?.downloadable}`,
+  );
+
+  const bundledInRepo = collectWhisperArtifacts([BINARIES_DIR]);
+  const bundledBesideExe = collectWhisperArtifacts([state.exeDir]);
+  artifact.baseline.bundledWhisper = {
+    binariesDir: BINARIES_DIR,
+    inRepo: bundledInRepo,
+    besideExe: bundledBesideExe,
+  };
+  report(
+    'taban: repoda gömülü whisper YOK (src-tauri/binaries — 8a değişmezi)',
+    bundledInRepo.length === 0,
+    bundledInRepo.length ? `bulundu: ${bundledInRepo.join(', ')}` : 'temiz',
+  );
+  // Exe yanı bir inşa çıktısıdır (dünya hâli), değişmez değil: gerçek durum
+  // raporlanır (GEÇTİ/KALDI değil). Varsa zaten gölgeleneceği için sonda devam eder.
+  report(
+    'taban: exe yanındaki gömülü whisper envanteri kaydedildi (dünya hâli)',
+    true,
+    bundledBesideExe.length ? `${bundledBesideExe.length} dosya: ${bundledBesideExe.join(', ')}` : `${state.exeDir} temiz`,
   );
 };
 
@@ -523,9 +602,20 @@ const stepHide = async (ctx) => {
   state.componentsDir = String(pathResult.value);
 
   const extra = collectExtraShadows(state.exeDir, state.componentsDir);
-  const plan = planShadows({ exeDir: state.exeDir, componentsDir: state.componentsDir, extra });
+  /*
+   * ffmpeg/ffprobe gölge planından ÇIKARILIR: transkript kanıtı GERÇEK ffmpeg
+   * ister (dosya başındaki not). Temizlik de onları silmemelidir; aksi hâlde
+   * `removeTestArtifacts` (ffmpeg-adı silen ortak mantık) kullanıcının kurulu
+   * ffmpeg'ini yok ederdi. Bu yüzden hem plandan çıkarılır hem de
+   * `componentShadowNames` BOŞ bırakılır (bkz. clean-profile.mjs).
+   */
+  const plan = planShadows({ exeDir: state.exeDir, componentsDir: state.componentsDir, extra }).filter(
+    (item) => !isBundledShadow(basename(item.from)),
+  );
+  state.componentShadowNames = [];
   state.backupDir = ensureOutDir(join('clean-profile-backup', `${STAMP}-whisper`));
   console.log(`temiz profil: ${plan.length} gölge dosya yedeklenecek → ${state.backupDir}`);
+  console.log('     not: ffmpeg/ffprobe KASITLI olarak gölgelenmez (transkript kanıtı ffmpeg ister).');
   state.backupEntries = backupShadows(plan, state.backupDir);
   state.shadowed = true;
   writeManifest(state.backupDir, state.backupEntries);
@@ -538,6 +628,8 @@ const stepHide = async (ctx) => {
     exeDirHow: state.exeHow,
     componentsDir: state.componentsDir,
     extraShadows: extra,
+    ffmpegLeftInstalled: true,
+    componentShadowNames: state.componentShadowNames,
     backedUp: state.backupEntries,
     after: rows.map(pick),
   };
@@ -781,6 +873,176 @@ const stepWhisperInstall = async (ctx) => {
   await shot('component-whisper-installed.png');
 };
 
+/**
+ * MANŞET (8a): indirilen whisper motoruyla GERÇEK transkripsiyon.
+ *
+ * Ne KANITLAR: motorun ÇALIŞTIĞINI ve boru hattının (ffmpeg → 16 kHz mono WAV →
+ * whisper.cpp CLI → `.srt`) uçtan uca TAMAMLANDIĞINI; yani 0xC0000135 DLL
+ * çökmesinin OLMADIĞINI.
+ *
+ * Ne KANITLAMAZ (dürüstlük): transkriptin İÇERİĞİNİ. Üretilen ses bir sinüs
+ * tonudur; İÇİNDE KONUŞMA YOKTUR. Whisper bir ton/parazit üzerinde uydurma ya da
+ * boş segment üretebilir; bu yüzden metin ANLAMSIZDIR ve kanıt sayılmaz.
+ *
+ * Ön koşullar (kurulu motor, kurulu ffmpeg, diskte model) yoksa adım KALDI değil
+ * "ATLANDI / kanıtlanmadı" olarak raporlanır — sahte başarı üretilmez.
+ */
+const stepTranscribe = async (ctx) => {
+  const { page, report, skip, artifact, shot } = ctx;
+  const entry = {
+    ran: false,
+    skipped: null,
+    enginePath: null,
+    ffmpegPath: null,
+    model: null,
+    modelsPresent: [],
+    modelFile: null,
+    language: 'auto',
+    audioPath: null,
+    audioBytes: null,
+    ok: false,
+    error: null,
+    dllCrashHint: null,
+    srtPath: null,
+    srtExists: false,
+    srtBytes: null,
+    previewLength: null,
+    elapsedMs: null,
+    proves: 'indirilen whisper motoru çalışır ve transkripsiyon boru hattı (0xC0000135 olmadan) tamamlanır',
+    doesNotProve: 'transkriptin içeriği/doğruluğu — ses 2 sn sinüs tonu, içinde konuşma yok',
+    cleanup: 'test sesi ve üretilen .srt, sondanın geçici klasörüyle birlikte silinir',
+  };
+  artifact.transcribe = entry;
+  const skipLabel = 'whisper transkript: indirilen motorla GERÇEK transkripsiyon (.srt üretir)';
+
+  try {
+    const rows = await getComponents(page);
+    const whisper = findById(rows, WHISPER_ID);
+    const ffmpeg = findById(rows, 'ffmpeg');
+    entry.enginePath = whisper?.path ?? null;
+    entry.ffmpegPath = ffmpeg?.installed === true ? ffmpeg.path : null;
+
+    // (1) Motor kurulu + çalıştırılabilir olmalı; değilse transkript denenemez.
+    if (whisper?.installed !== true || whisper?.runnable !== true) {
+      entry.skipped = `whisper kurulu/çalıştırılabilir değil (installed=${whisper?.installed} · runnable=${whisper?.runnable})`;
+      skip(skipLabel, entry.skipped);
+      return;
+    }
+    // (2) ffmpeg gerçek boru hattı için zorunlu (7d'den beri gömülü gelmez).
+    if (!entry.ffmpegPath) {
+      entry.skipped = 'ffmpeg kurulu değil (kayıttan çözülemedi)';
+      skip(skipLabel, entry.skipped);
+      return;
+    }
+
+    // (3) Model: diskte OLAN birini kullan (kayıttaki modeller tiny/base/small).
+    const status = await getWhisperStatus(page);
+    const modelsDir = status?.models_dir ?? ctx.state.modelsDir ?? null;
+    const present = TRANSCRIBE_MODEL_ORDER.filter((model) => status?.models?.[model] === true);
+    entry.modelsPresent = present;
+    if (present.length === 0) {
+      entry.skipped = `diskte whisper modeli yok (models=${JSON.stringify(status?.models ?? null)})`;
+      skip(skipLabel, entry.skipped);
+      return;
+    }
+    entry.model = present[0];
+    entry.modelFile = modelsDir ? join(modelsDir, `ggml-${entry.model}.bin`) : null;
+
+    // (4) ffmpeg (kayıttan) ile kısa ses üret. Sinüs tonu: İÇİNDE KONUŞMA YOK.
+    const audio = join(ctx.state.tmpDir, `whisper-probe-ses-${STAMP}.wav`);
+    entry.audioPath = audio;
+    const made = spawnSync(
+      entry.ffmpegPath,
+      [
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=frequency=440:duration=2',
+        '-ac',
+        '1',
+        '-ar',
+        '16000',
+        audio,
+      ],
+      { encoding: 'utf8', timeout: 60_000 },
+    );
+    const audioReady = made.status === 0 && existsSync(audio);
+    entry.audioBytes = audioReady ? statSync(audio).size : null;
+    report(
+      'whisper transkript: ffmpeg ile kısa test sesi üretildi (sinüs tonu — konuşma YOK)',
+      audioReady,
+      audioReady
+        ? `${audio} · ${entry.audioBytes} bayt`
+        : `ffmpeg exit=${made.status} · ${String(made.stderr ?? '').trim().split(/\r?\n/).slice(-1)[0] ?? ''}`,
+    );
+    if (!audioReady) {
+      entry.skipped = 'test sesi üretilemedi (ffmpeg)';
+      skip(skipLabel, entry.skipped);
+      return;
+    }
+
+    // (5) GERÇEK çağrı: transcribe({ input_path, model, language, job_id }).
+    const started = Date.now();
+    const result = await invokeRaw(page, 'transcribe', {
+      payload: {
+        input_path: audio,
+        model: entry.model,
+        language: entry.language,
+        job_id: `probe-transcribe-${Date.now()}`,
+      },
+    });
+    entry.elapsedMs = Date.now() - started;
+    entry.ran = true;
+    entry.ok = result.ok === true;
+
+    if (result.ok) {
+      const raw = result.value;
+      const parsed = JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw));
+      entry.language = parsed.language ?? entry.language;
+      entry.srtPath = parsed.srt_path ?? null;
+      entry.previewLength = typeof parsed.preview === 'string' ? parsed.preview.length : null;
+      entry.srtExists = Boolean(entry.srtPath) && existsSync(entry.srtPath);
+      entry.srtBytes = entry.srtExists ? statSync(entry.srtPath).size : null;
+    } else {
+      entry.error = String(result.error ?? '(bilinmeyen hata)');
+      // DLL çökmesinin imzası hata metninde geçmeli; geçmiyorsa farklı bir hata var.
+      entry.dllCrashHint = /0xC0000135|3221225781/i.test(entry.error) ? 'eşleşti' : 'yok';
+    }
+
+    report(
+      'whisper transkript: MANŞET — indirilen motorla transcribe hatasız tamamlandı',
+      entry.ok,
+      entry.ok ? `${entry.model} · ${entry.elapsedMs} ms` : entry.error,
+    );
+    report(
+      'whisper transkript: üretilen .srt diskte GERÇEKTEN var',
+      entry.srtExists,
+      entry.srtPath ?? '(yol yok)',
+    );
+    // Dürüstlük kaydı (her koşulda GEÇTİ sayılmaz; bilgi satırı): kanıtın SINIRI.
+    report(
+      'whisper transkript: kanıt sınırı — motor koştu, transkript İÇERİĞİ kanıt DEĞİL (ses ton)',
+      true,
+      `önizleme=${entry.previewLength ?? '-'} karakter · .srt=${entry.srtBytes ?? '-'} bayt · ${entry.doesNotProve}`,
+    );
+    if (!entry.ok) {
+      report(
+        'whisper transkript: hata 0xC0000135 (DLL çökmesi) DEĞİL',
+        entry.dllCrashHint === 'yok',
+        `ipucu=${entry.dllCrashHint} · hata=${entry.error}`,
+      );
+    }
+    await shot('component-whisper-transcribe.png');
+  } catch (error) {
+    const message = String(error?.stack ?? error?.message ?? error);
+    entry.error = message;
+    ctx.errors.push({ step: 'transcribe', message });
+    report(skipLabel, false, String(error?.message ?? error));
+    console.error(message);
+  }
+};
+
 const stepAssets = async (ctx) => {
   const { page, report, skip, artifact, state, shot } = ctx;
   const entry = { installedAtBaseline: [], downloaded: null, rows: [], skipped: null };
@@ -892,26 +1154,43 @@ const stepRestored = async (ctx) => {
   const { page, report, state, artifact } = ctx;
   const restored = state.restoreReport?.restored ?? [];
   report(
-    'geri yükleme: yedeklenen her dosya eski yerine kondu',
+    'geri yükleme: gölgelenen HER dosya eski yerine kondu',
     /*
-     * Ölçüt "en az bir yedek" değil, "yedeklenen ne varsa hepsi geri kondu":
-     * 7d'den sonra gömülü ffmpeg repoda yok, ileride whisper da paketten
-     * çıkarsa gizlenecek dosya kalmaması doğru sonuçtur.
+     * 8a ölçütü "en az bir yedek" DEĞİL, "gölgelenen ne varsa hepsi geri kondu".
+     * Artık gömülü whisper repoda yok; sonda yalnızca yt-dlp (gömülü) ve varsa
+     * indirilmiş whisper'ı gölgeler. 0 gölge de geçerli bir sonuçtur.
      */
     restored.every((entry) => entry.restored),
-    restored.length ? `${restored.filter((entry) => entry.restored).length}/${restored.length}` : 'gizlenecek dosya yok',
+    restored.length
+      ? `${restored.filter((entry) => entry.restored).length}/${restored.length}`
+      : 'gölgelenecek dosya yok (8a: gömülü whisper yok; yt-dlp gömülü, indirilmiş kopya yoksa)',
   );
 
   const rows = await getComponents(page);
   const whisper = findById(rows, WHISPER_ID);
   const ytdlp = findById(rows, YTDLP_ID);
-  artifact.availability = { after: { whisper: pick(whisper), ytdlp: pick(ytdlp) } };
+  artifact.availability = {
+    before: artifact.baseline?.components ?? null,
+    after: { whisper: pick(whisper), ytdlp: pick(ytdlp) },
+  };
+
+  /*
+   * 8a değişmezi (7d dersi): "gömülü whisper yeniden kurulu olmalı" DEĞİL —
+   * gömülü whisper artık yok. Doğru ölçüt "makine bulunduğu gibi bırakıldı":
+   * tabanda kurulu olan, geri sonrası da kurulu olmalı (ve tersi).
+   */
+  const beforeWhisper = findById(state.baselineComponents ?? [], WHISPER_ID);
+  const beforeYtdlp = findById(state.baselineComponents ?? [], YTDLP_ID);
   report(
-    'geri sonrası: gömülü whisper yeniden kurulu (kurulum geri alındı)',
-    whisper?.installed === true,
-    `installed=${whisper?.installed} · source=${whisper?.source ?? '-'}`,
+    'geri sonrası: makine bulunduğu gibi bırakıldı (whisper)',
+    Boolean(beforeWhisper?.installed) === Boolean(whisper?.installed),
+    `önce=${beforeWhisper?.installed} · sonra=${whisper?.installed} · source=${whisper?.source ?? '-'}`,
   );
-  report('geri sonrası: yt-dlp yeniden kurulu', ytdlp?.installed === true, `installed=${ytdlp?.installed} · source=${ytdlp?.source ?? '-'}`);
+  report(
+    'geri sonrası: makine bulunduğu gibi bırakıldı (yt-dlp)',
+    Boolean(beforeYtdlp?.installed) === Boolean(ytdlp?.installed),
+    `önce=${beforeYtdlp?.installed} · sonra=${ytdlp?.installed} · source=${ytdlp?.source ?? '-'}`,
+  );
 };
 
 /* --- regresyon ------------------------------------------------------------- */
@@ -996,6 +1275,11 @@ const main = async () => {
     removedTestArtifacts: [],
     restoreReport: null,
     cleaned: false,
+    // Sondanın kendi geçici klasörü (test sesi + üretilen `.srt` burada yaşar).
+    tmpDir,
+    // Temizlikte YALNIZ bu adlar silinir (bkz. clean-profile.mjs). Whisper sondası
+    // ffmpeg'i gölgelemediği için boş: aksi hâlde ffmpeg.exe silinirdi.
+    componentShadowNames: [],
     baselineComponents: null,
     baselineWhisper: null,
     hiddenComponents: null,
@@ -1007,7 +1291,7 @@ const main = async () => {
   const artifact = {
     kind: 'component-whisper-probe',
     synthetic: false,
-    note: 'Faz 7c-3: whisper + modeller + llama/AI indirilebilir; yt-dlp gömülü kalır. Bileşen-yönetimli whisper kurulumu ÇALIŞTIRILABİLİR (DLL kusuru giderildi), kurulu asset "kurulu" görünür ve yeniden indirmeye sunulmaz, eksik yt-dlp BILESEN_EKSIK:yt-dlp döndürür, Bileşenler ekranı 11 satır/10 grubu kayıttan gelen boyutlarla çizer.',
+    note: 'Faz 7c-3 → 8a: whisper + modeller + llama/AI indirilebilir; yt-dlp gömülü kalır. 8a: repoda gömülü whisper YOK (tek yol indirme) ve arayüzden indirilen motorla GERÇEK transkripsiyon koşar. BU YALNIZCA motorun çalıştığını/boru hattının bittiğini kanıtlar (0xC0000135 yok); transkriptin İÇERİĞİNİ kanıtlamaz — ses sinüs tonu, içinde konuşma yok (bkz. transcribe.doesNotProve). Kurulu asset "kurulu" görünür ve yeniden indirmeye sunulmaz; eksik yt-dlp BILESEN_EKSIK:yt-dlp döndürür; Bileşenler ekranı 11 satır/10 grubu kayıttan gelen boyutlarla çizer. Geri sonrası ölçüt "makine bulunduğu gibi bırakıldı".',
     capturedAt: new Date().toISOString(),
     appUrl: page.url(),
     quick: quickFlag,
@@ -1021,6 +1305,8 @@ const main = async () => {
         : 'atlandı (--quick / JV_REAL_DOWNLOAD=0)',
       multiGb:
         'llama-engine (242 MB), llama-cudart (373 MB), Qwen (~8.5 GB), BGE (605 MB), base/small modelleri BU SONDA HİÇ İNDİRİLMEZ — yalnız indirilebilirlik bayrakları doğrulanır; kurulumları kanıtlanmadı',
+      transcribe:
+        'arayüzden indirilen motor + kurulu ffmpeg + diskte model varsa koşar; biri yoksa DÜRÜSTÇE atlanır (kanıtlanmadı)',
     },
     baseline: null,
     registry: null,
@@ -1028,8 +1314,10 @@ const main = async () => {
     screen: null,
     ytdlp: null,
     whisperInstall: null,
+    // MANŞET kanıtı (8a): indirilen motorla gerçek transkripsiyon (içerik değil).
+    transcribe: null,
     assetRows: null,
-    availability: { after: null },
+    availability: { before: null, after: null },
     regressions: {
       ran: false,
       commands: [
@@ -1073,6 +1361,9 @@ const main = async () => {
     await stepScreen(ctx);
     await stepYtDlp(ctx);
     await stepWhisperInstall(ctx);
+    // MANŞET (8a): indirilen motorla GERÇEK transkripsiyon. ffmpeg ya da kurulu
+    // model yoksa adım dürüstçe ATLANIR (KALDI değil) — bkz. stepTranscribe.
+    await stepTranscribe(ctx);
     await stepAssets(ctx);
   } catch (error) {
     const message = String(error?.stack ?? error?.message ?? error);
@@ -1124,13 +1415,19 @@ const main = async () => {
   artifact.skips = skips;
   artifact.errors = errors;
   artifact.exposedErrorCount = errors.length;
-  artifact.timings = { totalMs: Date.now() - startedAt, whisperInstallMs: artifact.whisperInstall?.elapsedMs ?? null };
+  artifact.timings = {
+    totalMs: Date.now() - startedAt,
+    whisperInstallMs: artifact.whisperInstall?.elapsedMs ?? null,
+    transcribeMs: artifact.transcribe?.elapsedMs ?? null,
+  };
   artifact.cleanProfile = {
     ...(artifact.cleanProfile ?? {}),
     exeDir: state.exeDir,
     exeDirHow: state.exeHow,
     componentsDir: state.componentsDir,
     backupDir: state.backupDir,
+    componentShadowNames: state.componentShadowNames ?? null,
+    ffmpegLeftInstalled: true,
     backedUp: state.backupEntries,
     removedTestArtifacts: state.removedTestArtifacts ?? [],
     cleanupRemoved: state.removed ?? [],
