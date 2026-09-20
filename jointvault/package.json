@@ -18,6 +18,8 @@
     "verify:boot-error": "node dev/verify-boot-error.mjs",
     "verify:migrations": "node dev/verify-migrations.mjs",
     "verify:backup": "node dev/verify-backup.mjs",
+    "verify:backup-ui": "node dev/verify-backup-ui.mjs",
+    "verify:foreign-keys": "node dev/verify-foreign-keys.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

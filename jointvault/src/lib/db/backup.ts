@@ -36,6 +36,9 @@ export const backupFileName = (date: Date = new Date()): string => {
 
 const backupsDir = (): Promise<string> => invoke<string>('backups_path');
 
+/** Yedek klasörünün yolu (yoksa Rust tarafı oluşturur). */
+export const backupsPath = (): Promise<string> => backupsDir();
+
 /**
  * Yedeği verilen bağlantıyla alır (göç öncesi kanca gibi "elde bağlantı
  * varken" çağrılan yerler için).
@@ -85,20 +88,26 @@ export async function resetDatabase(): Promise<void> {
   await invoke('reset_database');
 }
 
-const LAST_BACKUP_KEY = 'jv-last-backup-day';
+/** Verilen andan sonra alınmış yedek var mı? */
+export const wasBackedUpSince = (backups: BackupInfo[], sinceMs: number): boolean =>
+  backups.some((backup) => backup.modified_ms >= sinceMs);
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+/** Bugünün başlangıcı (yerel saat): "günde bir" kuralının eşiği. */
+export const startOfToday = (now: Date = new Date()): number =>
+  new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-/** Açılışta günde en fazla bir kez yedek alınması için işaret. */
-export const backupDoneToday = (): boolean => window.localStorage.getItem(LAST_BACKUP_KEY) === today();
-
-export const markBackupDone = (): void => window.localStorage.setItem(LAST_BACKUP_KEY, today());
-
-/** Açılış yedeği: günde en fazla bir kez, son 5 kopya kalacak şekilde. */
+/**
+ * Açılış yedeği: günde en fazla bir kez, son 5 kopya kalacak şekilde.
+ *
+ * "Bugün yedek alındı mı" sorusu bir İŞARETE değil, **mevcut yedeklere**
+ * sorulur. İşaret tutmak (ör. localStorage) kasaya değil profile bağlı olurdu:
+ * kasa değişince ya da geri dönüldüğünde yanlış cevap verirdi.
+ */
 export async function runDailyBackupIfDue(db: Database): Promise<string | null> {
-  if (backupDoneToday()) return null;
+  const existing = await listBackups();
+  if (wasBackedUpSince(existing, startOfToday())) return null;
+
   const name = await createBackup(db);
-  markBackupDone();
   await pruneBackups(5).catch(() => undefined);
   return name;
 }

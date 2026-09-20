@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { DataBackupSection } from '@/components/DataBackupSection';
 import { writeClipboardText } from '@/lib/clipboard';
 import { useOpenTarget } from '@/lib/open-target';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
@@ -1119,7 +1120,10 @@ export function SettingsView(props: SettingsViewProps) {
 
             {/* TAB: YEDEKLEME */}
             {tab === 'backup' && (
-              <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/30 p-4 shadow-xs">
+              <div className="flex flex-col gap-4">
+                <DataBackupSection />
+                <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/30 p-4 shadow-xs">
+                <h3 className="text-sm font-medium">Taşınabilir dışa aktarma (JSON)</h3>
                 <p className="text-xs text-muted-foreground">
                   Tüm kayıtlar JSON olarak dışa aktarılır; içe aktarma mevcutla birleşir, tekrarlar atlanır. Medya
                   dosyaları dahil değildir.
@@ -1150,6 +1154,7 @@ export function SettingsView(props: SettingsViewProps) {
                     {backupMsg}
                   </p>
                 )}
+                </div>
               </div>
             )}
           </div>
