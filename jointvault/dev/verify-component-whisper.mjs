@@ -892,9 +892,14 @@ const stepRestored = async (ctx) => {
   const { page, report, state, artifact } = ctx;
   const restored = state.restoreReport?.restored ?? [];
   report(
-    'geri yükleme: tüm gölge dosyalar eski yerine kondu',
-    restored.length > 0 && restored.every((entry) => entry.restored),
-    restored.length ? `${restored.filter((entry) => entry.restored).length}/${restored.length}` : 'yedek yok',
+    'geri yükleme: yedeklenen her dosya eski yerine kondu',
+    /*
+     * Ölçüt "en az bir yedek" değil, "yedeklenen ne varsa hepsi geri kondu":
+     * 7d'den sonra gömülü ffmpeg repoda yok, ileride whisper da paketten
+     * çıkarsa gizlenecek dosya kalmaması doğru sonuçtur.
+     */
+    restored.every((entry) => entry.restored),
+    restored.length ? `${restored.filter((entry) => entry.restored).length}/${restored.length}` : 'gizlenecek dosya yok',
   );
 
   const rows = await getComponents(page);

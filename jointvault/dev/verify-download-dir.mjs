@@ -21,7 +21,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
   OUT_DIR,
-  PROJECT_ROOT,
   endProbe,
   ensureOutDir,
   findAppPage,
@@ -29,19 +28,41 @@ import {
 } from './lib/browser.mjs';
 
 const CDP = process.env.JV_CDP ?? 'http://127.0.0.1:9222';
-const FFMPEG = resolve(PROJECT_ROOT, 'src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe');
 const WORK = join(tmpdir(), `jv-dl-probe-${Date.now()}`);
 const MP4 = join(WORK, 'probe.mp4');
 const TARGET = join(WORK, 'hedef-klasor');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/*
+ * ffmpeg'i REPODAN DEĞİL kayıttan çöz.
+ *
+ * 7d repodan ffmpeg'i çıkardı; sonda artık uygulamanın kullandığı yolu
+ * (indirilen → gömülü) kullanmalı. Aksi hâlde test medyası üretilemez ve sonda
+ * "ürün bozuk" gibi görünürdü — oysa doğru davranış kullanıcıdan indirmesini
+ * istemektir. Bu yüzden eksikse sonda açıkça "Bileşenler'den indir" der.
+ */
+const resolveFfmpeg = (page) =>
+  page
+    .evaluate(async () => {
+      const invoke = window.__TAURI_INTERNALS__?.invoke;
+      if (!invoke) return null;
+      try {
+        const list = await invoke('components_status');
+        const ffmpeg = (list ?? []).find((c) => c.id === 'ffmpeg');
+        return ffmpeg?.installed ? ffmpeg.path : null;
+      } catch {
+        return null;
+      }
+    })
+    .catch(() => null);
+
 /* Gerçek ama küçük bir medya dosyası üret (yt-dlp bir medya dosyası indirsin). */
-const makeMedia = () => {
+const makeMedia = (ffmpegPath) => {
   mkdirSync(WORK, { recursive: true });
   mkdirSync(TARGET, { recursive: true });
   const made = spawnSync(
-    FFMPEG,
+    ffmpegPath,
     ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=64x64:rate=5', '-pix_fmt', 'yuv420p', MP4],
     { stdio: 'ignore' },
   );
@@ -58,7 +79,32 @@ const serveMedia = async () => {
 };
 
 const main = async () => {
-  if (!makeMedia()) {
+  // Önce uygulamaya bağlan: ffmpeg yolu artık kayıttan geliyor (repoda yok).
+  const browser = await waitForCdp(CDP);
+  if (!browser) {
+    console.error(`Uygulamaya bağlanılamadı (${CDP}).`);
+    console.error('Sırayla: pencereyi kapat → $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" → npx tauri dev');
+    return endProbe(2);
+  }
+
+  const page = findAppPage(browser);
+  if (!page) {
+    console.error('Uygulama penceresi bulunamadı.');
+    return endProbe(2);
+  }
+  console.log(`bağlandı: ${page.url()}`);
+  await page.waitForLoadState('load');
+  await sleep(800);
+
+  const ffmpeg = await resolveFfmpeg(page);
+  if (!ffmpeg) {
+    console.error('ffmpeg kurulu değil (7d ile repodan çıkarıldı).');
+    console.error('Ayarlar → Bileşenler bölümünden ffmpeg paketini indir, sonra sondayı tekrar koş.');
+    return endProbe(2);
+  }
+  console.log(`ffmpeg (kayıttan): ${ffmpeg}`);
+
+  if (!makeMedia(ffmpeg)) {
     console.error('Test medyası üretilemedi (ffmpeg). Sonda durduruldu.');
     return endProbe(2);
   }
@@ -66,24 +112,6 @@ const main = async () => {
 
   const { server, url } = await serveMedia();
   console.log(`yerel kaynak: ${url}`);
-
-  const browser = await waitForCdp(CDP);
-  if (!browser) {
-    console.error(`Uygulamaya bağlanılamadı (${CDP}).`);
-    console.error('Sırayla: pencereyi kapat → $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" → npx tauri dev');
-    server.close();
-    return endProbe(2);
-  }
-
-  const page = findAppPage(browser);
-  if (!page) {
-    console.error('Uygulama penceresi bulunamadı.');
-    server.close();
-    return endProbe(2);
-  }
-  console.log(`bağlandı: ${page.url()}`);
-  await page.waitForLoadState('load');
-  await sleep(800);
 
   const probe = await page.evaluate(
     async ({ targetDir, probeUrl }) => {

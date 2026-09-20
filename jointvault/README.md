@@ -11,7 +11,7 @@ Kişisel medya arşivi: farklı platformlarda kaydedilen post/video/fotoğraflar
 
 ## Teknoloji
 
-Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui. SQLite (`tauri-plugin-sql`), sidecar: yt-dlp + ffmpeg/ffprobe (git-lfs ile repoda). ffmpeg/ffprobe artık çalışma zamanında **bileşen** olarak da indirilebilir: uygulama içinden, sha256 doğrulamalı, iptal edilebilir ilerlemeli indirme (Ayarlar → Bileşenler).
+Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui. SQLite (`tauri-plugin-sql`), sidecar: yt-dlp + whisper. ffmpeg/ffprobe **repoda tutulmaz** (313 MB'lık yük); ilk kullanımda Ayarlar → Bileşenler bölümünden indirilir — sha256 doğrulamalı, iptal edilebilir ilerlemeli indirme. Araçlar aracı bileşen kaydından çözer (indirilen → gömülü), yani indirilen kopya otomatik kullanılır.
 
 ## Geliştirme
 

@@ -360,8 +360,14 @@ const stepBaseline = async (ctx) => {
 
   artifact.availability.before = { ffmpeg: pick(ffmpeg), ffprobe: pick(ffprobe), whisper: pick(whisper) };
 
-  report('taban: ffmpeg kurulu (sınama ön koşulu)', ffmpeg?.installed === true, `installed=${ffmpeg?.installed}`);
-  report('taban: ffprobe kurulu (sınama ön koşulu)', ffprobe?.installed === true, `installed=${ffprobe?.installed}`);
+  /*
+   * Taban artık bir ÖN KOŞUL değil, kayıt: 7d'den sonra ffmpeg gömülü gelmiyor,
+   * yani "kurulu değil" doğru başlangıçtır. Sonda zaten hiçbir şey gölgelemeden
+   * gerçek "hiç ffmpeg yok" durumunu sınıyor — bu daha güçlü bir sınama.
+   * Ölçüt "kurulu olmalı" değil, "bulunan durum kaydedildi".
+   */
+  report('taban: ffmpeg durumu kaydedildi', true, `installed=${ffmpeg?.installed} (7d: gömülü gelmez)`);
+  report('taban: ffprobe durumu kaydedildi', true, `installed=${ffprobe?.installed} (7d: gömülü gelmez)`);
   // 7c-3: whisper artık kayıtta pinli indirme kaynağı taşır → Bileşenler'den
   // kurulabilir; arayüzdeki kurulum kapısı da ffmpeg ile aynı akıştan geçer.
   report(
@@ -725,17 +731,41 @@ const stepGlobalMarkerScan = async (ctx) => {
 const stepRestored = async (ctx) => {
   const { page, report, state, artifact } = ctx;
   const restored = state.restoreReport?.restored ?? [];
+  /*
+   * 7d'den sonra gömülü ffmpeg YOK — yani gölgelenecek dosya da yok. Bu bir hata
+   * DEĞİL, daha GÜÇLÜ bir temiz profil: sonda hiçbir şeyi gizlemeden gerçek
+   * "hiç ffmpeg yok" durumunu sınıyor. Ölçüt bu yüzden "en az bir yedek" değil,
+   * "yedeklenen ne varsa hepsi geri kondu".
+   */
   report(
-    'geri yükleme: tüm gölge dosyalar eski yerine kondu',
-    restored.length > 0 && restored.every((entry) => entry.restored),
-    restored.length > 0 ? `${restored.filter((entry) => entry.restored).length}/${restored.length}` : 'yedek yok',
+    'geri yükleme: yedeklenen her dosya eski yerine kondu',
+    restored.every((entry) => entry.restored),
+    restored.length > 0
+      ? `${restored.filter((entry) => entry.restored).length}/${restored.length}`
+      : 'gölgelenecek dosya yok (7d: gömülü ffmpeg artık repoda değil) — daha güçlü temiz profil',
   );
   const status = await getComponents(page);
   const ffmpeg = findById(status, COMPONENT_ID);
   const ffprobe = findById(status, 'ffprobe');
   artifact.availability.after = { ffmpeg: pick(ffmpeg), ffprobe: pick(ffprobe) };
-  report('geri sonrası: ffmpeg yeniden kurulu', ffmpeg?.installed === true, `installed=${ffmpeg?.installed}`);
-  report('geri sonrası: ffprobe yeniden kurulu', ffprobe?.installed === true, `installed=${ffprobe?.installed}`);
+
+  /*
+   * Doğru değişmez "ffmpeg kurulu olmalı" DEĞİL, "makine bulunduğu gibi
+   * bırakılmalı". Sonda kendi indirdiğini temizler; geriye taban durumu kalır.
+   */
+  const before = artifact.availability.before ?? {};
+  const sameAsFound = (id) =>
+    Boolean(before[id]?.installed) === Boolean(findById(status, id)?.installed);
+  report(
+    'geri sonrası: makine bulunduğu gibi bırakıldı (ffmpeg)',
+    sameAsFound(COMPONENT_ID),
+    `önce=${before[COMPONENT_ID]?.installed} · sonra=${ffmpeg?.installed}`,
+  );
+  report(
+    'geri sonrası: makine bulunduğu gibi bırakıldı (ffprobe)',
+    sameAsFound('ffprobe'),
+    `önce=${before.ffprobe?.installed} · sonra=${ffprobe?.installed}`,
+  );
 };
 
 /* --- regresyon ------------------------------------------------------------- */

@@ -296,8 +296,13 @@ const stepBaseline = async (ctx) => {
     health: { ffmpeg: health?.ffmpeg ?? null, ffprobe: health?.ffprobe ?? null },
   };
 
-  report('taban: ffmpeg kurulu (sınama ön koşulu)', ffmpeg?.installed === true, `installed=${ffmpeg?.installed}`);
-  report('taban: ffprobe kurulu (sınama ön koşulu)', ffprobe?.installed === true, `installed=${ffprobe?.installed}`);
+  /*
+   * Taban bir ÖN KOŞUL değil, kayıt: 7d'den sonra ffmpeg gömülü gelmiyor.
+   * "Kurulu değil" doğru başlangıçtır; sonda zaten gerçek "hiç ffmpeg yok"
+   * durumunu sınar (gölgelenecek dosya kalmasa bile).
+   */
+  report('taban: ffmpeg durumu kaydedildi', true, `installed=${ffmpeg?.installed} (7d: gömülü gelmez)`);
+  report('taban: ffprobe durumu kaydedildi', true, `installed=${ffprobe?.installed} (7d: gömülü gelmez)`);
   report(
     'taban (7a parite): ffmpeg kayıt ↔ health AYNI',
     ffmpeg?.installed === health?.ffmpeg?.available,
@@ -517,11 +522,16 @@ const stepRestored = async (ctx) => {
   const { page, report, state, artifact } = ctx;
   const restored = state.restoreReport?.restored ?? [];
   report(
-    'geri yükleme: tüm gölge dosyalar eski yerine kondu',
-    restored.length > 0 && restored.every((entry) => entry.restored),
+    'geri yükleme: yedeklenen her dosya eski yerine kondu',
+    /*
+     * 7d'den sonra gömülü ffmpeg repoda DEĞİL: gizlenecek dosya kalmaması doğru
+     * sonuçtur (daha güçlü temiz profil). Ölçüt bu yüzden "en az bir yedek" değil,
+     * "yedeklenen ne varsa hepsi geri kondu".
+     */
+    restored.every((entry) => entry.restored),
     restored.length > 0
       ? `${restored.filter((entry) => entry.restored).length}/${restored.length}`
-      : 'yedek yok (gizlenecek dosya bulunamadı)',
+      : 'gizlenecek dosya yok (7d: gömülü ffmpeg artık repoda değil)',
   );
 
   const status = await getComponents(page);
@@ -533,8 +543,22 @@ const stepRestored = async (ctx) => {
     health: { ffmpeg: health?.ffmpeg ?? null, ffprobe: health?.ffprobe ?? null },
   };
 
-  report('geri sonrası: health_check ffmpeg available:true', health?.ffmpeg?.available === true, `available=${health?.ffmpeg?.available}`);
-  report('geri sonrası: health_check ffprobe available:true', health?.ffprobe?.available === true, `available=${health?.ffprobe?.available}`);
+  /*
+   * "Yeniden available:true" beklemek 7d'den sonra YANLIŞ: gömülü ffmpeg yok, yani
+   * geri yükleme sonrası doğru durum "başlangıçtaki durum". Değişmez: makine
+   * bulunduğu gibi bırakılır — dünya hâli (ffmpeg kurulu) değil.
+   */
+  const before = artifact.availability?.before?.health ?? {};
+  report(
+    'geri sonrası: health_check ffmpeg başlangıçtaki durumda',
+    health?.ffmpeg?.available === Boolean(before.ffmpeg?.available),
+    `önce=${before.ffmpeg?.available} · sonra=${health?.ffmpeg?.available}`,
+  );
+  report(
+    'geri sonrası: health_check ffprobe başlangıçtaki durumda',
+    health?.ffprobe?.available === Boolean(before.ffprobe?.available),
+    `önce=${before.ffprobe?.available} · sonra=${health?.ffprobe?.available}`,
+  );
   report(
     'geri sonrası (7a parite): ffmpeg kayıt ↔ health AYNI',
     ffmpeg?.installed === health?.ffmpeg?.available,
