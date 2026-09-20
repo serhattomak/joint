@@ -4,7 +4,7 @@ import { DataBackupSection } from '@/components/DataBackupSection';
 import { ComponentsSection } from '@/components/ComponentsSection';
 import { writeClipboardText } from '@/lib/clipboard';
 import { useOpenTarget } from '@/lib/open-target';
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import {
   Activity,
   ArrowLeft,
@@ -536,12 +536,16 @@ export function SettingsView(props: SettingsViewProps) {
     setBackupMsg(null);
     try {
       const data = await exportVault();
-      const path = await saveDialog({
-        defaultPath: `jointvault-backup-${new Date().toISOString().slice(0, 10)}.json`,
-        filters: [{ name: 'JSON', extensions: ['json'] }],
+      /*
+       * Yol RENDERER'DAN GEÇMEZ: dosya seçimini Rust yapar (`export_backup`).
+       * Böylece "kullanıcı seçti" iddiası doğrulanabilir kalır — renderer istediği
+       * yolu gönderemez. (Eskiden `write_text_file` + burada seçilen yol vardı.)
+       */
+      const written = await invoke<string | null>('export_backup', {
+        content: JSON.stringify(data),
+        suggestedName: `jointvault-backup-${new Date().toISOString().slice(0, 10)}.json`,
       });
-      if (!path) return;
-      await invoke('write_text_file', { path, content: JSON.stringify(data) });
+      if (!written) return;
       const count = Object.values(data.tables).reduce((n, rows) => n + rows.length, 0);
       setBackupMsg(`${count} satır yedeklendi.`);
     } catch (e) {

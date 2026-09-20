@@ -55,9 +55,19 @@ fn hash_file(path: &str) -> Result<String, String> {
     Ok(format!("{:x}", h.finalize()))
 }
 
+/// Dosyayı siler — **yalnızca izinli köklerin altından** (app_data, indirme kökü).
+///
+/// Neden kısıtlandı: bu komut renderer'a açıktır ve geri döndürülemez. Sınırsız
+/// olsaydı bir renderer açığı "diskteki herhangi bir dosyayı sil" yetkisine
+/// dönüşürdü. Kapsam dışı bir yol artık anlaşılır bir hatayla reddedilir.
 #[tauri::command]
-pub async fn delete_file(path: String) -> Result<(), String> {
-    std::fs::remove_file(&path).map_err(|e| e.to_string())
+pub async fn delete_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let target = std::path::PathBuf::from(path.trim());
+    if path.trim().is_empty() {
+        return Err("Silinecek dosya yolu boş olamaz.".to_string());
+    }
+    crate::paths::ensure_allowed(&app, &target)?;
+    std::fs::remove_file(&target).map_err(|e| e.to_string())
 }
 
 #[derive(Clone, serde::Serialize)]

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Field, FieldGroup, SettingRow } from '@/components/ui/field';
 import { Input, Textarea } from '@/components/ui/input';
 import { NoticeProvider, useNotice } from '@/components/ui/notice';
+import { ComponentInstallerProvider } from '@/components/ComponentInstaller';
 import { Progress } from '@/components/ui/progress';
 import { Select } from '@/components/ui/select';
 import { Stamp, PlatformRule, type StampState } from '@/components/ui/stamp';
@@ -295,8 +296,14 @@ function Harness() {
 
 createRoot(document.getElementById('root') as HTMLElement).render(
   <NoticeProvider>
-    <TooltipProvider delay={100}>
-      <Harness />
-    </TooltipProvider>
+    {/* `ComponentInstallerProvider` ŞART: ItemViews içindeki indirme denetimi
+        `useComponentInstaller()` çağırıyor ve sağlayıcı yoksa fırlatıyor. Bu
+        tezgâh sayfası App'in sağlayıcılarını kullanmadığı için burada açıkça
+        sarılır — aksi hâlde tüm sözlük çöker (bir kez çöktü). */}
+    <ComponentInstallerProvider>
+      <TooltipProvider delay={100}>
+        <Harness />
+      </TooltipProvider>
+    </ComponentInstallerProvider>
   </NoticeProvider>,
 );

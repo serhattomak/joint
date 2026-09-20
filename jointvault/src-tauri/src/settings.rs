@@ -55,6 +55,9 @@ pub fn set_download_dir(app: tauri::AppHandle, path: String) -> Result<String, S
     let dir = app_data_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(DIR_FILE), format!("{trimmed}\n")).map_err(|e| e.to_string())?;
+    // Yeni klasörü varlık protokolüne de bildir: aksi hâlde bu klasördeki medya
+    // önizlemesi sessizce kırılır (statik kapsam kullanıcı seçimini bilemez).
+    let _ = app.asset_protocol_scope().allow_directory(&trimmed, true);
     Ok(trimmed)
 }
 
@@ -88,10 +91,55 @@ pub fn set_close_behavior(app: tauri::AppHandle, mode: String) -> Result<String,
     std::fs::write(dir.join(CLOSE_FILE), format!("{mode}\n")).map_err(|e| e.to_string())?;
     Ok(mode)
 }
+/// Metni dosyaya yazar — **yalnızca izinli köklerin altına** (app_data, indirme kökü).
+///
+/// Neden kısıtlandı: bu komut renderer'a açıktır; sınırsız olsaydı bir renderer
+/// açığı diskteki herhangi bir dosyaya yazmaya dönüşürdü. Kullanıcının seçtiği
+/// dışa aktarma yolu buradan GEÇMEZ (bkz. `export_backup`).
 #[tauri::command]
-pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+pub fn write_text_file(app: tauri::AppHandle, path: String, content: String) -> Result<(), String> {
     if path.trim().is_empty() {
         return Err("Dosya yolu boş olamaz.".to_string());
     }
-    std::fs::write(&path, content).map_err(|e| e.to_string())
+    let target = std::path::PathBuf::from(path.trim());
+    crate::paths::ensure_allowed(&app, &target)?;
+    std::fs::write(&target, content).map_err(|e| e.to_string())
+}
+
+/// Yedeği dışa aktarır: **dosya seçimini Rust yapar**, renderer yalnızca içeriği verir.
+///
+/// Neden böyle? Yol renderer'dan gelseydi, "kullanıcı seçti" iddiası doğrulanamazdı;
+/// renderer istediği yolu gönderebilirdi. Burada seçimi işletim sistemi diyaloğu
+/// yapar ve yol renderer'a hiç uğramaz — yetkilendirme sınırı gerçekten diyalogdur.
+/// Dönen değer: yazılan yol (kullanıcı iptal ederse `None`).
+#[tauri::command]
+pub async fn export_backup(
+    app: tauri::AppHandle,
+    content: String,
+    suggested_name: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let safe_name = suggested_name.trim();
+    let file_name = if safe_name.is_empty() {
+        "jointvault-backup.json".to_string()
+    } else {
+        safe_name.to_string()
+    };
+
+    let chosen = app
+        .dialog()
+        .file()
+        .set_file_name(&file_name)
+        .add_filter("JSON", &["json"])
+        .blocking_save_file();
+
+    let Some(file_path) = chosen else {
+        return Ok(None); // kullanıcı iptal etti
+    };
+    let path = file_path
+        .into_path()
+        .map_err(|e| format!("Seçilen yol kullanılamadı: {e}"))?;
+    std::fs::write(&path, content).map_err(|e| format!("Yedek yazılamadı: {e}"))?;
+    Ok(Some(path.to_string_lossy().to_string()))
 }

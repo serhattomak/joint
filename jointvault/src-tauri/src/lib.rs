@@ -6,6 +6,7 @@ mod gif;
 mod health;
 mod merge;
 mod pairing;
+mod paths;
 mod preview;
 mod preview_media;
 mod settings;
@@ -59,6 +60,7 @@ pub fn run() {
     component_download::component_download_probe,
       settings::set_download_dir,
       settings::write_text_file,
+      settings::export_backup,
       settings::get_close_behavior,
       settings::set_close_behavior,
       download::download_media,
@@ -111,6 +113,17 @@ pub fn run() {
         )?;
       }
       tray::setup_tray(app.handle())?;
+      /*
+       * Varlık protokolü kapsamı: statik kökler dar tutuldu (Faz 9), ama İNDİRME
+       * KLASÖRÜ kullanıcı tarafından herhangi bir sürücüde seçilebilir — statik
+       * kapsamla ifade edilemez. Çalışma zamanında eklenmezse seçilen klasördeki
+       * medya önizlemesi sessizce kırılır (log'da "asset protocol not configured
+       * to allow the path" olarak görülür). Bu yüzden burada ve klasör
+       * değiştiğinde eklenir.
+       */
+      if let Ok(dir) = settings::get_download_dir(app.handle().clone()) {
+        let _ = app.asset_protocol_scope().allow_directory(&dir, true);
+      }
       tauri::async_runtime::spawn(collect::run_bridge(app.handle().clone()));
       ai::start_watchdog(app.handle().clone());
       ai::warmup_ai_on_startup(app.handle().clone());

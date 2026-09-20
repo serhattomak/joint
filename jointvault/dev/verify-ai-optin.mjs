@@ -171,7 +171,7 @@ const listFilesDeep = (dir) => {
     }
   };
   walk(dir);
-  return out.sort();
+  return out.sort((a, b) => a.localeCompare(b));
 };
 
 /*

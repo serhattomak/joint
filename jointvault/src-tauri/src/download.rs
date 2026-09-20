@@ -194,6 +194,10 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
     let tools = ensure_ffmpeg_tools(&app, &dir)?;
     args.push("--ffmpeg-location".to_string());
     args.push(tools.to_string_lossy().replace('\\', "/"));
+    // Argüman enjeksiyonu koruması: URL doğrulanır ve `--` ile konum argümanı
+    // olduğu açıkça bildirilir (bkz. `validate_media_url`).
+    validate_media_url(&url)?;
+    args.push("--".to_string());
     args.push(url);
     run_sidecar(&app, &item_id, &yt_dlp, args).await
 }
@@ -280,6 +284,24 @@ pub struct FormatOption {
 }
 
 // ponytail: -J tek videonun tüm formatlarını döner; kuyruk kilidi YOK
+/// yt-dlp'ye giden URL'yi doğrula — argüman enjeksiyonuna karşı.
+///
+/// Neden gerekli: yt-dlp'ye verilen bir konum argümanı `-` ile başlarsa yt-dlp onu
+/// **seçenek** sanar (`--exec` gibi seçenekler komut çalıştırır). Ayrıca yalnızca
+/// http/https kabul edilir: `file://`, `data:` ya da düz bir yol meşru bir
+/// "indirme" girdisi değildir ve saldırı yüzeyini büyütür.
+fn validate_media_url(url: &str) -> Result<(), String> {
+    let trimmed = url.trim();
+    if trimmed.starts_with('-') {
+        return Err("Geçersiz bağlantı: '-' ile başlayan adres kabul edilmez.".to_string());
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return Err("Geçersiz bağlantı: yalnızca http:// veya https:// adresleri kabul edilir.".to_string());
+    }
+    Ok(())
+}
+
 // (hızlı metadata, paralel okuma serbest).
 #[tauri::command]
 pub async fn list_formats(app: AppHandle, payload: serde_json::Value) -> Result<Vec<FormatOption>, String> {
@@ -292,10 +314,12 @@ pub async fn list_formats(app: AppHandle, payload: serde_json::Value) -> Result<
         .and_then(|v| v.as_str())
         .ok_or("missing required key url")?
         .to_string();
+    validate_media_url(&url)?;
     let (mut rx, _child) = app
         .shell()
         .command(yt_dlp.to_string_lossy().to_string())
-        .args(["-J", "--no-playlist", "--no-warnings", &url])
+        // `--`: bundan sonrası konum argümanı — URL asla seçenek sayılmaz.
+        .args(["-J", "--no-playlist", "--no-warnings", "--", &url])
         .spawn()
         .map_err(|e| e.to_string())?;
     let mut out = String::new();

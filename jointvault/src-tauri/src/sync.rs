@@ -301,13 +301,18 @@ pub fn sync_upload_cookies(app: AppHandle, content: String) -> Result<bool, Stri
     Ok(true)
 }
 
+/// Çerez dosyasını siler ve **gerçekten silinip silinmediğini raporlar**.
+///
+/// Eskiden koşulsuz `Ok(true)` dönüyordu: silme başarısız olsa (izin, kilit) bile
+/// arayüz "temizlendi" diyordu — sessiz yalan. Artık sonuç dosyanın varlığına
+/// bakılarak bildirilir.
 #[tauri::command]
 pub fn sync_clear_cookies_file(app: AppHandle) -> Result<bool, String> {
-    if let Ok(dir) = app_data_dir(&app) {
-        let path = dir.join("cookies.txt");
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
-        }
+    let dir = app_data_dir(&app)?;
+    let path = dir.join("cookies.txt");
+    if !path.exists() {
+        return Ok(true); // zaten yok: istenen sonuç sağlanmış
     }
-    Ok(true)
+    std::fs::remove_file(&path).map_err(|e| format!("Çerez dosyası silinemedi: {e}"))?;
+    Ok(!path.exists())
 }
