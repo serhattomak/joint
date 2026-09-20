@@ -8,8 +8,11 @@ import {
   type MigrationExecutor,
 } from './migrations';
 
-const sqliteExecutor = (db: DatabaseSync): MigrationExecutor => ({
-  currentVersion: async () => {
+/* Sürümler listeden TÜRETİLİR: yeni bir göç eklendiğinde bu testler kırılmamalı. */
+const ALL_VERSIONS = MIGRATIONS.map((migration) => migration.version);
+const LATEST = MIGRATIONS[MIGRATIONS.length - 1].version;
+
+const sqliteExecutor = (db: DatabaseSync): MigrationExecutor => ({  currentVersion: async () => {
     const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
     return row?.user_version ?? 0;
   },
@@ -52,15 +55,15 @@ const preAlterDb = (): DatabaseSync => {
 
 describe('planMigrations', () => {
   it('sıfır sürümde tüm göçleri döndürür', () => {
-    expect(planMigrations(0).map((m) => m.version)).toEqual([1, 2, 3]);
+    expect(planMigrations(0).map((m) => m.version)).toEqual(ALL_VERSIONS);
   });
 
   it('uygulanmış göçleri atlar', () => {
-    expect(planMigrations(2).map((m) => m.version)).toEqual([3]);
+    expect(planMigrations(2).map((m) => m.version)).toEqual(ALL_VERSIONS.filter((v) => v > 2));
   });
 
   it('güncel kasa için boş liste döndürür', () => {
-    expect(planMigrations(3)).toEqual([]);
+    expect(planMigrations(LATEST)).toEqual([]);
   });
 
   it('sürümü daha yeni olsa bile boş liste döndürür', () => {
@@ -90,7 +93,7 @@ describe('runMigrations — taze kasa', () => {
     const result = await runMigrations(sqliteExecutor(db));
 
     // Assert
-    expect(result).toEqual({ from: 0, to: 3, applied: [1, 2, 3] });
+    expect(result).toEqual({ from: 0, to: LATEST, applied: ALL_VERSIONS });
   });
 
   it('sürümü veritabanına yazar', async () => {
@@ -102,7 +105,7 @@ describe('runMigrations — taze kasa', () => {
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
 
     // Assert
-    expect(row.user_version).toBe(3);
+    expect(row.user_version).toBe(LATEST);
   });
 
   it('şemayı gerçekten kurar', async () => {
@@ -142,7 +145,7 @@ describe('runMigrations — eski (sürümsüz) kasa', () => {
     const result = await runMigrations(sqliteExecutor(db));
 
     // Assert
-    expect(result.to).toBe(3);
+    expect(result.to).toBe(LATEST);
   });
 
   it('VERİYİ KORUR: göç öncesi satır yerinde kalır', async () => {
@@ -189,7 +192,7 @@ describe('runMigrations — yedek kancası', () => {
     });
 
     // Assert
-    expect(calls).toEqual([[1, 2, 3]]);
+    expect(calls).toEqual([ALL_VERSIONS]);
   });
 
   it('bekleyen göç yoksa beforeApply çağrılmaz', async () => {

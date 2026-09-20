@@ -57,6 +57,15 @@ export const MIGRATIONS: Migration[] = [
     statements: ['ALTER TABLE items ADD COLUMN converted_path TEXT'],
     ignore: /duplicate column name/i,
   },
+  {
+    version: 4,
+    description: 'sık filtrelenen kolonlara indeks',
+    statements: [
+      'CREATE INDEX IF NOT EXISTS idx_items_updated_at ON items(updated_at)',
+      'CREATE INDEX IF NOT EXISTS idx_items_download_status ON items(download_status)',
+      'CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(favorite)',
+    ],
+  },
 ];
 
 /** Sürümü `current` olan bir kasadan sonra uygulanacak göçleri sırayla döndürür. */

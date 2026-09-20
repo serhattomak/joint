@@ -2,6 +2,7 @@ import Database from '@tauri-apps/plugin-sql';
 import type { Category, Collection, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
 import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
 import { createRetryCache } from '../retry-cache';
+import { runAtomic } from './atomic';
 import { createBackupWith, runDailyBackupIfDue } from './backup';
 import { MIGRATIONS, runMigrations, type MigrationExecutor } from './migrations';
 
@@ -381,12 +382,41 @@ export async function getAllTagsByItem(): Promise<Record<string, Tag[]>> {
   return map;
 }
 
+/**
+ * Atomik yazma + hata temizliği.
+ *
+ * Tek çağrılık transaction'da blok yarıda kalırsa ilgili bağlantıda AÇIK bir
+ * transaction kalır ve bu tüm veritabanını kilitleyebilir. ÖLÇÜLDÜ: FK ihlali
+ * sonrası sonraki yazmalar "database is locked" ile düştü ve her sorgu ~5,5 sn
+ * sürdü (kilit beklemesi). Ayrı bir `ROLLBACK` çağrısı o bağlantıyı tutturamaz
+ * — havuz onu başka bir bağlantıya gönderir.
+ *
+ * Kesin çözüm havuzu kapatmaktır: SQLite, bağlantı kapanırken açık transaction'ı
+ * geri alır. Bedeli, hatadan sonraki ilk sorgunun bağlantıyı yeniden kurmasıdır
+ * — bir hatanın ardından birkaç milisaniye, kilitli bir kasadan iyidir.
+ */
+async function runAtomicSafe(db: Database, body: string, values: unknown[]): Promise<void> {
+  try {
+    await runAtomic(db, body, values);
+  } catch (error) {
+    await closeDb();
+    throw error;
+  }
+}
+
 export async function setTagsForItem(item_id: string, tag_ids: string[]): Promise<void> {
   const db = await getDb();
-  await db.execute('DELETE FROM item_tags WHERE item_id = $1', [item_id]);
-  for (const tag_id of tag_ids) {
-    await db.execute('INSERT INTO item_tags (item_id, tag_id) VALUES ($1, $2)', [item_id, tag_id]);
+  const values: unknown[] = [item_id];
+  const statements = ['DELETE FROM item_tags WHERE item_id = $1;'];
+  if (tag_ids.length > 0) {
+    /* Etiket başına ayrı INSERT yerine tek çok-satırlı INSERT: N+1 çağrı yerine 1. */
+    const tuples = tag_ids.map((tag_id) => {
+      values.push(tag_id);
+      return `($1, $${values.length})`;
+    });
+    statements.push(`INSERT INTO item_tags (item_id, tag_id) VALUES ${tuples.join(', ')};`);
   }
+  await runAtomicSafe(db, statements.join(' '), values);
 }
 
 // --- categories (mirror of tags: broad topics, many-to-many) ---
@@ -452,10 +482,16 @@ export async function getAllCategoriesByItem(): Promise<Record<string, Category[
 
 export async function setCategoriesForItem(item_id: string, category_ids: string[]): Promise<void> {
   const db = await getDb();
-  await db.execute('DELETE FROM item_categories WHERE item_id = $1', [item_id]);
-  for (const category_id of category_ids) {
-    await db.execute('INSERT INTO item_categories (item_id, category_id) VALUES ($1, $2)', [item_id, category_id]);
+  const values: unknown[] = [item_id];
+  const statements = ['DELETE FROM item_categories WHERE item_id = $1;'];
+  if (category_ids.length > 0) {
+    const tuples = category_ids.map((category_id) => {
+      values.push(category_id);
+      return `($1, $${values.length})`;
+    });
+    statements.push(`INSERT INTO item_categories (item_id, category_id) VALUES ${tuples.join(', ')};`);
   }
+  await runAtomicSafe(db, statements.join(' '), values);
 }
 
 // --- backup (JSON export/import, merge by id) ---
@@ -479,24 +515,57 @@ export async function exportVault(): Promise<VaultBackup> {
 
 const COL_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** Yedek tablolarındaki toplam satır: içe aktarmada "kaç eklendi" için. */
+const countBackupRows = async (db: Database): Promise<number> => {
+  let total = 0;
+  for (const table of BACKUP_TABLES) {
+    const rows = await db.select<{ n: number }[]>(`SELECT COUNT(*) AS n FROM ${table}`);
+    total += rows[0]?.n ?? 0;
+  }
+  return total;
+};
+
+/* SQLite'ın bağlı değişken sınırına takılmamak için içe aktarma parçalanır.
+   Parçalar kendi içinde atomiktir ve `INSERT OR IGNORE` sayesinde yarıda kalan
+   bir içe aktarma güvenle tekrar denenebilir. */
+const IMPORT_CHUNK_VALUES = 400;
+
 export async function importVault(data: VaultBackup): Promise<{ added: number }> {
   if (!data || data.version !== 1 || typeof data.tables !== 'object') {
     throw new Error('Geçersiz yedek dosyası.');
   }
   const db = await getDb();
-  let added = 0;
-  for (const t of BACKUP_TABLES) {
-    const rows = data.tables[t];
+  const before = await countBackupRows(db);
+
+  let statements: string[] = [];
+  let values: unknown[] = [];
+
+  const flush = async (): Promise<void> => {
+    if (statements.length === 0) return;
+    await runAtomicSafe(db, statements.join(' '), values);
+    statements = [];
+    values = [];
+  };
+
+  for (const table of BACKUP_TABLES) {
+    const rows = data.tables[table];
     if (!Array.isArray(rows)) continue;
     for (const row of rows) {
       const cols = Object.keys(row).filter((c) => COL_RE.test(c));
       if (cols.length === 0) continue;
-      const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
-      const res = await db.execute(`INSERT OR IGNORE INTO ${t} (${cols.join(', ')}) VALUES (${placeholders})`, cols.map((c) => row[c]));
-      added += res.rowsAffected;
+      if (values.length + cols.length > IMPORT_CHUNK_VALUES) await flush();
+      const placeholders = cols
+        .map((col) => {
+          values.push(row[col]);
+          return `$${values.length}`;
+        })
+        .join(', ');
+      statements.push(`INSERT OR IGNORE INTO ${table} (${cols.join(', ')}) VALUES (${placeholders});`);
     }
   }
-  return { added };
+  await flush();
+
+  return { added: (await countBackupRows(db)) - before };
 }
 
 // --- item_chunks & hybrid semantic search ---

@@ -20,7 +20,7 @@ import { join, resolve } from 'node:path';
 import { OUT_DIR, endProbe, ensureOutDir, findAppPage, waitForCdp } from './lib/browser.mjs';
 
 const CDP = process.env.JV_CDP ?? 'http://127.0.0.1:9222';
-const EXPECTED_VERSION = 3;
+const EXPECTED_VERSION = Number.parseInt(process.env.JV_EXPECTED_VERSION ?? '3', 10);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

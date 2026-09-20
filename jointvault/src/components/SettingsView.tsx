@@ -27,8 +27,8 @@ import { DiagnosticsPanel } from '@/components/DiagnosticsPanel';
 import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/components/ClipboardWatcher';
 import {
   exportVault,
-  getCategoriesForItem,
-  getTagsForItem,
+  getAllCategoriesByItem,
+  getAllTagsByItem,
   importVault,
   listItems,
 } from '@/lib/db/client';
@@ -374,16 +374,12 @@ export function SettingsView(props: SettingsViewProps) {
     setOrganizeProgress(null);
     try {
       const allItems = await listItems();
-      const targetItems = [];
-      for (const it of allItems) {
-        const [cats, tags] = await Promise.all([
-          getCategoriesForItem(it.id),
-          getTagsForItem(it.id),
-        ]);
-        if (cats.length === 0 || tags.length === 0) {
-          targetItems.push(it);
-        }
-      }
+      /* N+1 YOK: öğe başına 2 sorgu yerine toplam 2 sorgu. Ölçek farkı burada
+         büyük — 2000 fişlik kasada 4000 çağrı yerine 2. */
+      const [tagsByItem, catsByItem] = await Promise.all([getAllTagsByItem(), getAllCategoriesByItem()]);
+      const targetItems = allItems.filter(
+        (item) => (catsByItem[item.id]?.length ?? 0) === 0 || (tagsByItem[item.id]?.length ?? 0) === 0,
+      );
 
       if (targetItems.length === 0) {
         setOrganizeResult('Kategorisiz veya etiketsiz içerik bulunamadı (tümü düzenli).');
