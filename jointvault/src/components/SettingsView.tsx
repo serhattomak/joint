@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { writeClipboardText } from '@/lib/clipboard';
+import { useOpenTarget } from '@/lib/open-target';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import {
   Activity,
@@ -84,6 +85,7 @@ const IDLE_OPTIONS: SelectOption[] = [
 
 export function SettingsView(props: SettingsViewProps) {
   const { pageSize, pageSizes, onPageSizeChange, onReplayTour, onClose, initialTab = 'ai' } = props;
+  const { reveal } = useOpenTarget();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [closeMode, setCloseMode] = useState('tray');
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
@@ -1045,6 +1047,10 @@ export function SettingsView(props: SettingsViewProps) {
                     </Button>
                     <Button size="sm" onClick={() => void saveDir()} disabled={dirBusy}>
                       {dirBusy ? 'Kaydediliyor…' : 'Kaydet'}
+                    </Button>
+                    {/* Yolu açmak: klasör yoksa/silinmişse artık sessiz kalmaz, bildirim çıkar. */}
+                    <Button variant="outline" size="sm" onClick={() => reveal(dir)} disabled={!dir}>
+                      Aç
                     </Button>
                   </div>
                   {dirError && <p className="text-sm text-destructive">{dirError}</p>}

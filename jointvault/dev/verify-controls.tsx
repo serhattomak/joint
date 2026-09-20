@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, type SelectOption } from '@/components/ui/select';
+import { NoticeProvider } from '@/components/ui/notice';
 import { SettingsView } from '@/components/SettingsView';
 import { TagPicker } from '@/components/TagPicker';
 
@@ -176,4 +177,8 @@ function SurfacesApp() {
 
 const surfaceMode = window.location.hash === '#surfaces';
 
-createRoot(document.getElementById('root')!).render(surfaceMode ? <SurfacesApp /> : <App />);
+/* Bildirim sağlayıcısı şart: SettingsView artık `useNotice` kullanıyor
+   (dosya açma hataları görünür olsun diye) ve sağlayıcısız çağrı hata verir. */
+createRoot(document.getElementById('root')!).render(
+  <NoticeProvider>{surfaceMode ? <SurfacesApp /> : <App />}</NoticeProvider>,
+);

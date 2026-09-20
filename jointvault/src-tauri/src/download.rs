@@ -43,18 +43,6 @@ fn parse_progress(line: &str) -> Option<(f64, Option<String>, Option<String>)> {
     Some((percent, speed, eta))
 }
 
-// ponytail: subtask 05 will extend this with a persisted settings override;
-// until then the default stays {Downloads}/JointVault.
-fn download_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let dir = app
-        .path()
-        .download_dir()
-        .map_err(|e| e.to_string())?
-        .join("JointVault");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
 // ponytail: win-first triple; başka platformda sidecar adı değişir.
 const FFMPEG_BIN: &str = "ffmpeg-x86_64-pc-windows-msvc.exe";
 const FFPROBE_BIN: &str = "ffprobe-x86_64-pc-windows-msvc.exe";
@@ -148,7 +136,10 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
         },
         _ => return Err("kind must be \"video\" or \"audio\"".to_string()),
     };
-    let dir = download_dir(&app)?;
+    /* Klasörün TEK kaynağı Ayarlar'dır (download_dir.txt). Buradaki eski yerel
+       kopya {Downloads}/JointVault'a sabitlenmişti ve kullanıcının seçimini yok
+       sayıyordu — yani ayar ekranda görünüyor ama indirmeyi etkilemiyordu. */
+    let dir = std::path::PathBuf::from(crate::settings::get_download_dir(app.clone())?);
     let subfolder = payload
         .get("subfolder")
         .or_else(|| payload.get("platform"))

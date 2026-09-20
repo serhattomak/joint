@@ -22,7 +22,7 @@ import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { exitWithoutClosingApp } from './lib/browser.mjs';
+import { endProbe } from './lib/browser.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(HERE, '../../.impeccable/review');
@@ -149,4 +149,4 @@ writeFileSync(resolve(OUT, 'live-manifest.json'), JSON.stringify(manifest, null,
 console.log(`\nprovenance: live-manifest.json (${total} gerçek fiş)`);
 console.log('kanıt boşluğu kapandı.');
 /* `browser.close()` YOK: bağlanılan tarayıcıda uygulama penceresini kapatır. */
-exitWithoutClosingApp(0);
+endProbe(0);

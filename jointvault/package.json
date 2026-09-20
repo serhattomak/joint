@@ -14,6 +14,7 @@
     "evidence:harness": "node dev/evidence-harness.mjs",
     "evidence:live": "node dev/recapture-live.mjs",
     "verify:permissions": "node dev/verify-permissions.mjs",
+    "verify:download-dir": "node dev/verify-download-dir.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
