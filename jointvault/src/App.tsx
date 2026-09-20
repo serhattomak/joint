@@ -35,6 +35,7 @@ import { Button } from '@/components/ui/button';
 import { NoticeProvider } from '@/components/ui/notice';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { listCategories, listCollections, listItems, listTags, resetDb, runDailyBackup, type ItemSort } from '@/lib/db/client';
+import { getAiStatus, isAiEnabled } from '@/lib/ai';
 import { classifyDbError, type DbInitError } from '@/lib/db/db-errors';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { startDownload, type DownloadQuality } from '@/lib/downloads';
@@ -71,6 +72,10 @@ function App() {
   const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates' | null>(null);
   const [statsOnly, setStatsOnly] = useState(false);
   const [aiOnly, setAiOnly] = useState(false);
+  // AI açık/kapalı TEK karar noktasından okunur; `null` = henüz bilinmiyor.
+  // Bilinmeyen durumda yüzeyler yanıltıcı "kapalı" göstermez (fail-closed
+  // kararı yalnızca `isAiEnabled` verir, UI onu aynen yansıtır).
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [syncOnly, setSyncOnly] = useState(false);
   const [settingsOnly, setSettingsOnly] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai');
@@ -175,6 +180,23 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // AI etkinliğini tazele: açılışta ve Ayarlar'dan çıkışta (kullanıcı orada
+  // açıp kapatmış olabilir). Ayarlar AÇIKKEN arka planda sorgu yapmayız —
+  // Ayarlar kendi durumunu okur; çıkışta burada tazelenir. Yalnızca durum
+  // OKUNUR, hiçbir süreç başlatılmaz.
+  useEffect(() => {
+    if (settingsOnly) return;
+    let live = true;
+    void getAiStatus()
+      .then((s) => {
+        if (live) setAiEnabled(isAiEnabled(s));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [settingsOnly]);
 
   const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly && !downloadedOnly && !syncOnly;
 
@@ -426,6 +448,8 @@ function App() {
               semantic={semantic}
               onSemanticToggle={() => setSemantic((s) => !s)}
               onOpenSync={openSync}
+              aiEnabled={aiEnabled ?? undefined}
+              onOpenAiSettings={() => openSettings('ai')}
             />
 
             <main className="flex min-h-0 flex-1">
@@ -469,6 +493,8 @@ function App() {
                         });
                     }}
                     onPlayMedia={handlePlayMedia}
+                    aiEnabled={aiEnabled ?? undefined}
+                    onOpenAiSettings={() => openSettings('ai')}
                   />
                 </div>
               ) : downloadedOnly ? (

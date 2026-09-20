@@ -14,6 +14,7 @@ import {
   applyCategorization,
   askVault,
   getAiStatus,
+  isAiEnabled,
   useAiWarmupStatus,
   type AiStatus,
 } from '@/lib/ai';
@@ -108,9 +109,18 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Etkinlik TEK karar noktasından okunur (lib/ai.ts → isAiEnabled); bilinmeyen
+  // durumda fail-closed "kapalı" sayılır. `status` henüz gelmediyken kapalı demek
+  // yanlış olurdu, bu yüzden "durum bilinir mi" ayrıca izlenir.
+  const statusKnown = status !== null;
+  const aiEnabled = isAiEnabled(status);
+  // `ready` artık etkinliği de kapsar: AI kapalıyken hiçbir IPC (warmup/embed/chat)
+  // denenmez; kullanıcı sahte bir hata yerine dürüst durumu görür.
+  const ready = aiEnabled && status?.engine_available === true && status?.llm_ready === true;
+
   const sendQuery = async (queryText: string) => {
     const q = queryText.trim();
-    if (!q || busy) return;
+    if (!q || busy || !aiEnabled) return;
 
     const userMsgId = crypto.randomUUID();
     const assistantMsgId = crypto.randomUUID();
@@ -168,7 +178,18 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
     setMessages([]);
   };
 
-  const ready = status?.engine_available && status?.llm_ready;
+  // Başlık alt metni SABİT donanım adı içermez: GPU gerçek tespitten gelir
+  // (tespit yoksa dürüstçe "bilinmiyor"), modeller ise YALNIZCA diskte olanlardır.
+  const gpuLabel = status?.gpu?.name?.trim() || 'bilinmiyor';
+  const modelParts = [
+    ...(status?.llm_ready ? ['Qwen 2.5 14B'] : []),
+    ...(status?.embed_ready ? ['BGE-M3'] : []),
+  ];
+  const headerDetail = !statusKnown
+    ? 'AI durumu kontrol ediliyor…'
+    : !aiEnabled
+      ? "AI kapalı — Ayarlar'dan aç"
+      : [gpuLabel, ...(modelParts.length > 0 ? modelParts : ['model yok'])].join(' · ');
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -180,22 +201,26 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
           </div>
           <div>
             <h1 className="text-sm font-semibold tracking-tight">Kasa Asistanı</h1>
-            <p className="text-2xs text-muted-foreground">
-              RTX 5070 Ti · Qwen 2.5 14B · BGE-M3 Hibrit RAG
-            </p>
+            <p className="text-2xs text-muted-foreground">{headerDetail}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {!ready ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenSettings}
-              className="text-amber-600 dark:text-amber-400"
-            >
-              Modeller Eksik — Ayarlar'dan Kur
-            </Button>
+          {!statusKnown ? null : !aiEnabled ? (
+            <Badge variant="outline" className="border-border bg-muted/30 text-muted-foreground">
+              ● AI Kapalı
+            </Badge>
+          ) : !ready ? (
+            onOpenSettings ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenSettings}
+                className="text-amber-600 dark:text-amber-400"
+              >
+                Modeller Eksik — Ayarlar'dan Kur
+              </Button>
+            ) : null
           ) : warmup.status === 'loading' ? (
             <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
               <span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-amber-500" />
@@ -204,7 +229,9 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
           ) : status?.chat_server_running || warmup.status === 'ready' ? (
             <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <span className="mr-1 inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
-              VRAM Aktif (Anında Yanıt)
+              {/* Offload CPU'ya düştüyse "VRAM Aktif" demek yalan olurdu: etiket
+                  gerçek karara bağlı. (WMI'da VRAM okunamaz → CPU.) */}
+              {status?.offload?.mode === 'cpu' ? 'CPU (Anında Yanıt)' : 'VRAM Aktif (Anında Yanıt)'}
             </Badge>
           ) : (
             <Badge variant="outline" className="border-border bg-muted/30 text-muted-foreground">
@@ -228,7 +255,30 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
 
       {/* Mesaj Akışı / Sohbet Alanı */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {messages.length === 0 ? (
+        {!statusKnown ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-muted-foreground">AI durumu kontrol ediliyor…</p>
+          </div>
+        ) : !aiEnabled ? (
+          // AI kapalı NORMAL bir yapılandırmadır: hata tonu değil, nötr durum +
+          // gerçekten çalışan bir yönlendirme düğmesi (ölü düğme yok).
+          <div className="mx-auto flex max-w-md flex-col items-center justify-center pt-16 text-center">
+            <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <Bot className="size-6" />
+            </div>
+            <h2 className="text-base font-medium">AI kapalı</h2>
+            <p className="mt-1.5 max-w-sm text-xs text-muted-foreground">
+              Kasa Asistanı ve semantik arama devre dışı. Yerel AI yalnızca sen açtığında çalışır;
+              bu bir hata değil, beklenen bir ayar durumudur.
+            </p>
+            {onOpenSettings && (
+              <Button variant="outline" size="sm" className="mt-5 gap-1.5" onClick={onOpenSettings}>
+                <Sparkles className="size-3.5" />
+                Ayarlar'dan Aç
+              </Button>
+            )}
+          </div>
+        ) : messages.length === 0 ? (
           <div className="mx-auto flex max-w-xl flex-col items-center justify-center pt-12 text-center">
             <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-secondary text-primary">
               <Bot className="size-6" />
@@ -433,8 +483,10 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
         )}
       </div>
 
-      {/* Giriş Çubuğu & Hızlı Prompt Çipleri */}
-      <footer className="shrink-0 border-t border-border bg-card/20 p-3 md:p-4">
+      {/* Giriş çubuğu YALNIZCA AI etkinken çizilir: kapalıyken yazılabilir bir
+          kutu gösterip gönderimde hataya düşmek yanıltıcı olurdu. */}
+      {statusKnown && aiEnabled && (
+        <footer className="shrink-0 border-t border-border bg-card/20 p-3 md:p-4">
         <div className="mx-auto mb-2 flex max-w-2xl items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
           <span className="flex shrink-0 items-center gap-1 text-3xs font-medium text-muted-foreground">
             <Sparkles className="size-3 text-primary" /> Hızlı Analiz:
@@ -481,7 +533,8 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
             <CornerDownLeft className="size-4" />
           </Button>
         </form>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

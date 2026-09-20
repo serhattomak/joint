@@ -1,4 +1,5 @@
 use crate::component_download::install_component;
+use crate::hardware::{self, GpuInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -16,12 +17,168 @@ const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 600; // 10 dakika
 const CHAT_PORT: u16 = 28080;
 const EMBED_PORT: u16 = 28081;
 
+/// İstek-anı kapısı metni: AI kapalıyken sunucu BAŞLATILMAZ, çağırana bu döner.
+///
+/// Sabit TEK kaynak olması, tüm komutların (sohbet, gömme, etiket, özet,
+/// kategorizasyon) aynı dürüst yönlendirmeyi vermesini sağlar. Kopyalansaydı
+/// zamanla ayrışır ve kullanıcı hangi komutun ne dediğini bilemezdi.
+const AI_DISABLED_MESSAGE: &str =
+    "AI kapalı — Ayarlar → AI bölümünden açabilirsiniz.";
+
 // NOT (7c-3): llama.cpp motoru, CUDA çalışma zamanı, Qwen ve BGE pinleri artık
 // kayıtta (`components.rs`) TEK yerde durur; burada URL/sha256/dosya kopyası
 // YOKTUR. İndirmeler `component_download::install_component` üzerinden yürür.
 
+// --- Offload kararı (saf) ----------------------------------------------------
+//
+// SORUN: Spawn bugüne kadar `-ngl 99` SABİTİNİ kullanıyordu ("tüm katmanlar"). 6 GB'lık bir kartta 8,5 GB'lik model GPU'ya itilir ve çalışma
+// anında VRAM taşmasıyla çöker; GPU'suz makinede ise bu argüman anlamsızdır.
+//
+// ÇÖZÜM: Karar, tespit edilen GERÇEK VRAM ile model dosya boyutunun
+// karşılaştırmasına dayanır ve saf bir fonksiyonda verilir (G/Ç çağıranda kalır).
+// Tespit yoksa ya da VRAM güvenilir değilse GÜVENLİ seçim CPU'dur (fail-closed).
+
+/// 1 MiB = 1024×1024 bayt. `hardware.rs` VRAM'i MiB, `components.rs` model
+/// boyutlarını MiB cinsinden tutar; karşılaştırma aynı birimde yapılmalıdır.
+const BYTES_PER_MIB: u64 = 1024 * 1024;
+
+/// `-ngl` için "tüm katmanlar" işareti.
+///
+/// llama.cpp `-ngl`'yi üst sınır olarak yorumlar; gerçek katman sayısından büyük
+/// bir değer tüm katmanların GPU'ya yüklenmesi demektir. Sihirli sayıyı TEK
+/// yerde adlandırırız: karar fonksiyonunun dışında çıplak `99` kalmaz.
+const ALL_GPU_LAYERS: u32 = 99;
+
+/// VRAM'de model DIŞINDA gereken pay (MiB).
+///
+/// NEDEN 2048 MiB? Qwen2.5 14B Q4 (sohbet) için iki kalem:
+///   - KV önbelleği: 48 katman × 8 KV başlığı × 128 baş boyutu × 2 (K+V) ×
+///     2 bayt (f16) ≈ 0,1875 MiB/token; `-c 8192` → ~1536 MiB.
+///   - llama.cpp CUDA compute/scratch arabellekleri + CUDA bağlamı/sürücü
+///     rezervi → ~512 MiB.
+/// Toplam ≈ 2048 MiB. Bu pay olmadan "model sığar" görünen bir kurulum, bağlam
+/// büyüyünce VRAM taşmasıyla çökerdi. Pay KASITLI olarak üst uçtadır: yanlış
+/// "sığar" kararı (çökme) yanlış "sığmaz" kararından (daha yavaş ama çalışır)
+/// çok daha pahalıdır.
+pub const VRAM_RESERVE_MB: u64 = 2048;
+
+/// Offload modu: tel/arayüzde küçük harf (`"gpu"` / `"cpu"`).
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum OffloadMode {
+    /// Tüm katmanlar GPU'ya yüklenir.
+    Gpu,
+    /// Model CPU'da çalışır (VRAM yok/yetmez veya boyut bilinmiyor).
+    Cpu,
+}
+
+/// Offload kararı: kaç katman GPU'ya, hangi modda ve NEDEN.
+///
+/// Sözleşme adı `OffloadDecision`'dır (subtask 04 backend-contract); kodda kısa
+/// ad `Offload` kullanılır. `#[doc(alias)]` ikisini arama/dokümanda birleştirir.
+#[doc(alias = "OffloadDecision")]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+pub struct Offload {
+    /// GPU'ya yüklenecek katman sayısı. `ALL_GPU_LAYERS` = hepsi.
+    pub n_gpu_layers: u32,
+    pub mode: OffloadMode,
+    /// Kullanıcıya gösterilebilir Türkçe gerekçe; kararı doğuran sayıları içerir.
+    pub reason: String,
+    /// Kararda kullanılan model boyutu (MiB). `None` = okunamadı.
+    pub model_mb: Option<u64>,
+}
+
+/// SAF karar: VRAM ile model boyutunu karşılaştırıp offload'u seçer.
+///
+/// Girdiler yalnızca tespit SONUÇLARIDIR; bu fonksiyon süreç başlatmaz, dosya
+/// okumaz (G/Ç çağıranda). Bu yüzden tüm dallar birim testlenebilir.
+///
+/// Sıra (sabit; yeniden tartışılmaz):
+/// 1. Güvenilir VRAM yoksa (`gpu` yok ya da `vram_mb` `None`) → CPU.
+/// 2. Model boyutu bilinmiyorsa → CPU (uydurma YOK, temkinli davran).
+/// 3. `vram_mb >= model_mb + reserve_mb` → tüm katmanlar; aksi hâlde → CPU.
+pub fn decide_offload(gpu: Option<&GpuInfo>, model_bytes: Option<u64>, reserve_mb: u64) -> Offload {
+    // 1) VRAM yok: tespit başarısız (hiç GPU yok) ya da yalnızca ad var (WMI).
+    let vram_mb = match gpu.and_then(|g| g.vram_mb) {
+        Some(vram) => vram,
+        None => {
+            // WMI yalnızca AD verir; VRAM'in neden yokluğunu kullanıcıya ayırt
+            // ettiririz ki "GPU'm var, neden CPU?" kafa karışıklığı oluşmasın.
+            let reason = match gpu {
+                Some(info) if info.name.is_some() => format!(
+                    "GPU adı tespit edildi ({}) ama güvenilir VRAM okunamadı; \
+                     CPU'da çalıştırılır.",
+                    info.name.as_deref().unwrap_or("bilinmiyor")
+                ),
+                _ => "Donanım tespit edilemedi (güvenilir GPU VRAM bilgisi yok); \
+                      CPU'da çalıştırılır."
+                    .to_string(),
+            };
+            return Offload {
+                n_gpu_layers: 0,
+                mode: OffloadMode::Cpu,
+                reason,
+                model_mb: model_bytes.map(|b| b / BYTES_PER_MIB),
+            };
+        }
+    };
+
+    // 2) VRAM var ama model boyutu okunamadı: sayı uydurmayız → CPU.
+    let model_mb = match model_bytes.map(|b| b / BYTES_PER_MIB) {
+        Some(mb) => mb,
+        None => {
+            return Offload {
+                n_gpu_layers: 0,
+                mode: OffloadMode::Cpu,
+                reason: format!(
+                    "Model dosya boyutu okunamadı; temkinli seçim: CPU'da çalıştırılır \
+                     (VRAM {vram_mb} MB)."
+                ),
+                model_mb: None,
+            };
+        }
+    };
+
+    // 3) Sığdırma kararı: model + pay VRAM'e sığıyorsa hepsi GPU'ya.
+    let needed_mb = model_mb.saturating_add(reserve_mb);
+    if vram_mb >= needed_mb {
+        Offload {
+            n_gpu_layers: ALL_GPU_LAYERS,
+            mode: OffloadMode::Gpu,
+            reason: format!(
+                "VRAM yeterli: {vram_mb} MB ≥ model {model_mb} MB + {reserve_mb} MB pay; \
+                 tüm katmanlar GPU'ya yüklenir."
+            ),
+            model_mb: Some(model_mb),
+        }
+    } else {
+        Offload {
+            n_gpu_layers: 0,
+            mode: OffloadMode::Cpu,
+            reason: format!(
+                "VRAM yetersiz: {vram_mb} MB < model {model_mb} MB + {reserve_mb} MB pay; \
+                 CPU'da çalıştırılır."
+            ),
+            model_mb: Some(model_mb),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AiConfig {
+    /// ANA anahtar: yerel AI açık mı?
+    ///
+    /// `Some` kullanıcının AÇIK seçimidir ve göç kuralı tarafından ASLA ezilmez
+    /// (aksi hâlde "kapat" seçimi, modeller diskte kaldığı için bir sonraki
+    /// açılışta sessizce "açık"a dönerdi). `None` yalnızca bu alanı hiç
+    /// yazmamış ESKİ yapılandırmayı işaret eder ve `resolve_ai_enabled` ile
+    /// göç ettirilir.
+    ///
+    /// `#[serde(default)]` ZORUNLU: eski kayıtlarda bu alan yoktur; eksik alan
+    /// `None`'a düşmezse tüm config dosyası ayrıştırılamaz ve kullanıcının
+    /// yolları/tercihleri sessizce varsayılana sıfırlanırdı.
+    #[serde(default)]
+    pub enabled: Option<bool>,
     pub llm_path: Option<String>,
     pub embed_path: Option<String>,
     pub engine_path: Option<String>,
@@ -35,6 +192,9 @@ pub struct AiConfig {
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
+            // Temiz kurulum AÇIKÇA kapalı başlar: model indirilmeden AI etkin
+            // sayılmaz ve açılışta hiçbir süreç başlamaz (fail-closed).
+            enabled: Some(false),
             llm_path: None,
             embed_path: None,
             engine_path: None,
@@ -51,6 +211,10 @@ struct ProcessSlot {
     child: Option<std::process::Child>,
     last_active: Instant,
     port: u16,
+    /// Bu slot için UYGULANAN offload kararı (spawn anında hesaplanır). `None` =
+    /// henüz başlatılmadı. Karar+gerekçe `ai_status`'a buradan yansır; böylece
+    /// arayüz "neden CPU?" sorusunu gerçek kararla yanıtlar.
+    offload: Option<Offload>,
 }
 
 struct AiProcessManager {
@@ -117,6 +281,55 @@ pub fn save_config(app: &AppHandle, cfg: &AiConfig) -> Result<(), String> {
     let data = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     std::fs::write(p, data).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Yerel AI'nın açık mı kapalı mı olduğunu SAF olarak çözer.
+///
+/// Yan etkisi yoktur; `AppHandle`/dosya/disk erişimi YOKTUR — bu yüzden
+/// doğrudan birim testlenebilir ve karar TEK bir yerde durur.
+///
+/// Karar sırası (sabit; yeniden tartışılmaz):
+///
+/// 1. `stored` (kullanıcının açık seçimi) `Some` ise O kazanır. Kullanıcı bir
+///    kez seçim yaptıysa bu kalıcıdır: aksi hâlde "AI'yı kapat" seçimi,
+///    modeller diskte kaldığı için bir sonraki açılışta sessizce "açık"a
+///    dönerdi.
+/// 2. `stored` `None` ise (bu alanı hiç yazmamış eski yapılandırma) göç kuralı
+///    uygulanır: AI yalnızca motor VE sohbet modeli (LLM) varsa etkin sayılır.
+///    BGE/gömme modeli OPSİYONELDİR — onsuz yalnızca anlamsal arama zayıflar,
+///    sohbet çalışır. Bu yüzden temiz kurulum (indirilmiş model yok) KAPALI
+///    gelir ve çalışan bir kurulum sessizce bozulmaz.
+///
+/// `auto_warmup` karara KASITLI olarak KATILMAZ: o, açılışta ön yüklemeyi
+/// (ısıtmayı) kontrol eden AYRI bir tercihtir. Kullanıcı ısıtmayı kapatmış
+/// olabilir ama asistanı kapatmamıştır; ikisini karıştırmak `auto_warmup:
+/// false` olan eski bir kurulumu yanlışlıkla "kapalı" yapardı. Parametre
+/// yalnızca sözleşmeyi ve testleri görünür kılmak için imzada durur.
+pub fn resolve_ai_enabled(
+    stored: Option<bool>,
+    engine_present: bool,
+    llm_present: bool,
+    auto_warmup: Option<bool>,
+) -> bool {
+    // Isıtma tercihi bu kararın girdisi DEĞİLDİR (yukarıdaki gerekçe).
+    let _ = auto_warmup;
+
+    match stored {
+        Some(explicit) => explicit,
+        None => engine_present && llm_present,
+    }
+}
+
+/// Çalışma anında "AI açık mı?" kararı — TEK yol.
+///
+/// `resolve_ai_enabled` saf kuraldır; göç kuralı diske (motor + LLM varlığına)
+/// baktığı için varlık kontrolleri burada G/Ç sınırında yapılır ve saf karara
+/// beslenir. Tüm kapılar (açılış ısıtması, istek-anı) bu fonksiyonu çağırır;
+/// "AI açık mı" sorusu başka hiçbir yerde TEKRAR yazılmaz.
+fn ai_enabled_now(app: &AppHandle, cfg: &AiConfig) -> bool {
+    let engine = resolve_engine_path(app, cfg).is_some();
+    let llm = resolve_llm_path(app, cfg).is_some();
+    resolve_ai_enabled(cfg.enabled, engine, llm, cfg.auto_warmup)
 }
 
 fn resolve_engine_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
@@ -207,11 +420,13 @@ fn init_manager_if_needed(app: &AppHandle) {
                 child: None,
                 last_active: Instant::now(),
                 port: CHAT_PORT,
+                offload: None,
             },
             embed: ProcessSlot {
                 child: None,
                 last_active: Instant::now(),
                 port: EMBED_PORT,
+                offload: None,
             },
             config: cfg,
         });
@@ -271,22 +486,49 @@ pub fn warmup_ai_on_startup(app: AppHandle) {
     });
 }
 
+/// Isıtma kapısı (SAF): yalnızca AI ETKİN ve `auto_warmup` açıkken `true`.
+///
+/// Sıra kasıtlıdır: `ai_enabled` solda olduğundan kısa devre ÖNCE etkinliği
+/// denetler ve `auto_warmup` onun ALTINDA kalır. Ters sıra (önce ısıtma), AI
+/// kapalı ama ısınma tercihi açık bırakılmış eski bir kurulumda süreç
+/// doğururdu; oysa kapalı bir özellik arka planda iş yapmamalıdır.
+///
+/// `AppHandle`/G/Ç yoktur → birim testlenebilir.
+fn should_warmup(ai_enabled: bool, auto_warmup: bool) -> bool {
+    ai_enabled && auto_warmup
+}
+
 pub async fn warmup_ai_async(app: AppHandle) -> Result<(), String> {
     init_manager_if_needed(&app);
-    let (auto_warmup, has_engine, has_llm, has_embed) = {
+    let (ai_enabled, auto_warmup, has_engine, has_llm, has_embed) = {
         let lock = MANAGER.lock().unwrap();
         if let Some(ref mgr) = *lock {
-            let auto = mgr.config.auto_warmup.unwrap_or(true);
             let eng = resolve_engine_path(&app, &mgr.config).is_some();
             let llm = resolve_llm_path(&app, &mgr.config).is_some();
             let emb = resolve_embed_path(&app, &mgr.config).is_some();
-            (auto, eng, llm, emb)
+            (
+                // Tek karar noktası: aynı `resolve_ai_enabled` + varlık kontrolleri.
+                resolve_ai_enabled(mgr.config.enabled, eng, llm, mgr.config.auto_warmup),
+                mgr.config.auto_warmup.unwrap_or(true),
+                eng,
+                llm,
+                emb,
+            )
         } else {
-            (false, false, false, false)
+            (false, false, false, false, false)
         }
     };
 
-    if !auto_warmup || !has_engine {
+    // AÇILIŞ KAPISI: AI kapalıyken HİÇBİR süreç başlatılmaz — ne model
+    // yüklemesi ne de "yükleniyor" durumu yayılır (yanıltıcı olay bile yok).
+    // `auto_warmup` denetimi bu kapının ALTINDADIR (`should_warmup` soldan
+    // kısa devre yapar). Fail-closed: kararsızlıkta çalıştırma, durdur.
+    if !should_warmup(ai_enabled, auto_warmup) {
+        return Ok(());
+    }
+
+    // Motor yoksa yapılacak iş yok; bu bir HATA değildir (henüz kurulmamış olabilir).
+    if !has_engine {
         return Ok(());
     }
 
@@ -302,9 +544,14 @@ pub async fn warmup_ai_async(app: AppHandle) -> Result<(), String> {
         let _ = ensure_server_running(&app, "chat").await;
     }
 
+    // Donanım metni SABİT değil: gerçek tespitten gelir; yoksa dürüstçe
+    // "bilinmiyor". Sabit bir GPU adı başka makinede yalan olurdu.
+    let gpu_label = hardware::detect()
+        .name
+        .unwrap_or_else(|| "bilinmiyor".to_string());
     let _ = app.emit("ai-warmup-status", serde_json::json!({
         "status": "ready",
-        "message": "Yapay zekâ hazır (RTX 5070 Ti)"
+        "message": format!("Yapay zekâ hazır ({gpu_label})")
     }));
 
     Ok(())
@@ -360,6 +607,14 @@ async fn ensure_server_running(
         let mut lock = MANAGER.lock().unwrap();
         let mgr = lock.as_mut().ok_or("Manager başlatılamadı")?;
 
+        // İSTEK-ANI KAPISI: AI kapalıyken sunucu BAŞLATILMAZ. Kapı, slot
+        // durumuna bakmadan ÖNCE çalışır; böylece kapalı bir özellik gizli bir
+        // sürece hizmet edemez ve yeni süreç doğurmaz. Karar TEK yerden gelir
+        // (`ai_enabled_now`), böylece "açık mı" kuralı kopyalanmaz.
+        if !ai_enabled_now(app, &mgr.config) {
+            return Err(AI_DISABLED_MESSAGE.to_string());
+        }
+
         let slot = if slot_type == "chat" {
             &mut mgr.chat
         } else {
@@ -393,6 +648,14 @@ async fn ensure_server_running(
         (engine, model, chosen_port)
     };
 
+    // Offload KARARI (sabit "99" YOK): tespit edilen VRAM ile BU modelin gerçek
+    // dosya boyutu karşılaştırılır. G/Ç burada (dosya boyutu + tespit), karar saf
+    // `decide_offload`'da verilir. Tespit pahalı olabilir (süreç başlatır) ama
+    // kilit ALTINDA değiliz; kilit yalnızca slot durumu için tutulur.
+    let gpu = hardware::detect();
+    let model_bytes = std::fs::metadata(&model).ok().map(|m| m.len());
+    let offload = decide_offload(Some(&gpu), model_bytes, VRAM_RESERVE_MB);
+
     // Sunucu komutunu oluştur
     let mut cmd = std::process::Command::new(&engine);
     cmd.arg("-m")
@@ -402,7 +665,7 @@ async fn ensure_server_running(
         .arg("--host")
         .arg("127.0.0.1")
         .arg("-ngl")
-        .arg("99") // 5070 Ti: Tüm katmanları GPU'ya offload et
+        .arg(offload.n_gpu_layers.to_string())
         .arg("-c")
         .arg(if slot_type == "chat" { "8192" } else { "4096" });
 
@@ -431,6 +694,8 @@ async fn ensure_server_running(
             };
             slot.child = Some(child);
             slot.last_active = Instant::now();
+            // Uygulanan kararı sakla: `ai_status` bunu gerekçesiyle raporlar.
+            slot.offload = Some(offload.clone());
         }
     }
 
@@ -464,6 +729,9 @@ pub fn cleanup_ai_servers() {
 #[tauri::command]
 pub async fn ai_status(app: AppHandle) -> Result<Value, String> {
     init_manager_if_needed(&app);
+    // Tespit pahalı olabilir (ilk çağrıda süreç başlatır); MANAGER kilidini
+    // tutmadan ÖNCE yap ki diğer AI komutlarını gereksiz yere bekletmesin.
+    let gpu = hardware::detect();
     let mut lock = MANAGER.lock().unwrap();
     let mgr = lock.as_mut().ok_or("Manager başlatılamadı")?;
 
@@ -471,8 +739,33 @@ pub async fn ai_status(app: AppHandle) -> Result<Value, String> {
     let llm = resolve_llm_path(&app, &mgr.config);
     let embed = resolve_embed_path(&app, &mgr.config);
 
+    // Etkinlik TEK yerden çözülür: kayıtlı seçim varsa o, yoksa göç kuralı.
+    // (Süreç kapısı ayrı bir iştir; burada yalnızca durum raporlanır.)
+    let ai_enabled = resolve_ai_enabled(
+        mgr.config.enabled,
+        engine.is_some(),
+        llm.is_some(),
+        mgr.config.auto_warmup,
+    );
+
     let chat_running = mgr.chat.child.as_mut().map(|c| c.try_wait().map(|s| s.is_none()).unwrap_or(false)).unwrap_or(false);
     let embed_running = mgr.embed.child.as_mut().map(|c| c.try_wait().map(|s| s.is_none()).unwrap_or(false)).unwrap_or(false);
+
+    // Offload raporu: çalışan slotun UYGULANAN kararı varsa o, yoksa bir sonraki
+    // başlatma için şimdi hesaplanan karar. İkisi de AYNI saf fonksiyondan gelir,
+    // bu yüzden ayrışamazlar. Birincil model sohbet LLM'idir (en büyük); yoksa
+    // gömme modeli raporlanır.
+    let primary_model = llm.as_ref().or(embed.as_ref());
+    let model_bytes = primary_model
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len());
+    let offload = mgr
+        .chat
+        .offload
+        .clone()
+        .or_else(|| mgr.embed.offload.clone())
+        .unwrap_or_else(|| decide_offload(Some(&gpu), model_bytes, VRAM_RESERVE_MB));
+    let gpu_name = gpu.name.clone();
 
     Ok(serde_json::json!({
         "engine_available": engine.is_some(),
@@ -484,6 +777,23 @@ pub async fn ai_status(app: AppHandle) -> Result<Value, String> {
         "chat_server_running": chat_running,
         "embed_server_running": embed_running,
         "external_api_url": mgr.config.external_api_url,
+        // YALNIZCA EK alan: mevcut anahtarların adı/şekli değişmez.
+        "ai_enabled": ai_enabled,
+        // YALNIZCA EK alanlar: donanım tespiti ve offload kararı/gerekçesi.
+        // Arayüz bu sayede "neden GPU/CPU?" sorusunu dürüstçe yanıtlar.
+        "gpu": {
+            "name": gpu_name,
+            "vram_mb": gpu.vram_mb,
+            "source": gpu.source,
+        },
+        "offload": {
+            "mode": offload.mode,
+            "n_gpu_layers": offload.n_gpu_layers,
+            "reason": offload.reason,
+            "gpu_name": gpu.name,
+            "vram_mb": gpu.vram_mb,
+            "model_mb": offload.model_mb,
+        },
         "auto_warmup": mgr.config.auto_warmup.unwrap_or(true),
         "idle_timeout_secs": mgr.config.idle_timeout_secs.unwrap_or(DEFAULT_IDLE_TIMEOUT_SECS),
         "temperature": mgr.config.temperature.unwrap_or(0.7),
@@ -502,6 +812,10 @@ pub async fn ai_save_config(app: AppHandle, payload: Value) -> Result<(), String
     let mut lock = MANAGER.lock().unwrap();
     let mgr = lock.as_mut().ok_or("Manager başlatılamadı")?;
 
+    // ANA anahtar önce: kullanıcının açık/kapalı seçimi kalıcı yazılır.
+    if let Some(v) = payload.get("enabled").and_then(|v| v.as_bool()) {
+        mgr.config.enabled = Some(v);
+    }
     if let Some(v) = payload.get("llm_path") {
         mgr.config.llm_path = v.as_str().map(|s| s.to_string());
     }
@@ -955,4 +1269,244 @@ pub async fn ai_categorize_and_tag(app: AppHandle, payload: Value) -> Result<Val
     };
 
     Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        decide_offload, resolve_ai_enabled, should_warmup, OffloadMode, AI_DISABLED_MESSAGE,
+        ALL_GPU_LAYERS, BYTES_PER_MIB, VRAM_RESERVE_MB,
+    };
+    use crate::hardware::{GpuInfo, GpuSource};
+
+    // --- kullanıcı seçimi (`stored`) HER ZAMAN kazanır ---
+
+    #[test]
+    fn stored_true_wins_even_when_nothing_is_installed() {
+        // Açık seçim göç tarafından EZİLMEZ; model sonradan silinse bile korunur.
+        assert!(resolve_ai_enabled(Some(true), false, false, None));
+        assert!(resolve_ai_enabled(Some(true), false, false, Some(false)));
+    }
+
+    #[test]
+    fn stored_true_wins_when_models_are_present() {
+        assert!(resolve_ai_enabled(Some(true), true, true, Some(false)));
+    }
+
+    #[test]
+    fn stored_false_stays_off_even_with_everything_present() {
+        // "Kapat" kalıcıdır: modeller diskte kaldığı için sessizce açılmaz.
+        assert!(!resolve_ai_enabled(Some(false), true, true, Some(true)));
+    }
+
+    #[test]
+    fn stored_false_stays_off_when_nothing_is_installed() {
+        assert!(!resolve_ai_enabled(Some(false), false, false, None));
+    }
+
+    // --- göç kuralı: yalnızca `stored == None` iken uygulanır ---
+
+    #[test]
+    fn migration_enables_when_engine_and_llm_are_present() {
+        // BGE/gömme OPSİYONEL: motor + sohbet modeli yeterlidir.
+        assert!(resolve_ai_enabled(None, true, true, None));
+    }
+
+    #[test]
+    fn migration_stays_off_when_only_engine_is_present() {
+        assert!(!resolve_ai_enabled(None, true, false, None));
+    }
+
+    #[test]
+    fn migration_stays_off_when_only_llm_is_present() {
+        assert!(!resolve_ai_enabled(None, false, true, None));
+    }
+
+    #[test]
+    fn migration_stays_off_on_clean_install() {
+        // Temiz kurulum (model yok) → kapalı: güvenli varsayılan (fail-closed).
+        assert!(!resolve_ai_enabled(None, false, false, None));
+    }
+
+    // --- `auto_warmup` karara KATILMAZ: ayrı bir tercihtir ---
+
+    #[test]
+    fn auto_warmup_false_does_not_disable_the_assistant() {
+        // Kullanıcı yalnızca ISISMAYI kapatmıştır; modeller varsa asistan ETKİN kalır.
+        assert!(resolve_ai_enabled(None, true, true, Some(false)));
+    }
+
+    #[test]
+    fn auto_warmup_true_without_models_still_resolves_off() {
+        // Isıtma açık olsa da indirilmiş model yoksa açılışta iş yok → kapalı.
+        assert!(!resolve_ai_enabled(None, false, false, Some(true)));
+    }
+
+    // --- ısıtma kapısı (SAF): etkinlik > auto_warmup ---
+
+    #[test]
+    fn warmup_is_skipped_when_ai_is_disabled_even_if_auto_warmup_is_on() {
+        // Eski yapılandırmada `auto_warmup: true` kalmış olabilir; AI kapalıysa
+        // ısınma YİNE olmaz. Bu, kapıdaki sıranın (etkinlik önce) kanıtıdır.
+        assert!(!should_warmup(false, true));
+    }
+
+    #[test]
+    fn warmup_is_skipped_when_auto_warmup_is_off_even_if_ai_is_enabled() {
+        // Kullanıcı yalnızca ısınmayı kapatmıştır: asistan ETKİN kalır ama
+        // açılışta ön yükleme başlamaz.
+        assert!(!should_warmup(true, false));
+    }
+
+    #[test]
+    fn warmup_runs_only_when_ai_is_enabled_and_auto_warmup_is_on() {
+        assert!(should_warmup(true, true));
+    }
+
+    #[test]
+    fn warmup_is_skipped_when_both_are_off() {
+        assert!(!should_warmup(false, false));
+    }
+
+    // --- reddetme metni sözleşmesi ---
+
+    #[test]
+    fn disabled_message_says_ai_is_off_and_points_to_settings() {
+        // Kapı metni bir sözleşmedir: kullanıcı AI'nın KAPALI olduğunu ve nereden
+        // açacağını (Ayarlar → AI) anlamalıdır. Metin değişirse bu test kırılır.
+        assert!(
+            AI_DISABLED_MESSAGE.contains("AI kapalı"),
+            "metin: {AI_DISABLED_MESSAGE:?}"
+        );
+        assert!(
+            AI_DISABLED_MESSAGE.contains("Ayarlar"),
+            "metin: {AI_DISABLED_MESSAGE:?}"
+        );
+    }
+
+    // --- offload kararı (SAF): VRAM ≥ model+pay → GPU, aksi/tespit yok → CPU ---
+
+    fn gpu_with_vram(vram_mb: u64) -> GpuInfo {
+        GpuInfo {
+            name: Some("Test GPU".to_string()),
+            vram_mb: Some(vram_mb),
+            source: GpuSource::NvidiaSmi,
+        }
+    }
+
+    #[test]
+    fn plenty_of_vram_offloads_all_layers_to_gpu() {
+        // Arrange: 16 GB VRAM, 8,5 GB model — rahat sığar.
+        // Act
+        let decision = decide_offload(
+            Some(&gpu_with_vram(16384)),
+            Some(8572 * BYTES_PER_MIB),
+            VRAM_RESERVE_MB,
+        );
+        // Assert: tüm katmanlar GPU'da; gerekçe iki sayıyı da söyler.
+        assert_eq!(decision.mode, OffloadMode::Gpu);
+        assert_eq!(decision.n_gpu_layers, ALL_GPU_LAYERS);
+        assert_eq!(decision.model_mb, Some(8572));
+        assert!(!decision.reason.is_empty());
+        assert!(decision.reason.contains("16384"), "gerekçe: {}", decision.reason);
+        assert!(decision.reason.contains("8572"), "gerekçe: {}", decision.reason);
+    }
+
+    #[test]
+    fn insufficient_vram_falls_back_to_cpu() {
+        // Arrange: 6 GB VRAM, 8,5 GB model — sığmaz.
+        // Act
+        let decision = decide_offload(
+            Some(&gpu_with_vram(6144)),
+            Some(8572 * BYTES_PER_MIB),
+            VRAM_RESERVE_MB,
+        );
+        // Assert: CPU; gerekçe "VRAM yetersiz" der ve iki sayıyı da verir.
+        assert_eq!(decision.mode, OffloadMode::Cpu);
+        assert_eq!(decision.n_gpu_layers, 0);
+        assert!(decision.reason.contains("VRAM yetersiz"), "gerekçe: {}", decision.reason);
+        assert!(decision.reason.contains("6144"), "gerekçe: {}", decision.reason);
+        assert!(decision.reason.contains("8572"), "gerekçe: {}", decision.reason);
+    }
+
+    #[test]
+    fn unknown_gpu_falls_back_to_cpu() {
+        // Tespit yok: güvenli seçim CPU (fail-closed).
+        let decision = decide_offload(None, Some(8572 * BYTES_PER_MIB), VRAM_RESERVE_MB);
+        assert_eq!(decision.mode, OffloadMode::Cpu);
+        assert_eq!(decision.n_gpu_layers, 0);
+        assert!(!decision.reason.is_empty());
+        assert!(decision.reason.contains("tespit edilemedi"), "gerekçe: {}", decision.reason);
+    }
+
+    #[test]
+    fn wmi_name_without_vram_falls_back_to_cpu() {
+        // WMI yalnızca AD verir; VRAM güvenilir değil → CPU (onaylanmış ödünç).
+        // Gerekçe GPU adını anar ki kullanıcı "kartım var, neden CPU?" demesin.
+        let wmi = GpuInfo {
+            name: Some("AMD Radeon RX 7900 XTX".to_string()),
+            vram_mb: None,
+            source: GpuSource::Wmi,
+        };
+        let decision = decide_offload(Some(&wmi), Some(8572 * BYTES_PER_MIB), VRAM_RESERVE_MB);
+        assert_eq!(decision.mode, OffloadMode::Cpu);
+        assert_eq!(decision.n_gpu_layers, 0);
+        assert!(decision.reason.contains("VRAM"), "gerekçe: {}", decision.reason);
+        assert!(
+            decision.reason.contains("AMD Radeon RX 7900 XTX"),
+            "gerekçe: {}",
+            decision.reason
+        );
+    }
+
+    #[test]
+    fn known_vram_but_unknown_model_size_falls_back_to_cpu() {
+        // Boyut okunamadıysa uydurmayız: temkinli CPU ve bunu söyleriz.
+        let decision = decide_offload(Some(&gpu_with_vram(16384)), None, VRAM_RESERVE_MB);
+        assert_eq!(decision.mode, OffloadMode::Cpu);
+        assert_eq!(decision.n_gpu_layers, 0);
+        assert_eq!(decision.model_mb, None);
+        assert!(decision.reason.contains("boyutu"), "gerekçe: {}", decision.reason);
+    }
+
+    #[test]
+    fn boundary_exactly_at_model_plus_reserve_offloads_all() {
+        // Tam sınır: vram == model + pay → sığar (>=) → GPU.
+        let vram = 16384;
+        let model_mb = vram - VRAM_RESERVE_MB;
+        let decision = decide_offload(
+            Some(&gpu_with_vram(vram)),
+            Some(model_mb * BYTES_PER_MIB),
+            VRAM_RESERVE_MB,
+        );
+        assert_eq!(decision.mode, OffloadMode::Gpu);
+        assert_eq!(decision.n_gpu_layers, ALL_GPU_LAYERS);
+    }
+
+    #[test]
+    fn one_mib_over_the_boundary_falls_back_to_cpu() {
+        // Sınırın 1 MiB üstü artık sığmaz → CPU.
+        let vram = 16384;
+        let model_mb = vram - VRAM_RESERVE_MB + 1;
+        let decision = decide_offload(
+            Some(&gpu_with_vram(vram)),
+            Some(model_mb * BYTES_PER_MIB),
+            VRAM_RESERVE_MB,
+        );
+        assert_eq!(decision.mode, OffloadMode::Cpu);
+        assert_eq!(decision.n_gpu_layers, 0);
+    }
+
+    #[test]
+    fn offload_mode_serializes_to_lowercase_wire_names() {
+        // Tel biçimi sözleşmesi: arayüz "gpu"/"cpu" bekler.
+        assert_eq!(
+            serde_json::to_string(&OffloadMode::Gpu).unwrap_or_default(),
+            "\"gpu\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OffloadMode::Cpu).unwrap_or_default(),
+            "\"cpu\""
+        );
+    }
 }

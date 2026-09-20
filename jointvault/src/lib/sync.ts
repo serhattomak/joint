@@ -4,6 +4,7 @@ import {
   categorizeAndTagItem,
   getAiStatus,
   indexItemChunks,
+  isAiEnabled,
 } from './ai';
 import {
   createItem,
@@ -176,7 +177,7 @@ export async function processDownloadedItemWithAi(
   // 3. Yerel LLM ile Kategorizasyon ve Etiketleme
   try {
     const aiStat = await getAiStatus().catch(() => null);
-    if (aiStat?.engine_available && aiStat.llm_ready) {
+    if (aiStat && isAiEnabled(aiStat) && aiStat.engine_available && aiStat.llm_ready) {
       onProgress?.('Yapay zekâ ile içerik ve etiketler çözümleniyor…');
       const catResult = await categorizeAndTagItem(item);
       if (catResult.categories.length > 0 || catResult.tags.length > 0) {

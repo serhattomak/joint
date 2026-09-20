@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackageOpen, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackageOpen, Sparkles, TriangleAlert } from 'lucide-react';
 import { BulkActions } from '@/components/BulkActions';
 import { RuleStrip } from '@/components/RuleStrip';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
@@ -49,6 +49,10 @@ interface ItemGridProps {
   onOpen: (item: Item, tab?: 'detail' | 'reader') => void;
   onClearFilters: () => void;
   onPlayMedia?: (item: Item) => void;
+  /** AI etkin mi? Yalnızca kesin `false` iken semantik arama dürüst "kapalı" durumuna düşer. */
+  aiEnabled?: boolean;
+  /** AI kapalıyken Ayarlar → Yapay Zekâ'ya götürür (ölü düğme yok). */
+  onOpenAiSettings?: () => void;
 }
 
 // İlk boyamada sadece ilk dilim kurulur, gerisi boş karelerde büyür.
@@ -88,6 +92,8 @@ export function ItemGrid({
   onPickVideo,
   onConvert,
   onPlayMedia,
+  aiEnabled = true,
+  onOpenAiSettings,
 }: ItemGridProps & { onPickVideo: (item: Item) => void; onConvert: (item: Item) => void }) {
   // Sayfa verisi: filtre+arama SQL'de (LIMIT/OFFSET), ekrana tek sayfa gelir.
   const [rows, setRows] = useState<Item[]>([]);
@@ -122,6 +128,15 @@ export function ItemGrid({
   const fetchPage = useCallback(
     async (p: number, size: number): Promise<void> => {
       const q = debouncedQuery.trim();
+      // AI kapalıyken semantik arama HİÇ denenmez (embedding/istek yok) ve
+      // sessizce FTS'e düşülmez: dürüst durum ayrı bir dala çizilir (semanticOff).
+      if (semantic && q && !aiEnabled) {
+        setRows([]);
+        setTotal(0);
+        setLoadError(null);
+        setLoaded(true);
+        return;
+      }
       if (semantic && q) {
         try {
           const status = await getAiStatus();
@@ -165,7 +180,7 @@ export function ItemGrid({
         setLoaded(true);
       }
     },
-    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, sort, semantic],
+    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, sort, semantic, aiEnabled],
   );
 
   useEffect(() => {
@@ -289,6 +304,9 @@ export function ItemGrid({
     favoritesOnly ||
     downloadedOnly;
 
+  // AI kapalı + semantik sorgu: sessiz FTS fallback yerine dürüst durum çizilir.
+  const semanticOff = semantic === true && debouncedQuery.trim() !== '' && !aiEnabled;
+
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const from = total === 0 ? 0 : page * pageSize + 1;
   const to = Math.min(total, (page + 1) * pageSize);
@@ -327,7 +345,24 @@ export function ItemGrid({
     <>
       {strip}
       <div className="min-h-0 flex-1 px-4 py-4">
-        {loadError ? (
+        {semanticOff ? (
+          // AI kapalıyken semantik arama dürüst durum + gerçek yönlendirme
+          // gösterir; sonuçları FTS ile doldurup "semantik" gibi sunmak yok.
+          <div className="animate-rise flex flex-col items-center gap-3 py-20 text-center">
+            <Sparkles className="size-7 text-muted-foreground" strokeWidth={1.5} />
+            <div className="flex flex-col gap-1">
+              <p className="text-title">AI kapalı</p>
+              <p className="max-w-[46ch] text-sm text-muted-foreground">
+                Semantik arama için yerel AI'yı Ayarlar → Yapay Zekâ'dan etkinleştir.
+              </p>
+            </div>
+            {onOpenAiSettings && (
+              <Button variant="outline" size="sm" onClick={onOpenAiSettings}>
+                Ayarlar'dan Aç
+              </Button>
+            )}
+          </div>
+        ) : loadError ? (
           <div className="animate-rise flex flex-col items-center gap-3 py-20 text-center">
             <TriangleAlert className="size-7 text-destructive" strokeWidth={1.5} />
             <div className="flex flex-col gap-1">

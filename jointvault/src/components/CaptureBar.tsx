@@ -32,9 +32,13 @@ interface CaptureBarProps {
   semantic?: boolean;
   onSemanticToggle?: () => void;
   onOpenSync?: () => void;
+  /** AI etkin mi? Yalnızca kesin `false` iken dürüst "kapalı" durumu gösterilir. */
+  aiEnabled?: boolean;
+  /** AI kapalıyken Ayarlar → Yapay Zekâ'ya götürür (ölü düğme yok). */
+  onOpenAiSettings?: () => void;
 }
 
-export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticToggle, onOpenSync }: CaptureBarProps) {
+export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticToggle, onOpenSync, aiEnabled, onOpenAiSettings }: CaptureBarProps) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const notice = useNotice();
@@ -141,19 +145,37 @@ export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticT
         </span>
       ) : (
         <div className="flex items-center gap-2">
-          {onSemanticToggle && (
-            <Button
-              type="button"
-              variant={semantic ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={onSemanticToggle}
-              className="h-7 gap-1 px-2 text-2xs"
-              title={semantic ? 'Semantik Arama Devrede (BGE-M3 + FTS5)' : 'Semantik Arama Moduna Geç'}
-            >
-              <Sparkles className={`size-3 ${semantic ? 'text-primary' : 'text-muted-foreground'}`} />
-              <span className={semantic ? 'font-medium text-foreground' : 'text-muted-foreground'}>Semantik</span>
-            </Button>
-          )}
+          {onSemanticToggle &&
+            (aiEnabled === false ? (
+              // AI kapalıyken semantik arama ÇALIŞAMAZ: yanıltıcı bir aç/kapa
+              // düğmesi yerine doğrudan Ayarlar → Yapay Zekâ'ya götüren gerçek
+              // bir düğme gösterilir. Yönlendirme yoksa düğme hiç çizilmez.
+              onOpenAiSettings ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onOpenAiSettings}
+                  className="h-7 gap-1 px-2 text-2xs text-muted-foreground"
+                  title="AI kapalı — semantik aramayı Ayarlar > Yapay Zekâ'dan etkinleştir"
+                >
+                  <Sparkles className="size-3 text-muted-foreground" />
+                  <span>AI kapalı — Ayarlar'dan aç</span>
+                </Button>
+              ) : null
+            ) : (
+              <Button
+                type="button"
+                variant={semantic ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={onSemanticToggle}
+                className="h-7 gap-1 px-2 text-2xs"
+                title={semantic ? 'Semantik Arama Devrede (BGE-M3 + FTS5)' : 'Semantik Arama Moduna Geç'}
+              >
+                <Sparkles className={`size-3 ${semantic ? 'text-primary' : 'text-muted-foreground'}`} />
+                <span className={semantic ? 'font-medium text-foreground' : 'text-muted-foreground'}>Semantik</span>
+              </Button>
+            ))}
           {onOpenSync && (
             <Button
               type="button"

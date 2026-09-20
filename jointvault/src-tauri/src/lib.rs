@@ -19,6 +19,7 @@ mod component_download;
 mod turbo_download;
 mod sync;
 mod scraper;
+mod hardware;
 
 use tauri::Manager;
 

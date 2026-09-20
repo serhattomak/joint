@@ -8,7 +8,7 @@ import {
 } from './db/client';
 import type { Item, ItemArticle, ScrapedMedia } from './db/types';
 import { chunkArticleText, vectorToBase64 } from './chunker';
-import { generateEmbeddings, getAiStatus } from './ai';
+import { generateEmbeddings, getAiStatus, isAiEnabled } from './ai';
 
 export interface ScrapedArticleResult {
   url: string;
@@ -74,7 +74,9 @@ export async function scrapeAndStoreArticle(itemId: string, url: string): Promis
       // Vektörleme motoru (BGE-M3) hazırsa anında embedding üret
       try {
         const aiStatus = await getAiStatus();
-        if (aiStatus.embed_ready && aiStatus.engine_available) {
+        // AI kapalıyken (modeller diskte olsa bile) vektörleme denenmez: arka uç
+        // reddeder ve hata yutulurdu — sessiz başarısızlık.
+        if (isAiEnabled(aiStatus) && aiStatus.embed_ready && aiStatus.engine_available) {
           const texts = chunks.map((c) => c.chunkText);
           const embeddings = await generateEmbeddings(texts);
           for (let i = 0; i < chunks.length; i++) {

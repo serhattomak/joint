@@ -35,6 +35,44 @@ import {
 } from './db/client';
 import type { HybridSearchResult, Item } from './db/types';
 
+/** GPU tespitinin kaynağı (`hardware.rs` → `GpuSource` serde adlarıyla birebir). */
+export type AiGpuSource = 'nvidia-smi' | 'wmi' | 'unknown';
+
+/**
+ * Tespit edilen GPU.
+ *
+ * `null` alanlar "bilinmiyor" demektir; uydurma değer YOKTUR. WMI yalnızca ad
+ * verir, VRAM yalnızca `nvidia-smi`'den gelir — bu yüzden ikisi bağımsız null
+ * olabilir.
+ */
+export interface AiGpuInfo {
+  name: string | null;
+  vram_mb: number | null;
+  source: AiGpuSource;
+}
+
+/** Offload modu: `gpu` = tüm katmanlar GPU'da, `cpu` = model CPU'da. */
+export type AiOffloadMode = 'gpu' | 'cpu';
+
+/**
+ * Backend'in verdiği offload kararı ve gerekçesi.
+ *
+ * Karar Rust'ta SAF bir fonksiyondan gelir (`decide_offload`); arayüz yalnızca
+ * GÖSTERİR, yeniden hesaplamaz. Böylece "neden GPU/CPU?" sorusunun tek kaynağı
+ * kalır ve iki taraf ayrışamaz.
+ */
+export interface AiOffloadDecision {
+  mode: AiOffloadMode;
+  /** GPU'ya yüklenecek katman sayısı; `99` "hepsi" işaretidir. */
+  n_gpu_layers: number;
+  /** Kullanıcıya gösterilebilir Türkçe gerekçe. */
+  reason: string;
+  gpu_name: string | null;
+  vram_mb: number | null;
+  /** Kararda kullanılan model dosya boyutu (MiB); `null` = okunamadı. */
+  model_mb: number | null;
+}
+
 export interface AiStatus {
   engine_available: boolean;
   engine_path: string | null;
@@ -49,9 +87,29 @@ export interface AiStatus {
   idle_timeout_secs?: number;
   temperature?: number;
   auto_apply_tags?: boolean;
+  /*
+   * Aşağıdaki alanlar YALNIZCA EK'tir: mevcut anahtarların adı/şekli
+   * değişmedi, bu yüzden ~10 tüketici etkilenmez.
+   *
+   * OPSİYONEL tutulurlar: 01–04'ten önceki bir backend bunları hiç döndürmez
+   * ve eksiklikleri kırılmaya değil "kapalı" hükmüne düşmelidir
+   * (bkz. `isAiEnabled`).
+   */
+  /** AI açık mı? Etkinliğin TEK yetkili kararı backend'dedir. */
+  ai_enabled?: boolean;
+  /** Donanım tespiti; eski backend'de yoktur. */
+  gpu?: AiGpuInfo;
+  /** Offload kararı/gerekçesi; eski backend'de yoktur. */
+  offload?: AiOffloadDecision;
 }
 
 export interface AiConfig {
+  /*
+   * ANA anahtar: yerel AI açık mı? (`ai_save_config` bunu `enabled` olarak
+   * kalıcı yazar.) Opsiyoneldir çünkü `saveAiConfig` yalnızca değişen alanları
+   * taşır; kullanıcının AÇIK seçimi backend'de göç kuralı tarafından ezilmez.
+   */
+  enabled?: boolean;
   llm_path: string | null;
   embed_path: string | null;
   engine_path: string | null;
@@ -83,6 +141,25 @@ export async function getAiStatus(): Promise<AiStatus> {
   return invoke<AiStatus>('ai_status');
 }
 
+/**
+ * "AI açık mı?" sorusunun TEK karar noktası.
+ *
+ * NEDEN FAIL-CLOSED? `ai_enabled` iken backend ~9 GB'lık model süreçlerini
+ * başlatabilir. Bu yüzden ŞÜPHELİ her durum kapalı sayılır: alan eksikse (eski
+ * backend ya da durum henüz yüklenmediyse), ya da `null`/`0`/`"true"` gibi
+ * boolean olmayan bir değer gelirse sonuç `false`'tur. Kabul yalnızca açık
+ * `true`'dur.
+ *
+ * `Boolean(status.ai_enabled)` gibi truthiness kontrolü YETMEZ: `"false"`
+ * dizesini bile açık sayar ve istenmeyen süreç başlatma yolu açılır. Ekranlar
+ * kendi kontrolünü kurmamalı; hepsi burayı çağırır ki kural tek yerde kalsın.
+ */
+export function isAiEnabled(
+  status: { ai_enabled?: unknown } | null | undefined,
+): boolean {
+  return status?.ai_enabled === true;
+}
+
 export async function warmupAi(): Promise<void> {
   await invoke('ai_warmup');
 }
@@ -109,6 +186,13 @@ export function useAiWarmupStatus(): AiWarmupStatus {
   return warmup;
 }
 
+/**
+ * AI yapılandırmasını kaydeder.
+ *
+ * `Partial<AiConfig>` olduğundan çağıran yalnızca değiştirdiği alanları
+ * gönderir; `enabled` da bu yolla taşınır ve backend'de kalıcı yazılır. Giden
+ * gövde AYNEN iletildiği için mevcut çağrıların davranışı değişmez.
+ */
 export async function saveAiConfig(config: Partial<AiConfig>): Promise<void> {
   await invoke('ai_save_config', { payload: config });
 }
@@ -240,7 +324,9 @@ export async function indexItemChunks(
   // Vektörleme motoru hazırsa hemen embedding üret
   try {
     const status = await getAiStatus();
-    if (status.embed_ready && status.engine_available) {
+    // `ai_enabled` ŞART: AI kapalıyken (modeller diskte dursa bile) vektörleme
+    // denenmemeli — arka uç reddeder ve hata yutulurdu (sessiz başarısızlık).
+    if (isAiEnabled(status) && status.embed_ready && status.engine_available) {
       const texts = chunks.map((c) => c.chunkText);
       const embeddings = await generateEmbeddings(texts);
       for (let i = 0; i < chunks.length; i++) {
@@ -263,6 +349,13 @@ export async function indexMissingEmbeddings(
 ): Promise<{ processed: number }> {
   let processed = 0;
   const BATCH_SIZE = 16;
+
+  // Kullanıcı "yeniden indeksle"yi açıkça istedi: AI kapalıysa sessizce hiçbir şey
+  // yapmamak yalan olurdu, net bir hata ver.
+  const gate = await getAiStatus();
+  if (!isAiEnabled(gate)) {
+    throw new Error('AI kapalı — Ayarlar → AI bölümünden açabilirsiniz.');
+  }
 
   while (true) {
     const missing = await getChunksMissingEmbeddings(BATCH_SIZE);
@@ -342,6 +435,11 @@ export async function askVault(
   onToken?: (token: string) => void,
 ): Promise<RagResult> {
   const status = await getAiStatus();
+  // Sıra önemli: önce "AI açık mı", sonra "bileşenler hazır mı". Kapalı bir
+  // kurulumda "motor kurulu değil" demek yanıltıcı olurdu (motor kurulu olabilir).
+  if (!isAiEnabled(status)) {
+    throw new Error('AI kapalı — Ayarlar → AI bölümünden açabilirsiniz.');
+  }
   if (!status.engine_available) {
     throw new Error('AI motoru (llama-server) kurulu değil. Lütfen Ayarlar > Yapay Zekâ sekmesinden kur.');
   }
@@ -349,9 +447,9 @@ export async function askVault(
     throw new Error('Qwen 2.5 14B modeli hazır değil. Lütfen Ayarlar > Yapay Zekâ sekmesinden indir veya seç.');
   }
 
-  // 1. Sorunun embedding'ini al (eğer BGE-M3 hazırsa)
+  // 1. Sorunun embedding'ini al (AI açık VE BGE-M3 hazırsa)
   let queryEmbedding: number[] | null = null;
-  if (status.embed_ready) {
+  if (isAiEnabled(status) && status.embed_ready) {
     try {
       const embeds = await generateEmbeddings([query]);
       if (embeds.length > 0) queryEmbedding = embeds[0];

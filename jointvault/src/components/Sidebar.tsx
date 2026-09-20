@@ -70,7 +70,7 @@ function NavButton({
   aiStatus,
 }: {
   entry: NavEntry;
-  aiStatus?: { ready: boolean; loading: boolean };
+  aiStatus?: { ready: boolean; loading: boolean; offloadMode?: 'gpu' | 'cpu' | null };
 }) {
   return (
     <button
@@ -95,8 +95,14 @@ function NavButton({
               : 'bg-muted-foreground/30'
           }`}
           title={
+            /* "VRAM Aktif" yalnızca offload GERÇEKTEN GPU'dayken söylenir; CPU'da
+               ya da karar bilinmiyorken bu iddia yalan olurdu. */
             aiStatus.ready
-              ? 'Yapay Zekâ Hazır (VRAM Aktif)'
+              ? aiStatus.offloadMode === 'gpu'
+                ? 'Yapay Zekâ Hazır (VRAM Aktif)'
+                : aiStatus.offloadMode === 'cpu'
+                  ? 'Yapay Zekâ Hazır (CPU)'
+                  : 'Yapay Zekâ Hazır (Anında Yanıt)'
               : aiStatus.loading
               ? 'Yapay Zekâ Yükleniyor…'
               : 'Yapay Zekâ Uyku Modunda (On-Demand)'
@@ -125,6 +131,8 @@ export function Sidebar(props: SidebarProps) {
   const settingsEntry = entries.find((e) => e.key === 'settings');
   const warmup = useAiWarmupStatus();
   const [chatRunning, setChatRunning] = useState(false);
+  // Offload kararı: "VRAM Aktif" etiketi buna bağlı (CPU'da söylenmez).
+  const [offloadMode, setOffloadMode] = useState<'gpu' | 'cpu' | null>(null);
 
   useEffect(() => {
     let timer: number;
@@ -132,6 +140,7 @@ export function Sidebar(props: SidebarProps) {
       try {
         const s = await getAiStatus();
         setChatRunning(s.chat_server_running);
+        setOffloadMode(s.offload?.mode ?? null);
       } catch {
         // ignore
       }
@@ -144,6 +153,7 @@ export function Sidebar(props: SidebarProps) {
   const aiStatusInfo = {
     ready: chatRunning || warmup.status === 'ready',
     loading: warmup.status === 'loading',
+    offloadMode,
   };
 
   return (

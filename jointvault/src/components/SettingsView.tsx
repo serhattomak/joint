@@ -52,6 +52,7 @@ import {
   downloadAiEngine,
   downloadAiModel,
   getAiStatus,
+  isAiEnabled,
   reindexVault,
   saveAiConfig,
   stopAiServer,
@@ -59,6 +60,7 @@ import {
   useAiModelProgress,
   useAiWarmupStatus,
   warmupAi,
+  type AiGpuInfo,
   type AiStatus,
 } from '@/lib/ai';
 import type { ComponentStatus } from '@/lib/components';
@@ -85,6 +87,56 @@ const IDLE_OPTIONS: SelectOption[] = [
   { value: '600', label: '10 Dakika (Varsayılan)' },
   { value: '1800', label: '30 Dakika' },
   { value: '3600', label: '1 Saat' },
+];
+
+// --- Yerel AI: donanım/offload görünümü ve rıza metni -------------------------
+//
+// Buradaki hiçbir sayı ELLE yazılmaz: boyutlar `components_status.approx_mb`'den,
+// donanım `ai_status.gpu`'dan, karar/gerekçe `ai_status.offload`'dan gelir. Eskiden
+// sabit yazılan GPU adı/VRAM iddiaları bilinçli olarak kaldırıldı; yanlış donanım
+// adı göstermek, hiç göstermemekten kötüdür.
+
+const MB_PER_GB = 1024;
+
+/** MiB → okunur birim. 1024'ün altı MB kalır; uydurma yuvarlama yok. */
+function formatMb(mb: number): string {
+  return mb >= MB_PER_GB ? `${(mb / MB_PER_GB).toFixed(1)} GB` : `${mb} MB`;
+}
+
+/*
+ * Donanım satırı: YALNIZCA tespit edileni söyler.
+ *   - nvidia-smi → ad + gerçek VRAM
+ *   - WMI → yalnızca ad; VRAM okunamadı (WMI'nin AdapterRAM'i 4 GB üstünde taşar,
+ *     bu yüzden backend oradan VRAM vermez)
+ *   - hiçbiri → "bilinmiyor"
+ * Hiçbir dalda uydurma sayı yoktur.
+ */
+function gpuHardwareLine(gpu: AiGpuInfo | undefined): string {
+  if (!gpu || (gpu.name === null && gpu.vram_mb === null)) {
+    return 'GPU bilinmiyor — nvidia-smi ve WMI sonuç vermedi.';
+  }
+  if (gpu.name !== null && gpu.vram_mb !== null) {
+    return `${gpu.name} · ${formatMb(gpu.vram_mb)} VRAM (kaynak: ${gpu.source})`;
+  }
+  if (gpu.name !== null) {
+    return `${gpu.name} · VRAM okunamadı (WMI yalnızca ad verir).`;
+  }
+  if (gpu.vram_mb !== null) {
+    return `GPU adı okunamadı · ${formatMb(gpu.vram_mb)} VRAM (kaynak: ${gpu.source})`;
+  }
+  return 'GPU bilinmiyor — nvidia-smi ve WMI sonuç vermedi.';
+}
+
+/*
+ * "Yerel AI neye ihtiyaç duyar" listesi: yalnızca KAYIT KİMLİKLERİ ve kullanıcıya
+ * dönük rol metni. Boyut burada YOK — her satırın MB'ı `components_status`'tan
+ * okunur ki Bileşenler ekranıyla iki farklı sayı gösterilmesin (tek gerçek).
+ */
+const AI_COMPONENT_ITEMS: readonly { id: string; role: string }[] = [
+  { id: 'llama-engine', role: 'AI motoru (llama-server)' },
+  { id: 'llama-cudart', role: 'CUDA çalışma zamanı (GPU hızlandırma)' },
+  { id: 'ai-model-llm', role: 'Qwen 2.5 14B sohbet modeli' },
+  { id: 'ai-model-embed', role: 'BGE-M3 anlamsal gömme modeli' },
 ];
 
 export function SettingsView(props: SettingsViewProps) {
@@ -121,7 +173,7 @@ export function SettingsView(props: SettingsViewProps) {
    * gerçek ~605 MB) "iki gerçek" üretirdi. Kayıttan okunamazsa harf/sayı
    * uydurulmaz; ilgili etiket yedek pin değerine düşer.
    */
-  const [componentSizes, setComponentSizes] = useState<Record<string, number>>({});
+  const [componentSizes, setComponentSizes] = useState<Record<string, number | undefined>>({});
 
   // Yerel AI (Qwen 2.5 14B + BGE-M3 + llama-server)
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
@@ -129,6 +181,9 @@ export function SettingsView(props: SettingsViewProps) {
   const [aiModelJob, setAiModelJob] = useState<string | null>(null);
   const [aiModelType, setAiModelType] = useState<'llm' | 'embed' | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  // Ana anahtar (`enabled`) yazımı ve açık rıza onayı: indirme DEĞİL, tercih.
+  const [aiConfigBusy, setAiConfigBusy] = useState(false);
+  const [aiConfirm, setAiConfirm] = useState<'enable' | 'disable' | null>(null);
   const [reindexProgress, setReindexProgress] = useState<{ current: number; total: number } | null>(null);
   const [reindexBusy, setReindexBusy] = useState(false);
   const aiEnginePct = useAiEngineProgress(aiEngineJob);
@@ -429,6 +484,25 @@ export function SettingsView(props: SettingsViewProps) {
     }
   };
 
+  /*
+   * `enabled` ANA anahtardır: yalnızca özelliği açar/kapatır. İNDİRME BAŞLATMAZ ve
+   * süreç çalıştırmaz (Rust `ai_save_config` yalnızca yapılandırmayı yazar).
+   * `auto_warmup` bu karara GİRMEZ; o ayrı bir ön yükleme tercihidir.
+   */
+  const runSetAiEnabled = async (enabled: boolean): Promise<void> => {
+    setAiError(null);
+    setAiConfigBusy(true);
+    try {
+      // Yalnızca ana anahtar yazılır; `ai_save_config` indirme/süreç başlatmaz.
+      await saveAiConfig({ enabled });
+      await refreshAi();
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setAiConfigBusy(false);
+    }
+  };
+
   const runReindex = async () => {
     setReindexBusy(true);
     setReindexProgress({ current: 0, total: 100 });
@@ -512,6 +586,32 @@ export function SettingsView(props: SettingsViewProps) {
     const mb = componentSizes[id] ?? fallbackMb;
     return mb === undefined ? '' : ` (~${mb} MB)`;
   };
+
+  // Yerel AI görünümü: etkinlik kararı TEK yerden (`isAiEnabled`, fail-closed).
+  const aiEnabled = isAiEnabled(aiStatus);
+  const aiGpu = aiStatus?.gpu;
+  const aiOffload = aiStatus?.offload;
+
+  /*
+   * Rıza metninin toplamı KAYITTAN toplanır. Eksik boyut varsa toplam GÖSTERİLMEZ:
+   * yarım toplamı "küçük bir indirme" gibi göstermek yanlış olurdu (uydurma sayı).
+   */
+  const aiComponentRows = AI_COMPONENT_ITEMS.map((item) => ({ ...item, mb: componentSizes[item.id] }));
+  const aiSizesComplete = aiComponentRows.every((row) => row.mb !== undefined);
+  const aiTotalLabel = aiSizesComplete
+    ? `≈ ${formatMb(aiComponentRows.reduce((sum, row) => sum + (row.mb ?? 0), 0))}`
+    : 'boyut bilgisi yükleniyor…';
+
+  const aiServerRunning = aiStatus?.chat_server_running === true || aiStatus?.embed_server_running === true;
+  const offloadTarget = aiOffload?.mode === 'gpu' ? "VRAM'e (GPU)" : 'belleğe (CPU)';
+  const aiStatusLine =
+    warmupStatus.status === 'loading'
+      ? `🟡 Modeller ${offloadTarget} yükleniyor (ısıtılıyor)…`
+      : aiServerRunning
+        ? aiOffload?.mode === 'gpu'
+          ? `🟢 Çalışıyor — tüm katmanlar GPU'da (${aiOffload.n_gpu_layers} katman)`
+          : "🟢 Çalışıyor — CPU'da (VRAM kullanılmıyor)"
+        : '⚪ Uyku Modunda — sunucu kapalı';
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -597,12 +697,72 @@ export function SettingsView(props: SettingsViewProps) {
             {/* TAB: YAPAY ZEKÂ */}
             {tab === 'ai' && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between rounded-xl border border-border bg-card/40 p-3 shadow-xs">
-                  <div>
-                    <p className="text-sm font-medium">Yerel Donanım Hızlandırma</p>
-                    <p className="text-xs text-muted-foreground">RTX 5070 Ti (16 GB GDDR7 VRAM) tam uyumlu</p>
+                {/* 0. Açık rıza: Yerel AI'yı etkinleştir / kapat */}
+                <div className="flex flex-col gap-3 rounded-xl border border-border bg-card/40 p-3.5 shadow-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Yerel AI</p>
+                      <p className="text-xs text-muted-foreground">
+                        {aiEnabled
+                          ? 'Etkin. Kasa Asistanı ve anlamsal arama kullanılabilir.'
+                          : 'Kapalı. Kasa Asistanı ve anlamsal arama bu anahtar açılmadan çalışmaz.'}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {aiEnabled ? <Stamp state="local">etkin</Stamp> : <Stamp state="none">kapalı</Stamp>}
+                      <Button
+                        variant={aiEnabled ? 'outline' : 'default'}
+                        size="sm"
+                        disabled={aiConfigBusy}
+                        onClick={() => setAiConfirm(aiEnabled ? 'disable' : 'enable')}
+                      >
+                        {aiConfigBusy ? 'Kaydediliyor…' : aiEnabled ? "Yerel AI'yı kapat" : "Yerel AI'yı etkinleştir"}
+                      </Button>
+                    </div>
                   </div>
-                  <Stamp state="local">CUDA 12</Stamp>
+
+                  {/* Rıza metni: kullanıcı ONAYLAMADAN önce ne indirileceğini ve toplamı görür. */}
+                  {!aiEnabled && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/40 p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Etkinleştirmek <span className="font-medium text-foreground">hiçbir şey indirmez</span>; yalnızca
+                        özelliği açar. Gerekli dosyalar inene kadar asistan yanıt veremez. İndirmeyi sen başlatırsın
+                        (aşağıdaki düğmeler veya Ayarlar → Bileşenler); kurulu bileşenler yeniden indirilmez.
+                      </p>
+                      <ul className="flex flex-col gap-1">
+                        {aiComponentRows.map((row) => (
+                          <li key={row.id} className="flex items-center justify-between gap-3 text-xs">
+                            <span className="text-muted-foreground">{row.role}</span>
+                            <span className="font-mono text-2xs text-foreground">
+                              {row.mb !== undefined ? formatMb(row.mb) : 'boyut okunamadı'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex items-center justify-between gap-3 border-t border-border/50 pt-2 text-xs">
+                        <span className="text-muted-foreground">Gerekli toplam indirme</span>
+                        <span className="font-mono text-xs font-medium">{aiTotalLabel}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Donanım tespiti + offload kararı: sabit metin YOK, tespit ne ise o yazılır. */}
+                <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-card/40 p-3 shadow-xs">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Yerel Donanım Hızlandırma</p>
+                    <p className="text-xs text-muted-foreground">{gpuHardwareLine(aiGpu)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Offload kararı: {aiOffload?.reason ?? 'okunamadı (tespit yok).'}
+                    </p>
+                  </div>
+                  <Stamp state={aiOffload?.mode === 'gpu' ? 'local' : 'none'}>
+                    {aiOffload
+                      ? aiOffload.mode === 'gpu'
+                        ? `GPU · ${aiOffload.n_gpu_layers} katman`
+                        : 'CPU'
+                      : 'bilinmiyor'}
+                  </Stamp>
                 </div>
 
                 {/* 1. AI Motoru */}
@@ -742,22 +902,16 @@ export function SettingsView(props: SettingsViewProps) {
                 <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card/30 p-4 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium">VRAM & Çalışma Durumu</p>
-                      <p className="text-xs text-muted-foreground">
-                        {warmupStatus.status === 'loading'
-                          ? '🟡 Modeller VRAM\'e yükleniyor (Isıtılıyor)…'
-                          : aiStatus?.chat_server_running || aiStatus?.embed_server_running
-                          ? '🟢 VRAM Aktif (~10.5 GB / 16 GB offloaded)'
-                          : '⚪ Uyku Modunda (VRAM serbest)'}
-                      </p>
+                      <p className="text-sm font-medium">Çalışma Durumu & Hızlandırma</p>
+                      <p className="text-xs text-muted-foreground">{aiStatusLine}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">
                         Chat: {aiStatus?.chat_server_running ? '🟢' : '⚪'} | Embed: {aiStatus?.embed_server_running ? '🟢' : '⚪'}
                       </span>
-                      {aiStatus?.chat_server_running || aiStatus?.embed_server_running ? (
+                      {aiServerRunning ? (
                         <Button variant="outline" size="sm" onClick={() => void runStopAi()}>
-                          VRAM'i Boşalt
+                          {aiOffload?.mode === 'gpu' ? "VRAM'i Boşalt" : 'Sunucuyu Durdur'}
                         </Button>
                       ) : (
                         aiStatus?.llm_ready && aiStatus?.embed_ready && (
@@ -767,7 +921,11 @@ export function SettingsView(props: SettingsViewProps) {
                             onClick={() => void runWarmupAi()}
                             disabled={warmupBusy || warmupStatus.status === 'loading'}
                           >
-                            {warmupBusy || warmupStatus.status === 'loading' ? 'Yükleniyor…' : 'VRAM\'e Yükle (Isıt)'}
+                            {warmupBusy || warmupStatus.status === 'loading'
+                              ? 'Yükleniyor…'
+                              : aiOffload?.mode === 'gpu'
+                                ? "VRAM'e Yükle (Isıt)"
+                                : 'Belleğe Yükle (Isıt)'}
                           </Button>
                         )
                       )}
@@ -779,7 +937,8 @@ export function SettingsView(props: SettingsViewProps) {
                     <div>
                       <p className="text-sm font-medium">Açılışta Otomatik Başlat (Warmup)</p>
                       <p className="text-xs text-muted-foreground">
-                        Uygulama açıldığında modelleri arka planda VRAM'e sessizce yükler; ilk sorunuz anında yanıtlanır.
+                        Yerel AI açıkken uygulama başlarken modelleri arka planda {offloadTarget} yükler; ilk sorunuz
+                        anında yanıtlanır. Bu AYRI bir ön yükleme tercihidir — kapatmak Yerel AI'yı kapatmaz.
                       </p>
                     </div>
                     <Switch
@@ -791,9 +950,10 @@ export function SettingsView(props: SettingsViewProps) {
                   {/* Boşta Kalma Süresi */}
                   <div className="flex items-center justify-between border-t border-border/50 pt-3">
                     <div>
-                      <p className="text-sm font-medium">Boşta Kalma Süresi (VRAM Uyku Modu)</p>
+                      <p className="text-sm font-medium">Boşta Kalma Süresi (Uyku Modu)</p>
                       <p className="text-xs text-muted-foreground">
-                        Belirtilen süre işlem yapılmazsa VRAM otomatik boşaltılır.
+                        Belirtilen süre işlem yapılmazsa {aiOffload?.mode === 'gpu' ? 'VRAM' : 'model belleği'} otomatik
+                        boşaltılır.
                       </p>
                     </div>
                     <div className="w-56">
@@ -1199,6 +1359,38 @@ export function SettingsView(props: SettingsViewProps) {
         description="Eski anahtarla eşleşmiş tarayıcı eklentileri bağlantıyı kaybeder. Eklenti ayarlarına yeni anahtarı girmen gerekir."
         confirmLabel="Yenile"
         onConfirm={() => void runRegenToken()}
+      />
+
+      {/*
+       * Açık rıza onayı. Etkinleştirme İNDİRME BAŞLATMAZ (yalnızca `enabled` yazılır);
+       * vazgeçilirse hiçbir şey olmaz. Kapatma ise asistan + anlamsal aramanın
+       * duracağını dürüstçe söyler — veri kaybı yok, modeller diskte kalır.
+       */}
+      <ConfirmDialog
+        open={aiConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setAiConfirm(null);
+        }}
+        title={aiConfirm === 'disable' ? 'Yerel AI kapatılsın mı?' : "Yerel AI'yı etkinleştir"}
+        description={
+          aiConfirm === 'disable' ? (
+            'Kasa Asistanı ve anlamsal arama çalışmayı durdurur. İndirilmiş modeller diskte kalır; dilediğinde yeniden açabilirsin.'
+          ) : (
+            <>
+              Yalnızca özellik açılır; <span className="font-medium text-foreground">hiçbir indirme başlamaz</span>.
+              Gerekli bileşenler için toplam indirme {aiTotalLabel}. İndirmeleri Ayarlar → Bileşenler bölümünden sen
+              başlatırsın.
+            </>
+          )
+        }
+        confirmLabel={aiConfirm === 'disable' ? 'Kapat' : 'Etkinleştir'}
+        cancelLabel="Vazgeç"
+        tone="default"
+        onConfirm={() => {
+          const enabled = aiConfirm !== 'disable';
+          setAiConfirm(null);
+          void runSetAiEnabled(enabled);
+        }}
       />
     </div>
   );
