@@ -15,6 +15,7 @@ mod whisper;
 mod ai;
 mod backup;
 mod components;
+mod component_download;
 mod turbo_download;
 mod sync;
 mod scraper;
@@ -52,6 +53,9 @@ pub fn run() {
     backup::reset_database,
     components::components_status,
     components::components_path,
+    component_download::component_download,
+    component_download::component_cancel,
+    component_download::component_download_probe,
       settings::set_download_dir,
       settings::write_text_file,
       settings::get_close_behavior,

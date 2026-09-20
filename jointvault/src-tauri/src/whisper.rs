@@ -1,10 +1,13 @@
+use crate::component_download::{self, DownloadPlan, Payload};
 use serde_json::Value;
-use std::io::Read as _;
-use std::io::Write as _;
+use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
+// NOT: whisper-transcode/embed/extract ilerlemesi hâlâ `whisper-progress` yayar.
+// İNDİRMELER artık bu olayı kullanmaz: hepsi paylaşılan motora bağlandı ve
+// `component-download-progress` üzerinden ilerliyor (tek sözleşme, jobId ile filtre).
 #[derive(Clone, serde::Serialize)]
 struct WhisperProgress {
     #[serde(rename = "jobId")]
@@ -15,26 +18,6 @@ struct WhisperProgress {
 fn emit_whisper_progress(app: &AppHandle, job_id: &str, percent: f64) {
     let _ = app.emit(
         "whisper-progress",
-        WhisperProgress {
-            job_id: job_id.to_string(),
-            percent,
-        },
-    );
-}
-
-fn emit_model_progress(app: &AppHandle, job_id: &str, percent: f64) {
-    let _ = app.emit(
-        "whisper-model-progress",
-        WhisperProgress {
-            job_id: job_id.to_string(),
-            percent,
-        },
-    );
-}
-
-fn emit_engine_progress(app: &AppHandle, job_id: &str, percent: f64) {
-    let _ = app.emit(
-        "whisper-engine-progress",
         WhisperProgress {
             job_id: job_id.to_string(),
             percent,
@@ -59,8 +42,35 @@ fn model_file_name(model: &str) -> String {
     format!("ggml-{model}.bin")
 }
 
-fn model_url(model: &str) -> String {
-    format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model}.bin")
+/// Pinlenmiş model kaynağı: URL + sha256 + indirme boyutu (`context.md` kaynak
+/// tablosuyla birebir). SHA-256 HuggingFace LFS `oid` beyanıdır ve indirme
+/// sırasında motorda yeniden doğrulanır — eskiden model indirmesinde hiç sha256
+/// yoktu, artık bozuk/yarım dosya kuruluma giremez.
+struct ModelSpec {
+    url: &'static str,
+    sha256: &'static str,
+    bytes: u64,
+}
+
+fn model_spec(model: &str) -> ModelSpec {
+    match model {
+        "tiny" => ModelSpec {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+            sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+            bytes: 74 * 1024 * 1024,
+        },
+        "small" => ModelSpec {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+            sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+            bytes: 465 * 1024 * 1024,
+        },
+        // Çağıran `valid_model` ile doğrular; buraya yalnızca "base" düşer.
+        _ => ModelSpec {
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+            sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+            bytes: 141 * 1024 * 1024,
+        },
+    }
 }
 
 fn models_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -141,54 +151,37 @@ pub async fn download_model(app: AppHandle, payload: Value) -> Result<String, St
     let _guard = crate::download::QUEUE.lock().await;
 
     let target = model_path(&app, &model)?;
+    // Mevcut dosya varsa indirme atlanır (bugünkü davranış): sha256 yalnızca yeni
+    // indirilen dosyaya uygulanır, kullanıcının elindeki dosya yeniden doğrulanmaz.
     if target.exists() {
-        emit_model_progress(&app, &job_id, 100.0);
         return Ok("done".to_string());
     }
-    let part = target.with_extension("bin.part");
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3600))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut resp = client
-        .get(model_url(&model))
-        .header("User-Agent", "JointVault/1.0")
-        .send()
+    let spec = model_spec(&model);
+    let dest_dir = target
+        .parent()
+        .ok_or_else(|| "Model klasörü bulunamadı.".to_string())?
+        .to_path_buf();
+    let plan = DownloadPlan {
+        component_id: format!("whisper-model-{model}"),
+        url: spec.url.to_string(),
+        sha256: spec.sha256.to_string(),
+        expected_bytes: Some(spec.bytes),
+        // Raw yük: tepe kullanım indirilen dosyanın kendisidir — `.part` hedef
+        // klasörde kalır ve doğrulamadan sonra aynı birimde atomik taşınır; açılan
+        // ikinci bir kopya yoktur.
+        disk_required_bytes: Some(spec.bytes),
+        progress_span: None,
+        payload: Payload::Raw {
+            dest_dir,
+            file_name: model_file_name(&model),
+        },
+    };
+    // İş kaydı: iptal bayrağını motorda akış döngüsü yoklar; `run_download` bitince
+    // (hata/iptal dâhil) kaydı kendisi temizler.
+    let cancel = component_download::register_job(&job_id);
+    component_download::run_download(&app, plan, &job_id, cancel)
         .await
-        .map_err(|e| format!("Model indirilemedi: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("Model indirilemedi: {e}"))?;
-    let total = resp.content_length();
-    let mut file =
-        std::fs::File::create(&part).map_err(|e| format!("Model dosyası açılamadı: {e}"))?;
-    emit_model_progress(&app, &job_id, 0.0);
-    let mut downloaded: u64 = 0;
-    let mut emitted_unknown = false;
-    while let Some(chunk) = resp
-        .chunk()
-        .await
-        .map_err(|e| format!("Model indirilemedi: {e}"))?
-    {
-        file.write_all(&chunk)
-            .map_err(|e| format!("Model yazılamadı: {e}"))?;
-        downloaded += chunk.len() as u64;
-        match total {
-            Some(t) if t > 0 => emit_model_progress(
-                &app,
-                &job_id,
-                (downloaded as f64 / t as f64 * 100.0).clamp(0.0, 100.0),
-            ),
-            _ => {
-                if !emitted_unknown {
-                    emit_model_progress(&app, &job_id, -1.0);
-                    emitted_unknown = true;
-                }
-            }
-        }
-    }
-    drop(file);
-    std::fs::rename(&part, &target).map_err(|e| format!("Model taşınamadı: {e}"))?;
-    emit_model_progress(&app, &job_id, 100.0);
+        .map_err(|e| e.user_message())?;
     Ok("done".to_string())
 }
 
@@ -199,6 +192,26 @@ const WHISPER_ENGINE_SHA256: &str =
     "0d2eca299c248f965bd0341bcb219db4b433c7f0c0ce2200d4df85765e8156a9";
 // Zip-bomba koruması: tek girdinin makul üst sınırı.
 const WHISPER_ENGINE_MAX_ENTRY_BYTES: u64 = 200 * 1024 * 1024;
+// Pin tablosundaki indirme boyutu (~4 MB). Sunucu `Content-Length` vermezse
+// ilerleme çubuğunun toplamı bu olur; motor yalnızca yedek olarak kullanır.
+const WHISPER_ENGINE_BYTES: u64 = 4 * 1024 * 1024;
+// Disk kapısı için TEPE kullanım: `.part` arşiv doğrulanana kadar exe yanında durur
+// ve çıkarma da AYNI klasöre yapılır — yani arşiv + açılan exe/DLL'ler bir an
+// birlikte yer kaplar. Arşiv ~4 MB, açılan içerik ~8 MB; 32 MiB güvenli üst sınır.
+const WHISPER_ENGINE_PEAK_BYTES: u64 = 32 * 1024 * 1024;
+
+// Arşivden çıkarılacak dosyalar: `whisper-cli.exe` + çalışması için gereken
+// DLL'ler. Motor, yalnızca ADI VERİLEN girdileri çıkarır (bilinmeyen adlar sessizce
+// atlanır), bu yüzden liste tam olmalı. Kaynak tarihli tag + sha256 ile pinli:
+// aynı arşiv asla değişmez. SDL2.dll dışarıda — sunucu tarafı için, transkript
+// yolunda gereksiz (bugünkü paketli dosya kümesiyle aynı).
+const WHISPER_ENGINE_ENTRIES: &[&str] = &[
+    "whisper-cli.exe",
+    "whisper.dll",
+    "ggml.dll",
+    "ggml-base.dll",
+    "ggml-cpu.dll",
+];
 
 // Sidecar hedefi: dev'de src-tauri/binaries/whisper-<triple>.exe, prod'da exe yanı/whisper.exe.
 // Çalışma-anı hedefi: her zaman exe yanı/whisper.exe — sidecar() buraya bakar (plugin kaynağı).
@@ -229,171 +242,96 @@ fn engine_source_path() -> Option<std::path::PathBuf> {
     None
 }
 
+/// Arşivden çıkan `whisper-cli.exe`'yi çalışma-anı adı `whisper.exe` yap.
+///
+/// `sidecar("whisper")` her zaman `whisper.exe` arar; arşiv ise `whisper-cli.exe`
+/// getirir. Var olan (ör. DLL'leri eksik, çalışmayan) bir `whisper.exe` varsa
+/// `rename` Windows'ta "already exists" ile düşer — bu yüzden önce kaldırılır.
+fn install_engine_binary(runtime: &Path, dir: &Path) -> Result<(), String> {
+    let archive_exe = dir.join("whisper-cli.exe");
+    if !archive_exe.is_file() {
+        return Err("Motor arşivinde whisper-cli.exe bulunamadı.".to_string());
+    }
+    let _ = std::fs::remove_file(runtime);
+    std::fs::rename(&archive_exe, runtime)
+        .map_err(|e| format!("Motor adlandırılamadı (whisper.exe): {e}"))?;
+    if !runtime.is_file() {
+        return Err("Motor kurulamadı: whisper.exe oluşmadı.".to_string());
+    }
+    Ok(())
+}
+
+/// Gelecek build'ler `externalBin` ile paketleyebilsin diye kurulu exe + DLL'leri
+/// `src-tauri/binaries/`'e (dev düzeni) kopyala. Opsiyonel bir kolaylıktır:
+/// başarısız olursa sessizce geçer, kurulumu bozmaz.
+fn stage_engine_source_copy(runtime_dir: &Path, runtime: &Path) {
+    let Some(source) = engine_source_path() else {
+        return;
+    };
+    let Some(parent) = source.parent() else {
+        return;
+    };
+    if std::fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let _ = std::fs::copy(runtime, &source);
+    for entry in WHISPER_ENGINE_ENTRIES {
+        let name = *entry;
+        if name == "whisper-cli.exe" {
+            continue;
+        }
+        let _ = std::fs::copy(runtime_dir.join(name), parent.join(name));
+    }
+}
+
 #[tauri::command]
 pub async fn download_whisper_engine(app: AppHandle, payload: Value) -> Result<String, String> {
     let job_id = get_str(&payload, "job_id")?;
     // Tekli kuyruk (A13): indirme + ffmpeg + whisper aynı anda koşmasın.
     let _guard = crate::download::QUEUE.lock().await;
 
-    // Zaten çalışıyorsa tekrar indirme.
+    // Zaten çalışıyorsa tekrar indirme (bugünkü "kuruluysa atla" probu korunur).
     if sidecar_available(&app).await {
-        emit_engine_progress(&app, &job_id, 100.0);
         return Ok("done".to_string());
     }
 
-    let tmp = std::env::temp_dir();
-    let part = tmp.join(format!("jv-whisper-engine-{job_id}.zip.part"));
-    let zip_path = tmp.join(format!("jv-whisper-engine-{job_id}.zip"));
-    let cleanup = || {
-        let _ = std::fs::remove_file(&part);
-        let _ = std::fs::remove_file(&zip_path);
-    };
-    cleanup();
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3600))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut resp = client
-        .get(WHISPER_ENGINE_URL)
-        .header("User-Agent", "JointVault/1.0")
-        .send()
-        .await
-        .map_err(|e| format!("Motor indirilemedi: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("Motor indirilemedi: {e}"))?;
-    let total = resp.content_length();
-    let mut file = std::fs::File::create(&part).map_err(|e| {
-        cleanup();
-        format!("Motor dosyası açılamadı: {e}")
-    })?;
-    emit_engine_progress(&app, &job_id, 0.0);
-    let mut downloaded: u64 = 0;
-    let mut emitted_unknown = false;
-    while let Some(chunk) = resp.chunk().await.map_err(|e| {
-        cleanup();
-        format!("Motor indirilemedi: {e}")
-    })? {
-        file.write_all(&chunk).map_err(|e| {
-            cleanup();
-            format!("Motor yazılamadı: {e}")
-        })?;
-        downloaded += chunk.len() as u64;
-        match total {
-            Some(t) if t > 0 => emit_engine_progress(
-                &app,
-                &job_id,
-                (downloaded as f64 / t as f64 * 100.0).clamp(0.0, 100.0),
-            ),
-            _ => {
-                if !emitted_unknown {
-                    emit_engine_progress(&app, &job_id, -1.0);
-                    emitted_unknown = true;
-                }
-            }
-        }
-    }
-    drop(file);
-    std::fs::rename(&part, &zip_path).map_err(|e| {
-        cleanup();
-        format!("Motor taşınamadı: {e}")
-    })?;
-
-    // sha256 doğrula (hex, küçük harf).
-    let bytes = std::fs::read(&zip_path).map_err(|e| {
-        cleanup();
-        format!("Motor okunamadı: {e}")
-    })?;
-    {
-        use sha2::Digest as _;
-        let mut h = sha2::Sha256::new();
-        h.update(&bytes);
-        if format!("{:x}", h.finalize()) != WHISPER_ENGINE_SHA256 {
-            cleanup();
-            return Err("Motor doğrulaması başarısız (sha256 uyuşmadı). İndirme silindi, tekrar dene."
-                .to_string());
-        }
-    }
-
-    // whisper-cli.exe + DLL'leri hedefe yaz (exe tek başına çalışmaz).
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).map_err(|e| {
-        cleanup();
-        format!("Motor arşivi açılamadı: {e}")
-    })?;
-    let mut exe_bytes: Option<Vec<u8>> = None;
-    // (dosya adı, içerik): exe'nin yanına yazılacak DLL'ler.
-    let mut dlls: Vec<(String, Vec<u8>)> = Vec::new();
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| {
-            cleanup();
-            format!("Motor arşivi okunamadı: {e}")
-        })?;
-        let lower = entry.name().to_lowercase();
-        let is_exe = lower.ends_with("whisper-cli.exe");
-        let base = lower.rsplit(['/', '\\']).next().unwrap_or("");
-        // SDL2.dll sunucu tarafı için; transkript yolunda gereksiz.
-        let is_needed_dll = lower.ends_with(".dll") && !base.starts_with("sdl2");
-        if !is_exe && !is_needed_dll {
-            continue;
-        }
-        if entry.size() > WHISPER_ENGINE_MAX_ENTRY_BYTES {
-            cleanup();
-            return Err("Motor arşivi beklenenden büyük, indirme iptal edildi.".to_string());
-        }
-        let mut buf = Vec::new();
-        entry.read_to_end(&mut buf).map_err(|e| {
-            cleanup();
-            format!("Motor çıkarılamadı: {e}")
-        })?;
-        if is_exe {
-            exe_bytes = Some(buf);
-        } else {
-            dlls.push((base.to_string(), buf));
-        }
-    }
-    drop(archive);
-    let exe_bytes = match exe_bytes {
-        Some(b) => b,
-        None => {
-            cleanup();
-            return Err("Motor arşivinde whisper-cli.exe bulunamadı.".to_string());
-        }
-    };
     let runtime = engine_runtime_path()?;
     let dir = runtime
         .parent()
-        .ok_or_else(|| {
-            cleanup();
-            "Motor klasörü bulunamadı.".to_string()
-        })?
+        .ok_or_else(|| "Motor klasörü bulunamadı.".to_string())?
         .to_path_buf();
-        std::fs::create_dir_all(&dir).map_err(|e| {
-            cleanup();
-            format!("Motor klasörü açılamadı: {e}")
-        })?;
-    std::fs::write(&runtime, &exe_bytes).map_err(|e| {
-        cleanup();
-        format!("Motor yazılamadı: {e}")
-    })?;
-    for (name, buf) in &dlls {
-        std::fs::write(dir.join(name), buf).map_err(|e| {
-            cleanup();
-            format!("Motor parçası yazılamadı ({name}): {e}")
-        })?;
-    }
-    // Gelecek build'ler pakete alsın diye kaynağa da koy (sessizce geç).
-    if let Some(source) = engine_source_path() {
-        if let Some(parent) = source.parent() {
-            if std::fs::create_dir_all(parent).is_ok() {
-                let _ = std::fs::write(&source, &exe_bytes);
-                for (name, buf) in &dlls {
-                    let _ = std::fs::write(parent.join(name), buf);
-                }
-            }
-        }
-    }
-    cleanup();
-    emit_engine_progress(&app, &job_id, 100.0);
+
+    let plan = DownloadPlan {
+        component_id: "whisper-engine".to_string(),
+        url: WHISPER_ENGINE_URL.to_string(),
+        sha256: WHISPER_ENGINE_SHA256.to_string(),
+        expected_bytes: Some(WHISPER_ENGINE_BYTES),
+        // Zip yükü: tepe kullanım = arşiv + açılan içerik (ikisi bir an birlikte).
+        disk_required_bytes: Some(WHISPER_ENGINE_PEAK_BYTES),
+        // Tek çubuk 0-100: bugünkü ilerleme davranışı korunur.
+        progress_span: None,
+        payload: Payload::Zip {
+            dest_dir: dir.clone(),
+            wanted: WHISPER_ENGINE_ENTRIES
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            max_entry_bytes: WHISPER_ENGINE_MAX_ENTRY_BYTES,
+        },
+    };
+    // Tek yol: akış → `.part` → sha256 → zip-slip/zip-bomba korumalı çıkarma. İptal
+    // bayrağı hem akışta hem çıkarmada yoklanır; hata/iptalde `.part` silinir.
+    let cancel = component_download::register_job(&job_id);
+    component_download::run_download(&app, plan, &job_id, cancel)
+        .await
+        .map_err(|e| e.user_message())?;
+
+    // Arşiv `whisper-cli.exe` getirir; çalışma-anı adı `whisper.exe` olmalı.
+    install_engine_binary(&runtime, &dir)?;
+    // Paketleme kopyası (dev düzeni) — opsiyonel, sessizce geç.
+    stage_engine_source_copy(&dir, &runtime);
+
+    // Kurulumu KANITLA: DLL'ler eksikse ya da exe çalışmıyorsa yüksek sesle hata ver.
     if sidecar_available(&app).await {
         Ok("done".to_string())
     } else {

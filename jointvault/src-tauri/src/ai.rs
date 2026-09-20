@@ -1,7 +1,7 @@
+use crate::component_download::{self, DownloadPlan, Payload};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
@@ -30,6 +30,14 @@ const QWEN_14B_FILE: &str = "Qwen2.5-14B-Instruct-Q4_K_M.gguf";
 const BGE_M3_URL: &str =
     "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf";
 const BGE_M3_FILE: &str = "bge-m3-Q8_0.gguf";
+
+// Pinlenmiş sha256 (context.md kaynak tablosuyla birebir; yayıncı beyanı).
+// İndirme sırasında paylaşılan motorda yeniden doğrulanır — eskiden AI
+// indirmelerinde hiç bütünlük kontrolü yoktu, artık bozuk/kısmi arşiv kuruluma giremez.
+const LLAMA_ENGINE_SHA256: &str = "264f20d7ee3860aecca9ec12418357a9f3e80349a2b186f66c63859ded1a9593";
+const LLAMA_CUDART_SHA256: &str = "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6";
+const QWEN_14B_SHA256: &str = "e47ad95dad6ff848b431053b375adb5d39321290ea2c638682577dafca87c008";
+const BGE_M3_SHA256: &str = "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167";
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AiConfig {
@@ -536,76 +544,85 @@ pub async fn ai_stop_server() -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Clone, Serialize)]
-struct DownloadProgress {
-    job_id: String,
-    percent: f64,
+// Pin tablosundaki indirme boyutları (MiB). Sunucu `Content-Length` vermezse
+// ilerleme çubuğunun toplamı bunlar olur; motor yalnızca yedek olarak kullanır.
+const MIB: u64 = 1024 * 1024;
+const LLAMA_ENGINE_MIB: u64 = 242;
+const LLAMA_CUDART_MIB: u64 = 373;
+const QWEN_14B_MIB: u64 = 8572;
+const BGE_M3_MIB: u64 = 605;
+
+// Disk kapısı için TEPE kullanım tahminleri.
+//
+// Neden indirilenden büyük: motor arşivi `.part` olarak HEDEF klasörde tutar ve
+// çıkarmayı da aynı klasöre yapar; doğrulama bitene kadar ikisi bir arada durur.
+// llama.cpp arşivi açıldığında CUDA backend DLL'i (ggml-cuda.dll) tek başına
+// arşivi katlar; CPU backend varyantları ve `libomp.dll` de eklenir. Doğru sayı
+// gelmezse kullanıcı gereksiz yere engellenir ya da indirme sonunda "yer yok"
+// görür — kesin koruma akış sırasındaki `WriteFailed`'dır. Bu yüzden cömert bir
+// üst sınır veriyoruz, dar bir kapı değil.
+const LLAMA_ENGINE_PEAK_BYTES: u64 = 1_200 * MIB; // ~242 MiB arşiv + ~900 MiB açılan
+const LLAMA_CUDART_PEAK_BYTES: u64 = 1_500 * MIB; // ~373 MiB arşiv + ~1.1 GiB açılan (cublas/cublasLt)
+// Zip-bomba koruması (tek arşiv girdisi). Arşiv zaten sha256 ile pinli olduğundan bu
+// bir emniyet kemeridir; ama gerçek girdiler yüzlerce MB olduğu için cömert olmalı —
+// aksi hâlde meşru `ggml-cuda.dll` reddedilir.
+const AI_ENGINE_MAX_ENTRY_BYTES: u64 = 2 * 1024 * MIB;
+
+/// llama.cpp CUDA 12.4 Windows arşivinden çıkarılacak dosyalar.
+///
+/// Motor yalnızca ADI VERİLEN girdileri çıkarır (eşleşmeyen ad sessizce atlanır),
+/// bu yüzden liste tam olmalı. Kaynak tarihli tag + sha256 ile pinlendiği için
+/// dosya adları da sabittir. `GGML_BACKEND_DL` açık: `ggml-*.dll` dosyaları çalışma
+/// anında exe yanından yüklenir; bu yüzden CPU varyantlarının tamamı listelenir
+/// (makinede desteklenmeyen varyant yalnızca yüklenmez). `libomp.dll` OpenMP çalışma
+/// zamanı; `llama.dll` ve `mtmd.dll` ise `llama-server.exe`'nin bağlı olduğu
+/// kütüphanelerdir. Yayın paketi = Windows CPU paketi + `ggml-cuda.dll`.
+const LLAMA_ENGINE_ENTRIES: &[&str] = &[
+    "llama-server.exe",
+    "llama.dll",
+    "mtmd.dll",
+    "ggml.dll",
+    "ggml-base.dll",
+    "ggml-cpu.dll",
+    "ggml-cuda.dll",
+    "ggml-rpc.dll",
+    "libomp.dll",
+    "ggml-cpu-x64.dll",
+    "ggml-cpu-sse42.dll",
+    "ggml-cpu-sandybridge.dll",
+    "ggml-cpu-ivybridge.dll",
+    "ggml-cpu-piledriver.dll",
+    "ggml-cpu-haswell.dll",
+    "ggml-cpu-skylakex.dll",
+    "ggml-cpu-cannonlake.dll",
+    "ggml-cpu-cascadelake.dll",
+    "ggml-cpu-icelake.dll",
+    "ggml-cpu-cooperlake.dll",
+    "ggml-cpu-zen4.dll",
+    "ggml-cpu-alderlake.dll",
+    "ggml-cpu-sapphirerapids.dll",
+];
+
+/// CUDA çalışma zamanı arşivi: yalnızca üç DLL (workflow `cudart64_*`, `cublas64_*`
+/// ve `cublasLt64_*` desenleriyle paketliyor). `ggml-cuda.dll` bunları exe yanında arar.
+const LLAMA_CUDART_ENTRIES: &[&str] = &["cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll"];
+
+/// `&[&str]` listesini motorun beklediği sahiplenilmiş `Vec<String>`'e çevir.
+fn wanted_entries(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| (*s).to_string()).collect()
 }
 
-async fn download_and_extract_zip(
-    client: &reqwest::Client,
-    url: &str,
-    bdir: &Path,
+/// Ortak indirme gövdesi: işi kaydet, tek motordan indir. Hata kullanıcıya Türkçe
+/// gider (`user_message`); teknik ayrıntı arayüze sızdırılmaz.
+async fn run_component_download(
     app: &AppHandle,
+    plan: DownloadPlan,
     job_id: &str,
-    start_pct: f64,
-    pct_span: f64,
 ) -> Result<(), String> {
-    let tmp = std::env::temp_dir();
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let zip_part = tmp.join(format!("jv-zip-{job_id}-{nonce}.part"));
-    let zip_file = tmp.join(format!("jv-zip-{job_id}-{nonce}.zip"));
-
-    let mut resp = client
-        .get(url)
-        .header("User-Agent", "JointVault/1.0")
-        .send()
+    let cancel = component_download::register_job(job_id);
+    component_download::run_download(app, plan, job_id, cancel)
         .await
-        .map_err(|e| format!("İndirme başlatılamadı ({url}): {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("İndirme hatası ({url}): {e}"))?;
-
-    let total = resp.content_length();
-    let mut file = std::fs::File::create(&zip_part).map_err(|e| format!("Geçici dosya açılamadı: {e}"))?;
-    let mut downloaded: u64 = 0;
-
-    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("İndirme koptu: {e}"))? {
-        file.write_all(&chunk).map_err(|e| format!("Diske yazılamadı: {e}"))?;
-        downloaded += chunk.len() as u64;
-        if let Some(t) = total {
-            if t > 0 {
-                let fraction = downloaded as f64 / t as f64;
-                let pct = (start_pct + fraction * pct_span).clamp(0.0, 100.0);
-                let _ = app.emit("ai-engine-progress", DownloadProgress { job_id: job_id.to_string(), percent: pct });
-            }
-        }
-    }
-    drop(file);
-
-    let _ = std::fs::rename(&zip_part, &zip_file);
-
-    let file_zip = std::fs::File::open(&zip_file).map_err(|e| format!("Zip açılamadı: {e}"))?;
-    let mut archive = zip::ZipArchive::new(file_zip).map_err(|e| format!("Zip okunamadı: {e}"))?;
-
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        if entry.is_dir() {
-            continue;
-        }
-        let ename = entry.name().to_string();
-        let fname = Path::new(&ename).file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if fname.ends_with(".exe") || fname.ends_with(".dll") {
-            let outpath = bdir.join(fname);
-            let mut outfile = std::fs::File::create(&outpath).map_err(|e| e.to_string())?;
-            std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
-        }
-    }
-
-    let _ = std::fs::remove_file(&zip_file);
-    Ok(())
+        .map_err(|e| e.user_message())
 }
 
 #[tauri::command]
@@ -614,27 +631,48 @@ pub async fn ai_download_engine(app: AppHandle, payload: Value) -> Result<String
     let bdir = binaries_dir(&app)?;
     let target_exe = bdir.join("llama-server.exe");
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(3600))
-        .build()
-        .map_err(|e| e.to_string())?;
+    // Tekli kuyruk: tüm indirmeler (medya/ffmpeg/whisper/AI) aynı disiplini paylaşır.
+    let _guard = crate::download::QUEUE.lock().await;
 
-    let _ = app.emit("ai-engine-progress", DownloadProgress { job_id: job_id.clone(), percent: 0.0 });
-
-    // 1. Ana llama-server ve temel kütüphaneler (0% - 50%)
+    // 1. Ana llama-server + kütüphaneler — tek çubukta 0-50 (bugünkü aralık korunur).
+    //    `llama-server.exe` varsa indirme atlanır (bugünkü davranış korunur).
     if !target_exe.exists() {
-        download_and_extract_zip(&client, LLAMA_ENGINE_URL, &bdir, &app, &job_id, 0.0, 50.0).await?;
-    } else {
-        let _ = app.emit("ai-engine-progress", DownloadProgress { job_id: job_id.clone(), percent: 50.0 });
+        let plan = DownloadPlan {
+            component_id: "llama-engine".to_string(),
+            url: LLAMA_ENGINE_URL.to_string(),
+            sha256: LLAMA_ENGINE_SHA256.to_string(),
+            expected_bytes: Some(LLAMA_ENGINE_MIB * MIB),
+            disk_required_bytes: Some(LLAMA_ENGINE_PEAK_BYTES),
+            progress_span: Some((0.0, 50.0)),
+            payload: Payload::Zip {
+                dest_dir: bdir.clone(),
+                wanted: wanted_entries(LLAMA_ENGINE_ENTRIES),
+                max_entry_bytes: AI_ENGINE_MAX_ENTRY_BYTES,
+            },
+        };
+        run_component_download(&app, plan, &job_id).await?;
     }
 
-    // 2. CUDA 12.4 Runtime kütüphaneleri (cublas64_12.dll, cudart64_12.dll) (50% - 100%)
+    // 2. CUDA 12.4 Runtime kütüphaneleri (cublas64_12.dll, cudart64_12.dll) — 50-100.
+    //    İki arşiv aynı ilerleme göstergesini paylaşır: 0-50 / 50-100 (bugünkü gibi).
     let cublas_dll = bdir.join("cublas64_12.dll");
     if !cublas_dll.exists() {
-        download_and_extract_zip(&client, LLAMA_CUDART_URL, &bdir, &app, &job_id, 50.0, 50.0).await?;
+        let plan = DownloadPlan {
+            component_id: "llama-cudart".to_string(),
+            url: LLAMA_CUDART_URL.to_string(),
+            sha256: LLAMA_CUDART_SHA256.to_string(),
+            expected_bytes: Some(LLAMA_CUDART_MIB * MIB),
+            disk_required_bytes: Some(LLAMA_CUDART_PEAK_BYTES),
+            progress_span: Some((50.0, 100.0)),
+            payload: Payload::Zip {
+                dest_dir: bdir.clone(),
+                wanted: wanted_entries(LLAMA_CUDART_ENTRIES),
+                max_entry_bytes: AI_ENGINE_MAX_ENTRY_BYTES,
+            },
+        };
+        run_component_download(&app, plan, &job_id).await?;
     }
 
-    let _ = app.emit("ai-engine-progress", DownloadProgress { job_id, percent: 100.0 });
     Ok("done".to_string())
 }
 
@@ -644,53 +682,41 @@ pub async fn ai_download_model(app: AppHandle, payload: Value) -> Result<String,
     let job_id = get_str(&payload, "job_id")?;
     let mdir = models_dir(&app)?;
 
-    let (url, filename) = if model_type == "llm" {
-        (QWEN_14B_URL, QWEN_14B_FILE)
+    let (url, sha256, mib, filename) = if model_type == "llm" {
+        (QWEN_14B_URL, QWEN_14B_SHA256, QWEN_14B_MIB, QWEN_14B_FILE)
     } else {
-        (BGE_M3_URL, BGE_M3_FILE)
+        (BGE_M3_URL, BGE_M3_SHA256, BGE_M3_MIB, BGE_M3_FILE)
     };
 
+    // Tekli kuyruk: indirmeler seri (medya/ffmpeg/whisper/AI).
+    let _guard = crate::download::QUEUE.lock().await;
+
     let target = mdir.join(filename);
+    // Mevcut dosya varsa indirme atlanır (bugünkü davranış): sha256 yalnızca yeni
+    // indirilen dosyaya uygulanır, kullanıcının elindeki `.gguf` yeniden doğrulanmaz.
     if target.exists() {
-        let _ = app.emit("ai-model-progress", DownloadProgress { job_id, percent: 100.0 });
         return Ok("done".to_string());
     }
 
-    let part = target.with_extension("gguf.part");
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(7200))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut resp = client
-        .get(url)
-        .header("User-Agent", "JointVault/1.0")
-        .send()
-        .await
-        .map_err(|e| format!("Model indirilemedi: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("Model indirilemedi: {e}"))?;
-
-    let total = resp.content_length();
-    let mut file = std::fs::File::create(&part).map_err(|e| format!("Dosya açılamadı: {e}"))?;
-    let mut downloaded: u64 = 0;
-
-    let _ = app.emit("ai-model-progress", DownloadProgress { job_id: job_id.clone(), percent: 0.0 });
-
-    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("İndirme hatası: {e}"))? {
-        file.write_all(&chunk).map_err(|e| format!("Yazılamadı: {e}"))?;
-        downloaded += chunk.len() as u64;
-        if let Some(t) = total {
-            if t > 0 {
-                let pct = (downloaded as f64 / t as f64 * 100.0).clamp(0.0, 100.0);
-                let _ = app.emit("ai-model-progress", DownloadProgress { job_id: job_id.clone(), percent: pct });
-            }
-        }
-    }
-    drop(file);
-
-    std::fs::rename(&part, &target).map_err(|e| format!("Dosya taşınamadı: {e}"))?;
-    let _ = app.emit("ai-model-progress", DownloadProgress { job_id, percent: 100.0 });
+    let plan = DownloadPlan {
+        component_id: if model_type == "llm" {
+            "ai-model-llm".to_string()
+        } else {
+            "ai-model-embed".to_string()
+        },
+        url: url.to_string(),
+        sha256: sha256.to_string(),
+        expected_bytes: Some(mib * MIB),
+        // Raw yük: tepe kullanım indirilen dosyanın kendisidir — `.part` hedef
+        // klasörde kalır, doğrulamadan sonra aynı birimde atomik taşınır.
+        disk_required_bytes: Some(mib * MIB),
+        progress_span: None,
+        payload: Payload::Raw {
+            dest_dir: mdir.clone(),
+            file_name: filename.to_string(),
+        },
+    };
+    run_component_download(&app, plan, &job_id).await?;
     Ok("done".to_string())
 }
 

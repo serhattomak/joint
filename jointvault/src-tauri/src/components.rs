@@ -7,8 +7,12 @@
 // kayıtlı bir borç).
 //
 // Burada tek kaynak: her bileşen için id, etiket, beklenen dosya adı, gömülü
-// sidecar adı ve sürüm komutu. Durum UYDURULMAZ — dosya ve çalıştırma kontrolü
-// gerçekten yapılır.
+// sidecar adı, sürüm komutu ve (varsa) **pinlenmiş indirme kaynağı**. Durum
+// UYDURULMAZ — dosya ve çalıştırma kontrolü gerçekten yapılır.
+//
+// İndirme kaynağı neden burada? Kaynak seçimi (URL/sha256/hangi arşiv) ürünün
+// değişmez bir kararıdır; indirme MOTORU (`component_download.rs`) bu kararı
+// bilmez, yalnızca uygular. Böylece "ne iniyor" sorusunun tek cevabı olur.
 //
 // Arama sırası: **indirilenler klasörü → uygulamanın yanındaki gömülü sidecar**.
 // İndirilenler kullanıcı verisine yazılır (yönetici izni gerekmez); gömülü olan
@@ -42,7 +46,14 @@ pub struct ComponentStatus {
     /// `-version` çıktısının ilk satırı (kuruluysa).
     version: Option<String>,
     /// Bu bileşen indirilebilir mi (paketle gelenler için false).
+    /// Pinlenmiş kaynağı olmayan bileşen indirilebilir SAYILMAZ (bkz. `Spec::download`).
     downloadable: bool,
+    /// Aynı indirme arşivini paylaşan bileşenlerin paket kimliği (ör. `ffmpeg-tools`).
+    /// Arayüz bununla satırları gruplar: ffmpeg + ffprobe TEK arşivden kurulur.
+    bundle: Option<String>,
+    /// İçerik biçimi: `"archive"` (zip) ya da `"plain"` (düz dosya).
+    /// İndirilemeyen bileşenlerde `None`. Arayüz etiketlemek için kullanır.
+    framework: Option<String>,
 }
 
 struct Spec {
@@ -55,27 +66,134 @@ struct Spec {
     sidecar: Option<&'static str>,
     /// Sürüm sorgusunda kullanılacak argüman.
     version_arg: &'static str,
-    downloadable: bool,
+    /// Pinlenmiş indirme kaynağı. `None` → bu bileşen bu komuttan inmez:
+    /// yt-dlp paketle gömülü gelir; whisper/AI kendi komutlarından iner (Faz 7b/04).
+    /// `downloadable` bu alandan TÜRETİLİR — kaynağı olmayan "indirilebilir" sayılmaz.
+    download: Option<DownloadSpec>,
 }
+
+/// Arşivden ne çıkarılacak ve tek girdi güvenlik sınırı.
+pub enum PayloadRule {
+    /// Tek düz dosya: `<hedef>/<file_name>`. Şu an yalnızca ffmpeg/ffprobe (zip)
+    /// kayıtlı olduğu için bu varyant inşa edilmiyor; Faz 7b/04 model indirmelerini
+    /// (`.bin`/`.gguf`) buraya bağlayınca kullanılacak. Motor tarafı hazır
+    /// (`Payload::Raw`) ve sonda komutu bu yolu zaten çalıştırıyor.
+    #[allow(dead_code)]
+    Raw { file_name: &'static str },
+    /// Zip: yalnızca `wanted` basename'leri hedefe çıkarılır; her girdi
+    /// `max_entry_bytes`'ı aşarsa kurulum reddedilir (zip-bomba).
+    Zip {
+        wanted: &'static [&'static str],
+        max_entry_bytes: u64,
+    },
+}
+
+/// Pinlenmiş indirme kaynağı.
+///
+/// URL/sha256 değerleri `context.md` pin tablosundan **birebir** kopyalanır; burada
+/// uydurma kaynak yoktur (`docs/product-roadmap.md` §7 riski: kaynak sabitlenmeli,
+/// dış kaynak kaybolsa bile ne indirildiği bilinmeli).
+pub struct DownloadSpec {
+    /// Aynı arşivi paylaşan bileşenlerin ortak kimliği (ilerleme olayında görünür).
+    pub bundle: &'static str,
+    pub url: &'static str,
+    pub sha256: &'static str,
+    /// İndirilen arşiv boyutu (yayıncının beyanı). İlerleme toplamı için yedek.
+    pub expected_bytes: u64,
+    /// Tepe disk ihtiyacı: arşiv + çıkarılan dosyalar. Disk kapısı bunu kullanır.
+    pub disk_required_bytes: u64,
+    pub payload: PayloadRule,
+}
+
+impl DownloadSpec {
+    /// İçerik biçiminin tek kelimelik özeti: arşiv mi, düz dosya mı?
+    /// `PayloadRule`'dan TÜRETİLİR; ayrı bir alan tutmak ayrışma riski olurdu.
+    pub fn framework(&self) -> &'static str {
+        match &self.payload {
+            PayloadRule::Zip { .. } => "archive",
+            PayloadRule::Raw { .. } => "plain",
+        }
+    }
+}
+
+// --- ffmpeg + ffprobe: TEK arşiv (BtbN tarihli, değişmez tag) ---
+//
+// Tarihli tag neden? `latest`/master akışı zamanla değişir ve kayıtlı sha256 bir gün
+// sessizce yanlış olur; tarihli tag'de indirilen şey önceden bilinir.
+
+const FFMPEG_TOOLS_BUNDLE: &str = "ffmpeg-tools";
+
+const FFMPEG_TOOLS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-20-13-11/ffmpeg-N-126716-g3faf57342f-win64-gpl.zip";
+
+/// Yayıncının `checksums.sha256` dosyasından; GitHub asset `digest` alanıyla doğrulandı.
+const FFMPEG_TOOLS_SHA256: &str =
+    "1e41954de78ce3ebdee55bbe6beb74aa89878b9fdf57b196a9e7e656a03f0a3b";
+
+/// Arşiv boyutu: 194_564_474 bayt = 185.55 MiB (≈185.6 MB). Değer, GitHub asset
+/// `size` alanından ve context.md pin tablosundaki 185.6 MB gösteriminden doğrulandı.
+const FFMPEG_TOOLS_ARCHIVE_BYTES: u64 = 194_564_474;
+
+/// Arşiv içindeki `ffmpeg.exe` boyutu: 156.62 MiB (164.23 MB).
+const FFMPEG_EXE_BYTES: u64 = 164_232_192;
+/// Arşiv içindeki `ffprobe.exe` boyutu: 156.42 MiB (164.02 MB).
+const FFPROBE_EXE_BYTES: u64 = 164_022_784;
+
+/// Tek arşiv girdisi için üst sınır: 400 MiB. Gerçek ikililer ~156 MiB olduğundan
+/// meşru derleme geçer; şişirilmiş (zip-bomba) bir girdi burada reddedilir.
+const FFMPEG_ENTRY_CAP_BYTES: u64 = 400 * 1024 * 1024;
+
+/// Tepe disk ihtiyacı: indirilen arşiv + çıkarılan İKİ ikili. Çıkarma bitene kadar
+/// arşiv de diskte durur; bu sayı verilmezse kullanıcı indirme ORTASINDA "yer yok"
+/// hatası alır — kapının amacı tam olarak bunu önlemek.
+const FFMPEG_TOOLS_DISK_BYTES: u64 =
+    FFMPEG_TOOLS_ARCHIVE_BYTES + FFMPEG_EXE_BYTES + FFPROBE_EXE_BYTES;
+
+/// Arşivde `bin/` altında dururlar; motor basename ile seçtiği için düz adlar verilir.
+const FFMPEG_TOOLS_WANTED: &[&str] = &["ffmpeg.exe", "ffprobe.exe"];
+
+/// Paylaşılan arşivin MB cinsinden gösterimi (iki satır da bu sayıyı taşır:
+/// 80+80 değil, TEK ~186 MB indirme).
+const FFMPEG_TOOLS_APPROX_MB: u32 = 186;
 
 const SPECS: &[Spec] = &[
     Spec {
         id: "ffmpeg",
         label: "ffmpeg",
-        approx_mb: 80,
+        approx_mb: FFMPEG_TOOLS_APPROX_MB,
         downloaded_file: "ffmpeg.exe",
         sidecar: Some("ffmpeg"),
         version_arg: "-version",
-        downloadable: true,
+        download: Some(DownloadSpec {
+            bundle: FFMPEG_TOOLS_BUNDLE,
+            url: FFMPEG_TOOLS_URL,
+            sha256: FFMPEG_TOOLS_SHA256,
+            expected_bytes: FFMPEG_TOOLS_ARCHIVE_BYTES,
+            disk_required_bytes: FFMPEG_TOOLS_DISK_BYTES,
+            payload: PayloadRule::Zip {
+                wanted: FFMPEG_TOOLS_WANTED,
+                max_entry_bytes: FFMPEG_ENTRY_CAP_BYTES,
+            },
+        }),
     },
     Spec {
         id: "ffprobe",
         label: "ffprobe",
-        approx_mb: 80,
+        // ffprobe ayrı indirilmez: ffmpeg ile aynı arşivden gelir (bundle).
+        approx_mb: FFMPEG_TOOLS_APPROX_MB,
         downloaded_file: "ffprobe.exe",
         sidecar: Some("ffprobe"),
         version_arg: "-version",
-        downloadable: true,
+        download: Some(DownloadSpec {
+            bundle: FFMPEG_TOOLS_BUNDLE,
+            url: FFMPEG_TOOLS_URL,
+            sha256: FFMPEG_TOOLS_SHA256,
+            expected_bytes: FFMPEG_TOOLS_ARCHIVE_BYTES,
+            disk_required_bytes: FFMPEG_TOOLS_DISK_BYTES,
+            payload: PayloadRule::Zip {
+                wanted: FFMPEG_TOOLS_WANTED,
+                max_entry_bytes: FFMPEG_ENTRY_CAP_BYTES,
+            },
+        }),
     },
     Spec {
         id: "yt-dlp",
@@ -84,7 +202,8 @@ const SPECS: &[Spec] = &[
         downloaded_file: "yt-dlp.exe",
         sidecar: Some("yt-dlp"),
         version_arg: "--version",
-        downloadable: true,
+        // yt-dlp paketle GÖMÜLÜ kalır (roadmap §7): indirme kaynağı yok.
+        download: None,
     },
     Spec {
         id: "whisper",
@@ -93,7 +212,9 @@ const SPECS: &[Spec] = &[
         downloaded_file: "whisper.exe",
         sidecar: Some("whisper"),
         version_arg: "--help",
-        downloadable: true,
+        // Whisper motoru kendi komutundan iner (`whisper::download_whisper_engine`);
+        // Faz 7b/04 aynı motora bağlayınca kaynak buraya taşınır.
+        download: None,
     },
 ];
 
@@ -146,6 +267,20 @@ fn resolve(app: &AppHandle, spec: &Spec) -> Option<(PathBuf, ComponentSource)> {
         .map(|path| (path, ComponentSource::Bundled))
 }
 
+/// Bileşen kurulu mu (indirilenler → gömülü)? Kuruluysa indirme atlanır.
+pub fn is_installed(app: &AppHandle, id: &str) -> bool {
+    SPECS
+        .iter()
+        .find(|spec| spec.id == id)
+        .and_then(|spec| resolve(app, spec))
+        .is_some()
+}
+
+/// Bileşenin pinlenmiş indirme kaynağı. `None` → bu id bu komuttan indirilemez.
+pub fn download_spec(id: &str) -> Option<&'static DownloadSpec> {
+    SPECS.iter().find(|spec| spec.id == id)?.download.as_ref()
+}
+
 /// Çalıştırılabilir bir dosyaya `-version` benzeri bir argüman verip ilk satırı okur.
 /// Çalışmazsa `None`: "kurulu" demek için dosyanın var olması yetmez.
 async fn probe_version(app: &AppHandle, path: &Path, arg: &str) -> Option<String> {
@@ -190,7 +325,16 @@ pub async fn components_status(app: AppHandle) -> Result<Vec<ComponentStatus>, S
             path: resolved.as_ref().map(|(p, _)| p.to_string_lossy().to_string()),
             source: resolved.map(|(_, source)| source),
             version,
-            downloadable: spec.downloadable,
+            // Kaynak yoksa indirilebilir de yoktur; iki alan asla ayrışmaz.
+            downloadable: spec.download.is_some(),
+            bundle: spec
+                .download
+                .as_ref()
+                .map(|download| download.bundle.to_string()),
+            framework: spec
+                .download
+                .as_ref()
+                .map(|download| download.framework().to_string()),
         });
     }
     Ok(out)

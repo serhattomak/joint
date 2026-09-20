@@ -15,6 +15,7 @@ import {
   vectorToBase64,
   type ItemChunk,
 } from './chunker';
+import { useComponentDownloadProgress } from './components';
 import {
   getAllTagsByItem,
   getCategoriesForItem,
@@ -177,61 +178,32 @@ export async function streamAiChat(
 }
 
 // --- Hooks: İlerleme Dinleyicileri ---
+//
+// İndirmeler tek olay yayar: `component-download-progress` (paylaşılan motor).
+// Kanonik abonelik `components.ts`'te yaşar; buradaki sarmalayıcı yalnızca
+// çağıranın `jobId`'sine süzer ve yüzdeyi döndürür.
+
+function useComponentDownloadPercent(jobId: string | null): number | null {
+  const [progress, setProgress] = useState<{ jobId: string; percent: number } | null>(null);
+
+  // Kanonik kanca callback'i her render'da tazeler; bu yüzden closure'daki
+  // `jobId` günceldir, ayrı bir ref gerekmez.
+  useComponentDownloadProgress((event) => {
+    if (jobId && event.jobId === jobId) setProgress({ jobId, percent: event.percent });
+  });
+
+  // Yüzde YALNIZCA istenen işe aitse döner: yeni işe geçince eski yüzde
+  // kendiliğinden düşer, effect içinde setState gerekmez.
+  if (!jobId || !progress || progress.jobId !== jobId) return null;
+  return progress.percent;
+}
 
 export function useAiEngineProgress(jobId: string | null): number | null {
-  const [progress, setProgress] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!jobId) {
-      setProgress(null);
-      return;
-    }
-    let unlisten: UnlistenFn | null = null;
-    let mounted = true;
-
-    void listen<{ job_id: string; percent: number }>('ai-engine-progress', (event) => {
-      if (mounted && event.payload.job_id === jobId) {
-        setProgress(event.payload.percent);
-      }
-    }).then((u) => {
-      unlisten = u;
-    });
-
-    return () => {
-      mounted = false;
-      if (unlisten) unlisten();
-    };
-  }, [jobId]);
-
-  return progress;
+  return useComponentDownloadPercent(jobId);
 }
 
 export function useAiModelProgress(jobId: string | null): number | null {
-  const [progress, setProgress] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!jobId) {
-      setProgress(null);
-      return;
-    }
-    let unlisten: UnlistenFn | null = null;
-    let mounted = true;
-
-    void listen<{ job_id: string; percent: number }>('ai-model-progress', (event) => {
-      if (mounted && event.payload.job_id === jobId) {
-        setProgress(event.payload.percent);
-      }
-    }).then((u) => {
-      unlisten = u;
-    });
-
-    return () => {
-      mounted = false;
-      if (unlisten) unlisten();
-    };
-  }, [jobId]);
-
-  return progress;
+  return useComponentDownloadPercent(jobId);
 }
 
 // --- İndeksleme ve Vektörleme Hattı ---

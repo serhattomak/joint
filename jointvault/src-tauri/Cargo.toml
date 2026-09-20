@@ -34,6 +34,10 @@ tokio = { version = "1", features = ["rt", "net", "time", "sync"] }
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10.9"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Disk alanı ön kontrolü için tek küçük crate. fs2 2018'den beri bakımsız
+# (son sürüm 0.4.3); fs4 onun bakımlı çatalıdır ve aynı API'yi sunar:
+# `fs4::available_space(path) -> io::Result<u64>`. std'de Windows için karşılığı yok.
+fs4 = "1"
 tauri-plugin-single-instance = "2.4.4"
 
 [profile.dev]

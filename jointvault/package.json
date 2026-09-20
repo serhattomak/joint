@@ -21,6 +21,7 @@
     "verify:backup-ui": "node dev/verify-backup-ui.mjs",
     "verify:foreign-keys": "node dev/verify-foreign-keys.mjs",
     "verify:components": "node dev/verify-components.mjs",
+    "verify:component-download": "node dev/verify-component-download.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

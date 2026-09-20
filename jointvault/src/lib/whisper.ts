@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { isTranscriptData, isWhisperStatus } from './backend-contracts';
+// İndirme olayının adı/gövdesi ve kancası tek yerde (`components.ts`) tanımlı;
+// burada YENİDEN TANIMLANMAZ, yalnızca içe aktarılır (kopya ayrışmasın).
+import { type ComponentDownloadProgressEvent, useComponentDownloadProgress } from './components';
 
 export type WhisperModel = 'tiny' | 'base' | 'small';
 export type WhisperLang = 'auto' | 'tr' | 'en';
@@ -47,11 +50,16 @@ export async function getWhisperStatus(): Promise<WhisperStatus | null> {
 }
 
 // Rust renames job_id → jobId in the payload (serde rename).
-// whisper-progress: percent 0–100; whisper-model-progress: percent 0–100, -1 = uzunluk bilinmiyor.
+// whisper-progress: transcode/embed/extract ilerlemesi (indirme DEĞİL), percent 0–100.
 export interface WhisperProgressEvent {
   jobId: string;
   percent: number;
 }
+
+// Paylaşılan indirme motorunun olayı ve gövdesi `components.ts`'te yaşar:
+// `COMPONENT_DOWNLOAD_PROGRESS_EVENT` + `ComponentDownloadProgressEvent`.
+// İndirmeler (whisper motoru + modelleri, AI engine + modelleri) oradan yayılır;
+// tüketici kendi `jobId`'siyle süzer. percent -1 = toplam uzunluk bilinmiyor.
 
 export interface JobResult {
   ok: boolean;
@@ -151,16 +159,13 @@ export async function extractSubtitle(
   }
 }
 
-function useWhisperEvent(
-  name: 'whisper-progress' | 'whisper-model-progress' | 'whisper-engine-progress',
-  onEvent: (e: WhisperProgressEvent) => void,
-): void {
+function useTauriEvent<T>(name: string, onEvent: (e: T) => void): void {
   const ref = useRef(onEvent);
   ref.current = onEvent;
   useEffect(() => {
     let live = true;
     let unlisten: (() => void) | null = null;
-    void listen<WhisperProgressEvent>(name, (event) => {
+    void listen<T>(name, (event) => {
       ref.current(event.payload);
     }).then((u) => {
       if (live) unlisten = u;
@@ -175,15 +180,19 @@ function useWhisperEvent(
 
 // Single 'whisper-progress' subscription (transcribe/embed/extract); unlistens on unmount.
 export function useWhisperProgress(onEvent: (e: WhisperProgressEvent) => void): void {
-  useWhisperEvent('whisper-progress', onEvent);
+  useTauriEvent<WhisperProgressEvent>('whisper-progress', onEvent);
 }
 
-// Single 'whisper-model-progress' subscription (model download); unlistens on unmount.
-export function useWhisperModelProgress(onEvent: (e: WhisperProgressEvent) => void): void {
-  useWhisperEvent('whisper-model-progress', onEvent);
+// Whisper model indirmesi: paylaşılan motorun canonical olayına abone (eski ad korundu, çağıran değişmesin).
+export function useWhisperModelProgress(
+  onEvent: (e: ComponentDownloadProgressEvent) => void,
+): void {
+  useComponentDownloadProgress(onEvent);
 }
 
-// Single 'whisper-engine-progress' subscription (engine download); unlistens on unmount.
-export function useWhisperEngineProgress(onEvent: (e: WhisperProgressEvent) => void): void {
-  useWhisperEvent('whisper-engine-progress', onEvent);
+// Whisper motoru indirmesi: paylaşılan motorun olayına abone (eski ad korundu).
+export function useWhisperEngineProgress(
+  onEvent: (e: ComponentDownloadProgressEvent) => void,
+): void {
+  useComponentDownloadProgress(onEvent);
 }

@@ -11,7 +11,7 @@ Kişisel medya arşivi: farklı platformlarda kaydedilen post/video/fotoğraflar
 
 ## Teknoloji
 
-Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui. SQLite (`tauri-plugin-sql`), sidecar: yt-dlp + ffmpeg/ffprobe (git-lfs ile repoda).
+Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui. SQLite (`tauri-plugin-sql`), sidecar: yt-dlp + ffmpeg/ffprobe (git-lfs ile repoda). ffmpeg/ffprobe artık çalışma zamanında **bileşen** olarak da indirilebilir: uygulama içinden, sha256 doğrulamalı, iptal edilebilir ilerlemeli indirme (Ayarlar → Bileşenler).
 
 ## Geliştirme
 
@@ -37,4 +37,4 @@ npx tauri build      # src-tauri/target/release/bundle/ altına MSI/NSIS
 
 ## Veri
 
-SQLite: `jointvault.db` (uygulama veri dizini). İndirilenler: `Downloads/JointVault` (Ayarlar'dan değişir). Eşleşme anahtarı ve indirme klasörü uygulama veri dizinindeki dosyalarda saklanır.
+SQLite: `jointvault.db` (uygulama veri dizini). İndirilenler: `Downloads/JointVault` (Ayarlar'dan değişir). Eşleşme anahtarı ve indirme klasörü uygulama veri dizinindeki dosyalarda saklanır. İndirilen bileşenler (ffmpeg/ffprobe) uygulama veri dizinindeki `components/` klasörüne yazılır; yönetici izni gerekmez.
