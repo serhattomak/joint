@@ -95,6 +95,12 @@ fn emit_progress(app: &AppHandle, item_id: &str, percent: f64, speed: Option<Str
 
 #[tauri::command]
 pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Result<String, String> {
+    // Kapı: işe başlamadan yt-dlp'yi kayıttan çöz (indirilen → gömülü). Eksikse
+    // `BILESEN_EKSIK:yt-dlp` hemen döner; kuyruk kilidi, progress olayı ya da
+    // yarım klasör gibi kısmi yan etki oluşmaz. NOT: yt-dlp PAKETLE gömülü gelir
+    // (kayıtta `download: None` → `downloadable=false`). Buradaki değişiklik
+    // yalnızca ÇÖZÜMLEME biçimidir; yt-dlp'ye indirme kaynağı EKLEMEYİN.
+    let yt_dlp = crate::components::require_tool(&app, "yt-dlp")?;
     // ponytail: iki anahtar da kabul edilir (istemci sürüm kaymalarına karşı).
     let get = |keys: &[&str]| -> Result<String, String> {
         keys.iter()
@@ -189,17 +195,23 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
     args.push("--ffmpeg-location".to_string());
     args.push(tools.to_string_lossy().replace('\\', "/"));
     args.push(url);
-    run_sidecar(&app, &item_id, args).await
+    run_sidecar(&app, &item_id, &yt_dlp, args).await
 }
 
-async fn run_sidecar(app: &AppHandle, item_id: &str, args: Vec<String>) -> Result<String, String> {
-    // NOT: yt-dlp bilinçli olarak kayda bağlanmadı — paketle GÖMÜLÜ gelir ve her
-    // zaman vardır; ortak kayıt yoluna taşınması dilim **7c-3**'e bırakıldı.
-    // (ffmpeg/ffprobe indirilebilir olduğundan `require_tool` ile çözülür.)
+// `yt_dlp` çağrı yerinde `components::require_tool` ile çözülür (bkz.
+// `download_media` başındaki kapı). Buraya hazır YOL gelir; eski sidecar
+// çözümlemesi yalnızca exe yanına bakabildiği için indirilen/gömülü ayrımını
+// göremezdi. yt-dlp gömülü kaldığından `downloadable` hâlâ false'tur: yalnızca
+// çözümleme yolu değişti.
+async fn run_sidecar(
+    app: &AppHandle,
+    item_id: &str,
+    yt_dlp: &std::path::Path,
+    args: Vec<String>,
+) -> Result<String, String> {
     let (mut rx, _child) = app
         .shell()
-        .sidecar("yt-dlp")
-        .map_err(|e| e.to_string())?
+        .command(yt_dlp.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -271,16 +283,18 @@ pub struct FormatOption {
 // (hızlı metadata, paralel okuma serbest).
 #[tauri::command]
 pub async fn list_formats(app: AppHandle, payload: serde_json::Value) -> Result<Vec<FormatOption>, String> {
+    // Kapı: işe başlamadan yt-dlp'yi kayıttan çöz (indirilen → gömülü). Gömülü
+    // kalır — kayıtta indirme kaynağı YOK (`downloadable=false`); yalnızca
+    // `sidecar` yerine çözümlenmiş yolu çalıştırıyoruz, indirilebilir yapmıyoruz.
+    let yt_dlp = crate::components::require_tool(&app, "yt-dlp")?;
     let url = payload
         .get("url")
         .and_then(|v| v.as_str())
         .ok_or("missing required key url")?
         .to_string();
-    // yt-dlp: bkz. `run_sidecar` başındaki not — kasıtlı olarak henüz kayıt dışı.
     let (mut rx, _child) = app
         .shell()
-        .sidecar("yt-dlp")
-        .map_err(|e| e.to_string())?
+        .command(yt_dlp.to_string_lossy().to_string())
         .args(["-J", "--no-playlist", "--no-warnings", &url])
         .spawn()
         .map_err(|e| e.to_string())?;

@@ -105,6 +105,11 @@ pub fn sync_check_browser(browser: String) -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn sync_scan_platform(app: AppHandle, payload: serde_json::Value) -> Result<Vec<SyncScannedItem>, String> {
+    // Kapı: işe başlamadan yt-dlp'yi kayıttan çöz (indirilen → gömülü). Eksikse
+    // ham OS hatası yerine `BILESEN_EKSIK:yt-dlp` + okunabilir ikinci satır döner.
+    // yt-dlp paketle GÖMÜLÜ kalır (kayıtta indirme kaynağı yok, `downloadable=false`);
+    // yalnızca çözümleme biçimi değişti — buraya indirme kaynağı EKLEMEYİN.
+    let yt_dlp = crate::components::require_tool(&app, "yt-dlp")?;
     let platform = payload
         .get("platform")
         .and_then(|v| v.as_str())
@@ -174,8 +179,7 @@ pub async fn sync_scan_platform(app: AppHandle, payload: serde_json::Value) -> R
 
     let (mut rx, _child) = app
         .shell()
-        .sidecar("yt-dlp")
-        .map_err(|e| e.to_string())?
+        .command(yt_dlp.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;

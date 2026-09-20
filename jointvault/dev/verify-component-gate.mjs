@@ -5,8 +5,9 @@
  * tetiklendiğinde (a) kurulum diyaloğunun açıldığını, (b) etiket/boyut + İndir ve
  * çalışırken İptal/ilerleme öğelerinin göründüğünü, (c) makine-okunur
  * `BILESEN_EKSIK` önekinin HİÇBİR render noktasında DOM'a sızmadığını,
- * (d) indirilemeyen whisper'ın ölü diyalog AÇMADAN okunabilir yönlendirmeye
- * düştüğünü ve (e) gerçek kurulum sonrası orijinal eylemin otomatik yeniden
+ * (d) 7c-3'ten sonra whisper'ın da ffmpeg gibi kurulum diyaloğunu açtığını
+ * (eski "indirilemeyen whisper → ölü diyalog yok, yalnız dürüst metin" dalı
+ * KALDIRILDI) ve (e) gerçek kurulum sonrası orijinal eylemin otomatik yeniden
  * denendiğini.
  *
  * NEDEN DOSYALAR GEÇİCİ YEDEĞE ALINIR (temiz profil taklidi):
@@ -85,6 +86,8 @@ const RUN_REGRESSIONS = argv.has('--with-regressions') || process.env.JV_WITH_RE
 // üretim koduna string kopyası eklenmez.
 const MARKER = 'BILESEN_EKSIK';
 const COMPONENT_ID = 'ffmpeg';
+// Whisper motoru satırının kullanıcıya dönük etiketi (kayıt: `components.rs`).
+const WHISPER_LABEL = 'Whisper motoru';
 const TMP_DIR_NAME = 'component-gate-tmp';
 const TITLE_A = 'Sonda kapı kaynağı A';
 const TITLE_B = 'Sonda kapı kaynağı B';
@@ -359,10 +362,11 @@ const stepBaseline = async (ctx) => {
 
   report('taban: ffmpeg kurulu (sınama ön koşulu)', ffmpeg?.installed === true, `installed=${ffmpeg?.installed}`);
   report('taban: ffprobe kurulu (sınama ön koşulu)', ffprobe?.installed === true, `installed=${ffprobe?.installed}`);
-  // whisper'ın İNDİRİLEMEZ olması 7c-2'nin bilinçli kararıdır (indirme yolu 7c-3'te).
+  // 7c-3: whisper artık kayıtta pinli indirme kaynağı taşır → Bileşenler'den
+  // kurulabilir; arayüzdeki kurulum kapısı da ffmpeg ile aynı akıştan geçer.
   report(
-    'taban: whisper indirilemez (downloadable=false; 7c-3 kararı)',
-    whisper?.downloadable === false,
+    'taban: whisper indirilebilir (downloadable=true; 7c-3)',
+    whisper?.downloadable === true,
     `downloadable=${whisper?.downloadable}`,
   );
   report(
@@ -523,23 +527,39 @@ const stepInstallCancel = async (ctx) => {
 };
 
 /**
- * Altyazı aracı. İki duruma DÜRÜSTÇE uyum sağlar:
+ * Altyazı aracı (7c-3 sözleşmesi).
  *
- * - Motor çalışmıyorsa (`whisper_available=false`) `guardReady()` üç düğmeyi de
- *   backend'e Gitmeden durdurur → kullanıcı ölü bir kurulum diyaloğu DEĞİL,
- *   okunabilir "Ayarlar → Konuşma" yönlendirmesini görür. 7c-2'nin whisper
- *   sözleşmesi tam olarak budur.
- * - Motor çalışıyorsa transkript/gömme/çıkarma önce ffmpeg ister → ffmpeg
- *   kurulum diyaloğu açılır (kapı). Bu dal ortama bağlıdır ve kaydedilir.
+ * Kurulum diyaloğu AÇILIR — ffmpeg de whisper da aynı ortak akıştan geçer:
+ * - Motor çalışıyorsa (`whisper_available=true`) transkript önce ffmpeg ister →
+ *   ffmpeg kurulum diyaloğu açılır.
+ * - Motor eksikse backend `BILESEN_EKSIK:whisper` döner → whisper kurulum
+ *   diyaloğu açılır. 7c-3'ten ÖNCEKİ "ölü diyalog yok, yalnız dürüst metin" dalı
+ *   KALDIRILDI; bu yüzden artık burada diyalog BEKLENİR (eski dal artık yanlıştı).
+ *
+ * Tek istisna model ön kontrolüdür: seçili model diskte yoksa arayüz backend'e
+ * gitmeden okunabilir bir uyarı gösterir (diyalog yok). Bu, whisper kapısının
+ * ulaşılamadığı dürüst bir durumdur → "atlandı/kanıtlanmadı" yazılır, GEÇTİ değil.
  */
 const stepSubtitleTool = async (ctx) => {
-  const { page, report, artifact, shot } = ctx;
+  const { page, report, skip, artifact, shot } = ctx;
   const status = await readWhisperStatus(page);
   const whisperAvailable = status?.whisper_available === true;
+  // Arayüz `getWhisperModel()` ile aynı kural: yalnız "tiny"/"small" seçilir, aksi "base".
+  const rawModel = await page
+    .evaluate(() => window.localStorage.getItem('jv-whisper-model') ?? 'base')
+    .catch(() => 'base');
+  const selectedModel = rawModel === 'tiny' || rawModel === 'small' ? rawModel : 'base';
+  const modelReady = status?.models?.[selectedModel] === true;
   const entry = {
     uiDriven: true,
     whisperAvailable,
-    mode: whisperAvailable ? 'ffmpeg kapısı (motor kullanılabilir)' : 'whisper dürüst yönlendirme (motor kullanılamıyor)',
+    selectedModel,
+    modelReady,
+    mode: whisperAvailable
+      ? 'ffmpeg kapısı (motor kullanılabilir)'
+      : modelReady
+        ? 'whisper kurulum kapısı (motor eksik, model var)'
+        : 'model eksik (backend kapısına ulaşılamaz)',
     dialogs: [],
     dialogFound: false,
     guidanceFound: false,
@@ -551,20 +571,21 @@ const stepSubtitleTool = async (ctx) => {
     await openTool(page, 'Altyazı');
     await selectSource(page, TITLE_A);
     await page.getByRole('button', { name: /Transkript üret/ }).first().click();
-    await sleep(2500);
 
-    entry.dialogFound = await isInstallDialogVisible(page);
-    const body = await page.evaluate(() => document.body?.innerText ?? '');
-    const line = body.split(/\r?\n/).find((l) => /kurulu değil/i.test(l) && /Konuşma/i.test(l)) ?? null;
-    entry.guidanceFound = Boolean(line);
-    entry.guidanceText = line;
+    // Diyalog YALNIZCA model hazırsa açılabilir: transkript önce modeli arar;
+    // model yoksa backend'e hiç gidilmez (dürüst ön kontrol). Sabit `sleep` YOK.
+    entry.dialogFound = await waitUntil(
+      () => isInstallDialogVisible(page),
+      modelReady ? 20_000 : 4_000,
+      300,
+    );
 
-    if (whisperAvailable) {
+    if (modelReady && whisperAvailable) {
       // Motor çalışıyor: transkript önce ffmpeg ister → ffmpeg kapısı beklenir.
       const dialog = await waitForInstallDialog(page, 15_000);
       if (dialog) {
         const info = await readDialog(dialog, COMPONENT_ID);
-        entry.dialogs.push({ trigger: 'Transkript üret', dialog: info });
+        entry.dialogs.push({ trigger: 'Transkript üret', expected: COMPONENT_ID, dialog: info });
         report('Altyazı (transkript): ffmpeg kurulum diyaloğu açıldı', info.hasLabel && info.indir, info.sizeText ?? '');
         const scan = await scanMarker(page);
         report('Altyazı (transkript): önek DOM\'da YOK', markerClean(scan), markerDetail(scan));
@@ -572,31 +593,54 @@ const stepSubtitleTool = async (ctx) => {
       } else {
         report('Altyazı (transkript): ffmpeg kurulum diyaloğu açıldı', false, 'diyalog görünmedi');
       }
-    } else {
-      // 7c-2 whisper sözleşmesi: ölü diyalog YOK + okunabilir yönlendirme.
-      report('whisper: ölü kurulum diyaloğu AÇILMADI', !entry.dialogFound, entry.dialogFound ? 'diyalog açıldı' : 'diyalog yok');
-      report('whisper: okunabilir yönlendirme cümlesi görünüyor', entry.guidanceFound, line ?? '(cümle bulunamadı)');
-      entry.markerScan = await scanMarker(page);
-      report('whisper: önek DOM\'da YOK', markerClean(entry.markerScan), markerDetail(entry.markerScan));
-      await closeInstallDialog(page);
-      await shot('component-gate-whisper-guidance.png');
-    }
-
-    // Göm/Çıkar ffmpeg dalı YALNIZ motor kullanılabilirken kapıya ulaşır; aksi
-    // halde aynı guardReady durdurur (yukarıdaki dürüst yönlendirme).
-    if (whisperAvailable) {
-      await page.getByRole('button', { name: /Altyazıyı çıkar/ }).first().click();
+    } else if (modelReady) {
+      // 7c-3 manşeti: whisper artık indirilebilir → kurulum diyaloğu beklenir.
       const dialog = await waitForInstallDialog(page, 15_000);
       if (dialog) {
-        const info = await readDialog(dialog, COMPONENT_ID);
-        entry.dialogs.push({ trigger: 'Altyazıyı çıkar', dialog: info });
-        report('Altyazı (çıkar): ffmpeg kurulum diyaloğu açıldı', info.hasLabel && info.indir, info.sizeText ?? '');
+        const info = await readDialog(dialog, WHISPER_LABEL);
+        entry.dialogs.push({ trigger: 'Transkript üret', expected: 'whisper', dialog: info });
+        report('whisper: kurulum diyaloğu açıldı (indirilebilir)', info.hasLabel && info.indir, info.sizeText ?? '');
         const scan = await scanMarker(page);
-        report('Altyazı (çıkar): önek DOM\'da YOK', markerClean(scan), markerDetail(scan));
+        report('whisper: önek DOM\'da YOK', markerClean(scan), markerDetail(scan));
+        await shot('component-gate-whisper-dialog.png');
         await closeInstallDialog(page);
       } else {
-        report('Altyazı (çıkar): ffmpeg kurulum diyaloğu açıldı', false, 'diyalog görünmedi');
+        report('whisper: kurulum diyaloğu açıldı (indirilebilir)', false, 'diyalog görünmedi');
       }
+    } else {
+      // Model yok: arayüz backend'e gitmeden dürüst uyarı gösterir; whisper kapısı
+      // bu ortamda SÜRÜLEMEZ → kanıtlanmadı (GEÇTİ sayılmaz).
+      const modelBody = await page.evaluate(() => document.body?.innerText ?? '');
+      const modelLine = modelBody.split(/\r?\n/).find((l) => /modeli indirilmedi/i.test(l)) ?? null;
+      report(
+        'whisper: model eksikken dürüst uyarı görünüyor (diyalog yok)',
+        Boolean(modelLine) && !entry.dialogFound,
+        modelLine ?? '(cümle bulunamadı)',
+      );
+      skip('whisper: motor eksikken kurulum diyaloğu açılır', `seçili model "${selectedModel}" indirilmemiş; backend kapısına ulaşılamıyor`);
+    }
+
+    // Eski "dürüst yönlendirme" (Ayarlar → Konuşma) dalı 7c-3'te KALDIRILDI:
+    // hiçbir koşulda o metin görünmemeli.
+    const body = await page.evaluate(() => document.body?.innerText ?? '');
+    const legacyLine = body.split(/\r?\n/).find((l) => /kurulu değil/i.test(l) && /Konuşma/i.test(l)) ?? null;
+    entry.guidanceFound = Boolean(legacyLine);
+    entry.guidanceText = legacyLine;
+    report('whisper: eski tek-yönlendirme metni DOM\'da YOK (dal kaldırıldı)', !legacyLine, legacyLine ?? '(yok)');
+
+    // Göm/Çıkar YALNIZCA ffmpeg ister (whisper ön kontrolü yok) → her ortamda
+    // ffmpeg kapısına ulaşır ve kurulum diyaloğunu açar.
+    await page.getByRole('button', { name: /Altyazıyı çıkar/ }).first().click();
+    const dialog = await waitForInstallDialog(page, 15_000);
+    if (dialog) {
+      const info = await readDialog(dialog, COMPONENT_ID);
+      entry.dialogs.push({ trigger: 'Altyazıyı çıkar', expected: COMPONENT_ID, dialog: info });
+      report('Altyazı (çıkar): ffmpeg kurulum diyaloğu açıldı', info.hasLabel && info.indir, info.sizeText ?? '');
+      const scan = await scanMarker(page);
+      report('Altyazı (çıkar): önek DOM\'da YOK', markerClean(scan), markerDetail(scan));
+      await closeInstallDialog(page);
+    } else {
+      report('Altyazı (çıkar): ffmpeg kurulum diyaloğu açıldı', false, 'diyalog görünmedi');
     }
   } catch (error) {
     const message = String(error?.message ?? error);
@@ -773,7 +817,7 @@ const main = async () => {
   const artifact = {
     kind: 'component-gate-probe',
     synthetic: false,
-    note: 'Faz 7c-2: ffmpeg gizliyken arayüzden tetiklenen eksik bileşen diyaloğu (etiket+boyut+İndir/İptal), önek DOM\'da yok, whisper dürüst yönlendirmesi ve (gerçek indirme koşulursa) kurulum sonrası otomatik yeniden deneme.',
+    note: 'Faz 7c-2/7c-3: ffmpeg gizliyken arayüzden tetiklenen eksik bileşen diyaloğu (etiket+boyut+İndir/İptal), önek DOM\'da yok, whisper artık indirilebilir olduğu için aynı kurulum diyaloğunu açıyor ve (gerçek indirme koşulursa) kurulum sonrası otomatik yeniden deneme.',
     capturedAt: new Date().toISOString(),
     appUrl: page.url(),
     quick: quickFlag,
@@ -864,8 +908,9 @@ const main = async () => {
       triggerLabel: 'kaynak seçimi → TrimEditor media_probe (gerçek arayüz)',
     });
 
-    // 3) Altyazı: whisper indirilemezse dürüst yönlendirme (ölü diyalog yok);
-    //    motor kullanılabilirse ffmpeg kapısı. Ortam gerçeği kaydedilir.
+    // 3) Altyazı: motor eksikse whisper kurulum kapısı, motor varsa ffmpeg kapısı
+    //    (7c-3: whisper artık indirilebilir; eski "yalnız dürüst metin" dalı YOK).
+    //    Model eksikse arayüz dürüst model uyarısında durur (atlandı olarak yazılır).
     await stepSubtitleTool(ctx);
 
     // 4) Küresel önek taraması.
@@ -898,12 +943,14 @@ const main = async () => {
         reason: 'Gerçek bir download_media hatası gerektirir; sonda bu yolu sürmez. Render sınırındaki çözümleme statik olarak denetlendi.',
       },
     ];
-    // Motor kullanılamıyorsa SubtitleTool'un göm/çıkar ffmpeg dalı guardReady ile
-    // durur; bu bir kusur değil, dürüst davranıştır — ama o dal SÜRÜLMEDİ.
-    if (artifact.whisper && artifact.whisper.whisperAvailable === false) {
+    // 7c-3: whisper artık indirilebilir olduğundan motor eksikken transkript
+    // whisper kurulum diyaloğunu açar; göm/çıkar ise her ortamda ffmpeg kapısına
+    // ulaşır (yukarıda sürüldü). Eski guardReady notu bu yüzden KALDIRILDI.
+    // Yalnızca seçili model diskte yoksa backend kapısı sürülemez → dürüstçe bildir.
+    if (artifact.whisper && artifact.whisper.mode === 'model eksik (backend kapısına ulaşılamaz)') {
       artifact.notDriven.push({
-        screen: 'Altyazı — göm/çıkar ffmpeg kapısı (embed_subtitle / extract_subtitle)',
-        reason: 'whisper motoru kullanılamadığından SubtitleTool.guardReady() üç eylemi de backend\'e gitmeden durdurur; ffmpeg sinyali bu ortamda o dala ulaşamaz. Aynı ffmpeg kapısı Dönüştürücü/GIF/Birleştir/Sessizlik senaryolarıyla kapsanır.',
+        screen: 'Altyazı — transkript whisper kurulum kapısı (transcribe → BILESEN_EKSIK:whisper)',
+        reason: `Seçili whisper modeli ("${artifact.whisper.selectedModel}") diskte yok; arayüz model ön kontrolünde durur ve backend kapısına ulaşılmaz. Bu bir kusur değil, dürüst ön kontroldür; dal kanıtlanmadı.`,
       });
     }
   } catch (error) {
@@ -981,7 +1028,7 @@ const main = async () => {
 
   try {
     writeFileSync(resolve(OUT_DIR, 'component-gate-probe.json'), JSON.stringify(artifact, null, 2), 'utf8');
-    console.log('\nprovenance: component-gate-probe.json + component-gate-dialog.png + component-gate-whisper-guidance.png');
+    console.log('\nprovenance: component-gate-probe.json + component-gate-dialog.png + component-gate-whisper-dialog.png');
   } catch (error) {
     const message = String(error?.message ?? error);
     errors.push({ step: 'artifact', message });

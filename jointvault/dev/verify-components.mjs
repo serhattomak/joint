@@ -87,24 +87,48 @@ const main = async () => {
     `kayıt=${byId.ffprobe?.installed} · health=${data.health.ffprobe.available}`,
   );
 
-  /* --- Bağımsız dosya kontrolü: kurulu denen her bileşenin yolu diskte olmalı --- */
+  /* --- Bağımsız dosya kontrolü: kurulu denen her bileşenin yolu diskte olmalı.
+   * Bu kontrol VERİ DOSYALARINI da kapsar (`kind: "asset"`): kurulu bir `.gguf`
+   * de "kuruludur" ve yolu diskte olmalıdır. */
   const claimed = data.components.filter((c) => c.installed);
+  const claimedAssets = claimed.filter((c) => c.kind === 'asset');
   const missingOnDisk = claimed.filter((c) => !existsSync(c.path ?? ''));
   report(
-    'kurulu denen her bileşenin dosyası diskte VAR',
+    'kurulu denen her bileşenin dosyası diskte VAR (veri dosyaları dâhil)',
     missingOnDisk.length === 0,
-    missingOnDisk.map((c) => c.id).join(', ') || `${claimed.length} bileşen doğrulandı`,
+    missingOnDisk.map((c) => c.id).join(', ') ||
+      `${claimed.length} bileşen doğrulandı (${claimedAssets.length} veri dosyası)`,
   );
 
-  /* --- "Kurulu" demek yetmez: ya çalışıyor ya da durumu söyleniyor --- */
+  /* --- Tür-farkında "kurulu" hükmü -----------------------------------------
+   * Asset (veri dosyası: `.bin`/`.gguf`, cudart DLL kümesi) ÇALIŞTIRILMAZ:
+   * `runnable === false`, `version === null` — bu KASITLI (7c-3 `kind` sözleşmesi).
+   * Bu yüzden `runnable === Boolean(version)` iddiası YALNIZ binary'ler için
+   * anlamlıdır. Asset'ler `installed` (dosya var) ile değerlendirilir: kurulu bir
+   * model çalışmasa da "kullanılabilir" sayılır, aksi hâlde her açılışta yeniden
+   * indirmeye çalışılırdı. Türü ayrıştırmayan genel bir kontrol, bir gün asset'e
+   * yanlışlıkla çalıştırma yolu açılırsa sessiz kalırdı. */
+  const binaries = data.components.filter((c) => c.kind !== 'asset');
+  const assets = data.components.filter((c) => c.kind === 'asset');
   report(
-    'runnable alanı sürüm okumasıyla tutarlı',
-    data.components.every((c) => c.runnable === Boolean(c.version)),
+    'binary: runnable alanı sürüm okumasıyla tutarlı',
+    binaries.length > 0 && binaries.every((c) => c.runnable === Boolean(c.version)),
+    `${binaries.length} araç`,
+  );
+  report(
+    'asset: çalıştırılamaz (runnable=false, version=null); kuruluysa kullanılabilir',
+    assets.length > 0 &&
+      assets.every(
+        (c) => c.runnable === false && c.version === null && (!c.installed || existsSync(c.path ?? '')),
+      ),
+    `${assets.length} veri dosyası`,
   );
 
-  const broken = claimed.filter((c) => c.installed && !c.runnable);
+  // "Kurulu ama kullanılamıyor" yalnız ÇALIŞTIRILAMAYAN ARAÇLAR için kusurdur;
+  // kurulu veri dosyaları bu listeye GİRMEZ (onlar `kind` ile kullanılabilir).
+  const broken = claimed.filter((c) => !(c.kind === 'asset' || c.runnable));
   console.log(
-    `  kurulu ama çalıştırılamayan: ${broken.map((c) => c.id).join(', ') || '(yok)'}`,
+    `  kurulu ama kullanılamayan: ${broken.map((c) => c.id).join(', ') || '(yok)'}`,
   );
 
   ensureOutDir();

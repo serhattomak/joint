@@ -976,33 +976,52 @@ fn emit_done(app: &AppHandle, component_id: &str, job_id: &str) {
     );
 }
 
+/// Kurulum tarifini indirme motoruna bağla: plan → indir → kurulum-sonrası kanca.
+///
+/// Neden tek yol? Hedef klasör (Components / Models / Binaries), pin ve kurulum-sonrası
+/// adım (ör. arşivdeki `whisper-cli.exe` → `whisper.exe`) **kayıtta tek yerde** durur;
+/// komutlar bunları kendileri kurmaz. Hedefi burada `components_dir()`'e sabitlemek
+/// modelleri (`.bin`/`.gguf`) bileşen klasörüne indirirdi — sessiz bir yanlış-yer hatası.
+pub async fn install_component(
+    app: &AppHandle,
+    component_id: &str,
+    job_id: &str,
+    span: Option<(f64, f64)>,
+) -> Result<(), String> {
+    // Kuruluysa indirme YOK (bugünkü davranış) ama arayüz satırı "bitti"ye geçsin diye
+    // yine de %100 olayı yayılır.
+    if crate::components::is_installed(app, component_id) {
+        emit_done(app, component_id, job_id);
+        return Ok(());
+    }
+
+    let recipe = crate::components::install_recipe(app, component_id)?;
+    // `span`: iki arşivi tek çubukta göstermek isteyen çağıran (AI motoru) için;
+    // `None` ise 0–100.
+    let mut plan = plan_from_spec(recipe.download, recipe.dest_dir.clone());
+    plan.progress_span = span;
+
+    // Kayıt kuyruktan ÖNCE alınır: henüz sırada beklerken gelen iptal isteği de
+    // işaretlenebilsin. `run_download` iş kaydını sonunda temizler.
+    let cancel = register_job(job_id);
+    let _queue = crate::download::QUEUE.lock().await;
+    run_download(app, plan, job_id, cancel)
+        .await
+        .map_err(|err| err.user_message())?;
+
+    // Kurulum-sonrası kanca indirme BAŞARILI olduktan sonra çalışır; hata verirse
+    // sessizce yutulmaz (dosya yerinde ama kullanılamıyor olabilir — kullanıcı bilmeli).
+    crate::components::apply_post_install(&recipe.dest_dir, recipe.post_install)
+}
+
 /// Bileşen indirme komutu. `payload` = `{ componentId|component_id, jobId|job_id }`.
 ///
 /// Tek kuyruktan (`download::QUEUE`) çalışır; bitince işin `jobId`'sini döner.
-/// Kuruluysa indirme YOK (bugünkü davranış korunur) ama yine de %100 "done" olayı
-/// yayılır ki arayüz satırı "bitti" durumuna getirebilsin.
 #[tauri::command]
 pub async fn component_download(app: AppHandle, payload: Value) -> Result<String, String> {
     let component_id = payload_string(&payload, &["componentId", "component_id"])?;
     let job_id = payload_string(&payload, &["jobId", "job_id"])?;
-
-    if crate::components::is_installed(&app, &component_id) {
-        emit_done(&app, &component_id, &job_id);
-        return Ok(job_id);
-    }
-
-    let spec = crate::components::download_spec(&component_id)
-        .ok_or_else(|| format!("'{component_id}' bileşeni bu komuttan indirilemiyor."))?;
-    let dest_dir = crate::components::components_dir(&app)?;
-    let plan = plan_from_spec(spec, dest_dir);
-
-    // Kayıt kuyruktan ÖNCE alınır: henüz sırada beklerken gelen iptal isteği de
-    // işaretlenebilsin. `run_download` iş kaydını sonunda temizler.
-    let cancel = register_job(&job_id);
-    let _queue = crate::download::QUEUE.lock().await;
-    run_download(&app, plan, &job_id, cancel)
-        .await
-        .map_err(|err| err.user_message())?;
+    install_component(&app, &component_id, &job_id, None).await?;
     Ok(job_id)
 }
 
@@ -1494,10 +1513,12 @@ mod tests {
     }
 
     #[test]
-    fn registry_has_no_source_for_bundled_or_elsewhere_managed_components() {
-        // yt-dlp gömülü gelir; whisper kendi komutundan iner: bu komuttan inmezler.
+    fn registry_has_no_source_for_bundled_components() {
+        // yt-dlp paketle GÖMÜLÜ gelir (yol haritası kararı): indirme kaynağı yok.
         assert!(crate::components::download_spec("yt-dlp").is_none());
-        assert!(crate::components::download_spec("whisper").is_none());
         assert!(crate::components::download_spec("bilinmeyen").is_none());
+        // whisper artık 7c-3 ile kayıttan iner (motor DLL'leriyle birlikte geldiği için
+        // indirilen kopya ÇALIŞIR — gömülü kopyadaki DLL kusuru bu yolda yok).
+        assert!(crate::components::download_spec("whisper").is_some());
     }
 }

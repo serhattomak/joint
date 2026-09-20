@@ -12,6 +12,12 @@
  * geldiği için (bundle) iki ayrı ~186 MB indirme DEĞİL, tek indirme olarak
  * sunulur. Kurulum başarısında satırlar `components_status` yeniden okunarak
  * `kurulu`ya döner.
+ *
+ * 7c-3: satır listesi artık TÜM kayıttır (whisper motoru + 3 modeli, llama
+ * motoru, cudart, Qwen ve BGE dâhil) — ekran veri-güdümlü olduğu için yeni
+ * bileşenler kendiliğinden çizilir. Boyut `components_status.approx_mb`'den
+ * gelir: pin/YOK. "Kurulu mu?" kararı tür-farkındadır (`isUsable`): kurulu bir
+ * `.gguf`/`.bin` modeli çalışmasa da kuruludur ve bir daha indirmeye sunulmaz.
  */
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -23,11 +29,21 @@ import { useNotice } from '@/components/ui/notice';
 import { useComponentInstaller, type ActiveInstall } from '@/components/ComponentInstaller';
 import { describeError } from '@/lib/errors';
 import { useOpenTarget } from '@/lib/open-target';
-import type { ComponentStatus } from '@/lib/components';
+import { isUsable, type ComponentStatus } from '@/lib/components';
 
 const SOURCE_LABEL: Record<'downloaded' | 'bundled', string> = {
   downloaded: 'indirildi',
   bundled: 'paketle geldi',
+};
+
+/*
+ * Tür etiketi — satırın çalıştırılabilir mi yoksa veri dosyası mı olduğunu
+ * söyler. Boyutu tek başına göstermek "8.5 GB ne indiriyorum?" sorusunu açık
+ * bırakırdı; tür, kullanıcının neyi taahhüt ettiğini netleştirir.
+ */
+const KIND_LABEL: Record<'binary' | 'asset', string> = {
+  binary: 'araç',
+  asset: 'veri dosyası',
 };
 
 /** Fazın kullanıcıya dönük Türkçesi; beklenmeyen faz geldiği gibi gösterilir. */
@@ -38,12 +54,11 @@ const PHASE_LABEL: Record<string, string> = {
   done: 'tamamlandı',
 };
 
-/** Kurulmuş VE çalıştırılabiliyor mu. */
-function isUsable(component: ComponentStatus): boolean {
-  return component.installed && component.runnable;
-}
-
-/** İndirilebilir ama kullanılamıyor: bu satır için indirme gerekir. */
+/*
+ * İndirilebilir ama kullanılamıyor: bu satır için indirme gerekir. Kullanılabilirlik
+ * `isUsable`'dan gelir (tür-farkında): kurulu bir model/asset "kullanılabilir"
+ * sayıldığı için bir daha indirmeye sunulmaz.
+ */
 function requiresInstall(component: ComponentStatus): boolean {
   return component.downloadable && !isUsable(component);
 }
@@ -130,6 +145,9 @@ function ComponentRow({
   onReveal: (path: string) => void;
 }) {
   const path = component.path;
+  // Tür-farkında kullanılabilirlik: kurulu bir asset çalışmasa da "kurulu"dur.
+  const usable = isUsable(component);
+  const kindLabel = component.kind ? KIND_LABEL[component.kind] : null;
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2">
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -137,11 +155,11 @@ function ComponentRow({
           {component.label}
           {!component.installed ? (
             <Stamp state="none">eksik</Stamp>
-          ) : component.runnable ? (
+          ) : usable ? (
             <Stamp state="local">kurulu</Stamp>
           ) : (
-            /* Dosya var ama çalışmıyor: sessiz kalmak yerine söyle.
-               (Bugün whisper böyle: DLL'leri yok — Faz 8'in konusu.) */
+            /* Dosya var ama binary çalışmıyor (ör. eksik DLL): sessiz kalma.
+               Asset'ler buraya DÜŞMEZ — onlar `usable` sayılır. */
             <Stamp state="error">çalıştırılamıyor</Stamp>
           )}
         </span>
@@ -154,6 +172,10 @@ function ComponentRow({
                   {' · '}
                   <span data-num>{component.version}</span>
                 </>
+              ) : component.kind === 'asset' ? (
+                /* Veri dosyasının sürümü OLMAZ; "okunamadı" demek onu kusurlu
+                   gösterirdi. Türünü dürüstçe söyleriz. */
+                ' · veri dosyası'
               ) : (
                 ' · sürüm okunamadı'
               )}
@@ -166,6 +188,7 @@ function ComponentRow({
             ) : (
               <>
                 indirilecek: ~<span data-num>{component.approx_mb}</span> MB
+                {kindLabel ? ` · ${kindLabel}` : ''}
               </>
             )
           ) : null}

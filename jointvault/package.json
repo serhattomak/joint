@@ -24,6 +24,7 @@
     "verify:component-download": "node dev/verify-component-download.mjs",
     "verify:missing-component": "node dev/verify-missing-component.mjs",
     "verify:component-gate": "node dev/verify-component-gate.mjs",
+    "verify:component-whisper": "node dev/verify-component-whisper.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

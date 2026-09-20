@@ -12,10 +12,17 @@ export type WhisperLang = 'auto' | 'tr' | 'en';
 // Ayarlar → Konuşma sekmesinden seçilir; ilk açılışta indirilmez (A10, lazy).
 export const WHISPER_MODEL_KEY = 'jv-whisper-model';
 
+/*
+ * Boyutlar kayıttaki (`components.rs`) `approx_mb` pinleriyle BİREBİR aynıdır:
+ * `whisper-model-tiny/base/small` = 74/141/465. 7c-3 öncesi burada 75/142/466
+ * yazıyordu ve Ayarlar → Bileşenler aynı modeller için farklı sayı gösterirdi
+ * (iki gerçek). Bileşen ekranı boyutu gerçek kaynaktan (`components_status`)
+ * okur; burası durum okunamadığında başvurulan tek ve doğru yedektir.
+ */
 export const WHISPER_MODELS: { id: WhisperModel; sizeMb: number; hint: string }[] = [
-  { id: 'tiny', sizeMb: 75, hint: 'En hızlı, kaba sonuç.' },
-  { id: 'base', sizeMb: 142, hint: 'Dengeli — önerilen.' },
-  { id: 'small', sizeMb: 466, hint: 'En doğru, yavaş + büyük indirme.' },
+  { id: 'tiny', sizeMb: 74, hint: 'En hızlı, kaba sonuç.' },
+  { id: 'base', sizeMb: 141, hint: 'Dengeli — önerilen.' },
+  { id: 'small', sizeMb: 465, hint: 'En doğru, yavaş + büyük indirme.' },
 ];
 
 export function getWhisperModel(): WhisperModel {

@@ -61,6 +61,7 @@ import {
   warmupAi,
   type AiStatus,
 } from '@/lib/ai';
+import type { ComponentStatus } from '@/lib/components';
 
 export type SettingsTab = 'view' | 'downloads' | 'speech' | 'ai' | 'diagnostics' | 'extension' | 'backup' | 'components';
 
@@ -114,6 +115,13 @@ export function SettingsView(props: SettingsViewProps) {
   const [engDl, setEngDl] = useState(false);
   const [engPercent, setEngPercent] = useState(0);
   const [engError, setEngError] = useState<string | null>(null);
+  /*
+   * Bileşen kayıt boyutları (id → approx_mb). Boyut ETİKETLERİ buradan türetilir:
+   * aynı modelin iki ekranda iki farklı sayı göstermesi (ör. BGE ~1.5 GB vs
+   * gerçek ~605 MB) "iki gerçek" üretirdi. Kayıttan okunamazsa harf/sayı
+   * uydurulmaz; ilgili etiket yedek pin değerine düşer.
+   */
+  const [componentSizes, setComponentSizes] = useState<Record<string, number>>({});
 
   // Yerel AI (Qwen 2.5 14B + BGE-M3 + llama-server)
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
@@ -137,6 +145,14 @@ export function SettingsView(props: SettingsViewProps) {
     setWhisperModelState(getWhisperModel());
     void getWhisperStatus().then(setWhisperStatus);
     void getAiStatus().then(setAiStatus).catch(() => null);
+    // Boyut etiketleri kayıttan gelir (tek gerçek); okunamazsa yedek pin değerleri.
+    void invoke<ComponentStatus[]>('components_status')
+      .then((rows) => {
+        const sizes: Record<string, number> = {};
+        for (const row of rows) sizes[row.id] = row.approx_mb;
+        setComponentSizes(sizes);
+      })
+      .catch(() => setComponentSizes({}));
     void invoke<string>('get_close_behavior')
       .then((m) => setCloseMode(m === 'quit' ? 'quit' : 'tray'))
       .catch(() => setCloseMode('tray'));
@@ -486,6 +502,17 @@ export function SettingsView(props: SettingsViewProps) {
     setWhisperModelState(m);
   };
 
+  /*
+   * Kayıttan (`components_status.approx_mb`) okunan dürüst boyut etiketi.
+   * Bilinmiyorsa BOŞ string: uydurma sayı yazmak yerine etiket gizlenir.
+   * `fallbackMb` yalnızca kayıt henüz okunamadıysa kullanılır ve kayıttaki
+   * pinle aynı tutulur (bkz. `whisper.ts WHISPER_MODELS`).
+   */
+  const sizeSuffix = (id: string, fallbackMb?: number): string => {
+    const mb = componentSizes[id] ?? fallbackMb;
+    return mb === undefined ? '' : ` (~${mb} MB)`;
+  };
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* Üst Bar */}
@@ -583,7 +610,7 @@ export function SettingsView(props: SettingsViewProps) {
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="text-sm font-medium">AI Motoru (llama-server)</span>
-                      <p className="text-xs text-muted-foreground">Yerel inference sunucusu (~40 MB)</p>
+                      <p className="text-xs text-muted-foreground">Yerel inference sunucusu{sizeSuffix('llama-engine')}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {aiStatus?.engine_available ? (
@@ -626,7 +653,7 @@ export function SettingsView(props: SettingsViewProps) {
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="text-sm font-medium">Qwen 2.5 14B-Instruct</span>
-                      <p className="text-xs text-muted-foreground">Ana Akıl & Sohbet Modeli (GGUF Q4_K_M ≈9 GB)</p>
+                      <p className="text-xs text-muted-foreground">Ana Akıl & Sohbet Modeli (GGUF Q4_K_M){sizeSuffix('ai-model-llm')}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {aiStatus?.llm_ready ? (
@@ -671,7 +698,7 @@ export function SettingsView(props: SettingsViewProps) {
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="text-sm font-medium">BGE-M3 Vektör Modeli</span>
-                      <p className="text-xs text-muted-foreground">Türkçe & Çok Dilli Semantik İndeksleme (≈1.5 GB)</p>
+                      <p className="text-xs text-muted-foreground">Türkçe & Çok Dilli Semantik İndeksleme{sizeSuffix('ai-model-embed')}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {aiStatus?.embed_ready ? (
@@ -899,7 +926,7 @@ export function SettingsView(props: SettingsViewProps) {
                 <div className="flex items-center justify-between rounded-xl border border-border bg-card/30 p-3.5 shadow-xs">
                   <div>
                     <p className="text-sm font-medium">Whisper motoru</p>
-                    <p className="text-xs text-muted-foreground">Yerel whisper.cpp CLI yürütücüsü (~4 MB)</p>
+                    <p className="text-xs text-muted-foreground">Yerel whisper.cpp CLI yürütücüsü{sizeSuffix('whisper', 4)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {whisperStatus?.whisper_available ? (
@@ -946,7 +973,9 @@ export function SettingsView(props: SettingsViewProps) {
                           <div className="flex min-w-0 flex-1 flex-col">
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-medium capitalize">{m.id}</span>
-                              <span className="font-mono text-xs text-muted-foreground">(~{m.sizeMb} MB)</span>
+                              <span className="font-mono text-xs text-muted-foreground">
+                                (~{componentSizes[`whisper-model-${m.id}`] ?? m.sizeMb} MB)
+                              </span>
                               {isSelected && <Stamp state="active">aktif</Stamp>}
                             </div>
                             <p className="text-xs text-muted-foreground">{m.hint}</p>

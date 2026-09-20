@@ -16,18 +16,50 @@ export interface ComponentStatus {
   label: string;
   /** İndirme boyutu; aynı arşivi paylaşan satırlar aynı sayıyı taşır. */
   approx_mb: number;
+  /*
+   * Bileşenin TÜRÜ — "çalıştırılamıyor" hükmünün tek kaynağı (Rust `Kind`):
+   *   - `binary`: çalıştırılabilir dosya; `runnable` yalnızca bu türde anlamlıdır.
+   *   - `asset`: veri dosyası (`.bin`/`.gguf` modeller ve cudart DLL kümesi).
+   *     Kurulu olması DOSYANIN VARLIĞI demektir; hiçbir zaman çalışmaz, sürümü
+   *     sorulmaz — bu bir kusur değil, "kurulum ≠ çalıştırma"dır. Kurulu asset
+   *     yine de KULLANILABİLİR sayılır (bkz. `isUsable`).
+   *
+   * Alan geriye uyumluluk için opsiyoneldir: backend her zaman gönderir, ama
+   * eski bir gövde `kind` taşımıyorsa tür kararı `runnable` yedeğine düşer
+   * (fail-closed) — böylece türü bilinmeyen bir satır yanlışlıkla "kullanılamaz"
+   * sayılıp yeniden indirilmez.
+   */
+  kind?: 'binary' | 'asset';
   installed: boolean;
   /** Dosya var VE çalıştırılabiliyor mu (sürüm okunabildi mi). */
   runnable: boolean;
   path: string | null;
   source: 'downloaded' | 'bundled' | null;
   version: string | null;
-  /** Pinlenmiş kaynağı olmayan bileşen indirilebilir SAYILMAZ (yt-dlp, whisper). */
+  /** Pinlenmiş kaynağı olmayan bileşen indirilebilir SAYILMAZ (ör. gömülü yt-dlp). */
   downloadable: boolean;
   /** Aynı arşivi paylaşan satırların paket kimliği (ör. `ffmpeg-tools`). */
   bundle: string | null;
   /** İçerik biçimi: `archive` (zip) ya da `plain`; indirilemeyende null. */
   framework: 'archive' | 'plain' | null;
+}
+
+/*
+ * Kurulu bir bileşen KULLANILABİLİR mi? Backend'deki `components::is_usable`
+ * kuralının BİREBİR aynısı:
+ *
+ *   installed && (kind === 'asset' || runnable)
+ *
+ * Neden yalnızca `runnable` yetmez? Kurulu bir `.bin`/`.gguf` modeli hiçbir zaman
+ * çalışmaz (`runnable === false`, `version === null` — bu KASITLI, 7a sondası
+ * `runnable === Boolean(version)` bekler). Eski `installed && runnable` kontrolü
+ * onu "çalıştırılamıyor" gösterip her açılışta yeniden indirmeye çalışırdı. Tür
+ * kararı bu yüzden `kind` ile verilir; `kind` yoksa (eski gövde) `runnable`
+ * yedeğine düşeriz. Tek tanım burada yaşar; iki ekran da buradan okur ki
+ * ayrışmasınlar.
+ */
+export function isUsable(component: ComponentStatus): boolean {
+  return component.installed && (component.kind === 'asset' || component.runnable);
 }
 
 /** İndirme fazları (Rust `phase` alanının sözleşmesi). */
@@ -194,7 +226,35 @@ const MISSING_COMPONENT_FALLBACKS = new Map<string, string>([
   ],
   [
     'whisper',
-    'Whisper motoru kurulu değil. Altyazı işlemleri bu motoru kullanır; Ayarlar → Konuşma bölümünden indirebilirsin.',
+    'Whisper motoru kurulu değil. Altyazı işlemleri bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'whisper-model-tiny',
+    "Whisper 'tiny' modeli kurulu değil. Hızlı taslak transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
+    'whisper-model-base',
+    "Whisper 'base' modeli kurulu değil. Dengeli hız/doğruluk için kullanılan transkript modelidir; Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
+    'whisper-model-small',
+    "Whisper 'small' modeli kurulu değil. Daha yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
+    'llama-engine',
+    'llama-server motoru kurulu değil. Yerel sohbet, özetleme ve etiketleme bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'llama-cudart',
+    "CUDA çalışma zamanı kütüphaneleri (cudart/cublas) kurulu değil. llama-server'ın GPU'da çalışması bunlara bağlıdır; Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
+    'ai-model-llm',
+    'Qwen 2.5 14B sohbet modeli kurulu değil. Yerel sohbet ve özetleme bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'ai-model-embed',
+    'BGE-M3 gömme modeli kurulu değil. Anlamsal arama ve etiketleme bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
   ],
 ]);
 

@@ -1,4 +1,4 @@
-use crate::component_download::{self, DownloadPlan, Payload};
+use crate::component_download::install_component;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -16,28 +16,9 @@ const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 600; // 10 dakika
 const CHAT_PORT: u16 = 28080;
 const EMBED_PORT: u16 = 28081;
 
-// Kararlı llama.cpp CUDA 12.4 sürümü (Windows x64)
-const LLAMA_ENGINE_URL: &str =
-    "https://github.com/ggml-org/llama.cpp/releases/download/b10964/llama-b10964-bin-win-cuda-12.4-x64.zip";
-const LLAMA_CUDART_URL: &str =
-    "https://github.com/ggml-org/llama.cpp/releases/download/b10964/cudart-llama-bin-win-cuda-12.4-x64.zip";
-
-// Varsayılan Model URL'leri (Hugging Face)
-const QWEN_14B_URL: &str =
-    "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf";
-const QWEN_14B_FILE: &str = "Qwen2.5-14B-Instruct-Q4_K_M.gguf";
-
-const BGE_M3_URL: &str =
-    "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf";
-const BGE_M3_FILE: &str = "bge-m3-Q8_0.gguf";
-
-// Pinlenmiş sha256 (context.md kaynak tablosuyla birebir; yayıncı beyanı).
-// İndirme sırasında paylaşılan motorda yeniden doğrulanır — eskiden AI
-// indirmelerinde hiç bütünlük kontrolü yoktu, artık bozuk/kısmi arşiv kuruluma giremez.
-const LLAMA_ENGINE_SHA256: &str = "264f20d7ee3860aecca9ec12418357a9f3e80349a2b186f66c63859ded1a9593";
-const LLAMA_CUDART_SHA256: &str = "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6";
-const QWEN_14B_SHA256: &str = "e47ad95dad6ff848b431053b375adb5d39321290ea2c638682577dafca87c008";
-const BGE_M3_SHA256: &str = "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167";
+// NOT (7c-3): llama.cpp motoru, CUDA çalışma zamanı, Qwen ve BGE pinleri artık
+// kayıtta (`components.rs`) TEK yerde durur; burada URL/sha256/dosya kopyası
+// YOKTUR. İndirmeler `component_download::install_component` üzerinden yürür.
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AiConfig {
@@ -89,24 +70,27 @@ fn get_str(payload: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("Eksik zorunlu parametre: {key}"))
 }
 
+/// Model klasörü — kayıttaki `Dest::Models` hedefiyle AYNI yer.
+///
+/// Neden delege? Klasör ADI (`jointvault-models`) hem burada hem kayıtta yazılırsa
+/// zamanla ayrışır ve `components_status` "kurulu" derken AI "bulunamadı" derdi.
+/// Tek tanım `components::dest_dir`'dir; hata metni de oradan gelir.
 pub fn models_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("jointvault-models");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Model klasörü açılamadı: {e}"))?;
-    Ok(dir)
+    crate::components::dest_dir(app, crate::components::Dest::Models)
 }
 
+/// AI ikili klasörü — kayıttaki `Dest::Binaries` hedefiyle AYNI yer.
+/// Gerekçe `models_dir` ile aynıdır: yolun tek kaynağı kayıt olmalıdır.
 pub fn binaries_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("jointvault-binaries");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Binary klasörü açılamadı: {e}"))?;
-    Ok(dir)
+    crate::components::dest_dir(app, crate::components::Dest::Binaries)
+}
+
+/// Kayıttaki bileşen dosya adını çöz (tek kaynak: `components::spec_for`).
+///
+/// Dosya adı burada da yazılırsa kayıtla ayrışabilir ve kurulu bir `.gguf`/exe
+/// "bulunamadı" görünerek gereksiz yeniden indirmeye yol açabilir; ad kayıttan okunur.
+fn component_file_name(id: &str) -> Option<&'static str> {
+    crate::components::spec_for(id).map(|spec| spec.downloaded_file)
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -143,9 +127,12 @@ fn resolve_engine_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
         }
     }
     if let Ok(bdir) = binaries_dir(app) {
-        let p = bdir.join("llama-server.exe");
-        if p.exists() {
-            return Some(p);
+        // Motorun çalıştırılabilir adı da kayıttan gelir (`llama-engine`); kopya YOK.
+        if let Some(file) = component_file_name("llama-engine") {
+            let p = bdir.join(file);
+            if p.exists() {
+                return Some(p);
+            }
         }
         let p2 = bdir.join("llama-server");
         if p2.exists() {
@@ -163,9 +150,12 @@ fn resolve_llm_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
         }
     }
     if let Ok(mdir) = models_dir(app) {
-        let p = mdir.join(QWEN_14B_FILE);
-        if p.exists() {
-            return Some(p);
+        // Kanonik ad kayıttan gelir (`ai-model-llm`); kopya sabit YOK.
+        if let Some(file) = component_file_name("ai-model-llm") {
+            let p = mdir.join(file);
+            if p.exists() {
+                return Some(p);
+            }
         }
         // Geriye dönük veya farklı adlandırılmış Qwen modelleri için tarama
         if let Ok(entries) = std::fs::read_dir(&mdir) {
@@ -188,9 +178,12 @@ fn resolve_embed_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
         }
     }
     if let Ok(mdir) = models_dir(app) {
-        let p = mdir.join(BGE_M3_FILE);
-        if p.exists() {
-            return Some(p);
+        // Kanonik ad kayıttan gelir (`ai-model-embed`); kopya sabit YOK.
+        if let Some(file) = component_file_name("ai-model-embed") {
+            let p = mdir.join(file);
+            if p.exists() {
+                return Some(p);
+            }
         }
         // Geriye dönük veya farklı adlandırılmış BGE-M3 modelleri için tarama
         if let Ok(entries) = std::fs::read_dir(&mdir) {
@@ -544,134 +537,25 @@ pub async fn ai_stop_server() -> Result<(), String> {
     Ok(())
 }
 
-// Pin tablosundaki indirme boyutları (MiB). Sunucu `Content-Length` vermezse
-// ilerleme çubuğunun toplamı bunlar olur; motor yalnızca yedek olarak kullanır.
-const MIB: u64 = 1024 * 1024;
-const LLAMA_ENGINE_MIB: u64 = 242;
-const LLAMA_CUDART_MIB: u64 = 373;
-const QWEN_14B_MIB: u64 = 8572;
-const BGE_M3_MIB: u64 = 605;
-
-// Disk kapısı için TEPE kullanım tahminleri.
-//
-// Neden indirilenden büyük: motor arşivi `.part` olarak HEDEF klasörde tutar ve
-// çıkarmayı da aynı klasöre yapar; doğrulama bitene kadar ikisi bir arada durur.
-// llama.cpp arşivi açıldığında CUDA backend DLL'i (ggml-cuda.dll) tek başına
-// arşivi katlar; CPU backend varyantları ve `libomp.dll` de eklenir. Doğru sayı
-// gelmezse kullanıcı gereksiz yere engellenir ya da indirme sonunda "yer yok"
-// görür — kesin koruma akış sırasındaki `WriteFailed`'dır. Bu yüzden cömert bir
-// üst sınır veriyoruz, dar bir kapı değil.
-const LLAMA_ENGINE_PEAK_BYTES: u64 = 1_200 * MIB; // ~242 MiB arşiv + ~900 MiB açılan
-const LLAMA_CUDART_PEAK_BYTES: u64 = 1_500 * MIB; // ~373 MiB arşiv + ~1.1 GiB açılan (cublas/cublasLt)
-// Zip-bomba koruması (tek arşiv girdisi). Arşiv zaten sha256 ile pinli olduğundan bu
-// bir emniyet kemeridir; ama gerçek girdiler yüzlerce MB olduğu için cömert olmalı —
-// aksi hâlde meşru `ggml-cuda.dll` reddedilir.
-const AI_ENGINE_MAX_ENTRY_BYTES: u64 = 2 * 1024 * MIB;
-
-/// llama.cpp CUDA 12.4 Windows arşivinden çıkarılacak dosyalar.
-///
-/// Motor yalnızca ADI VERİLEN girdileri çıkarır (eşleşmeyen ad sessizce atlanır),
-/// bu yüzden liste tam olmalı. Kaynak tarihli tag + sha256 ile pinlendiği için
-/// dosya adları da sabittir. `GGML_BACKEND_DL` açık: `ggml-*.dll` dosyaları çalışma
-/// anında exe yanından yüklenir; bu yüzden CPU varyantlarının tamamı listelenir
-/// (makinede desteklenmeyen varyant yalnızca yüklenmez). `libomp.dll` OpenMP çalışma
-/// zamanı; `llama.dll` ve `mtmd.dll` ise `llama-server.exe`'nin bağlı olduğu
-/// kütüphanelerdir. Yayın paketi = Windows CPU paketi + `ggml-cuda.dll`.
-const LLAMA_ENGINE_ENTRIES: &[&str] = &[
-    "llama-server.exe",
-    "llama.dll",
-    "mtmd.dll",
-    "ggml.dll",
-    "ggml-base.dll",
-    "ggml-cpu.dll",
-    "ggml-cuda.dll",
-    "ggml-rpc.dll",
-    "libomp.dll",
-    "ggml-cpu-x64.dll",
-    "ggml-cpu-sse42.dll",
-    "ggml-cpu-sandybridge.dll",
-    "ggml-cpu-ivybridge.dll",
-    "ggml-cpu-piledriver.dll",
-    "ggml-cpu-haswell.dll",
-    "ggml-cpu-skylakex.dll",
-    "ggml-cpu-cannonlake.dll",
-    "ggml-cpu-cascadelake.dll",
-    "ggml-cpu-icelake.dll",
-    "ggml-cpu-cooperlake.dll",
-    "ggml-cpu-zen4.dll",
-    "ggml-cpu-alderlake.dll",
-    "ggml-cpu-sapphirerapids.dll",
-];
-
-/// CUDA çalışma zamanı arşivi: yalnızca üç DLL (workflow `cudart64_*`, `cublas64_*`
-/// ve `cublasLt64_*` desenleriyle paketliyor). `ggml-cuda.dll` bunları exe yanında arar.
-const LLAMA_CUDART_ENTRIES: &[&str] = &["cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll"];
-
-/// `&[&str]` listesini motorun beklediği sahiplenilmiş `Vec<String>`'e çevir.
-fn wanted_entries(list: &[&str]) -> Vec<String> {
-    list.iter().map(|s| (*s).to_string()).collect()
-}
-
-/// Ortak indirme gövdesi: işi kaydet, tek motordan indir. Hata kullanıcıya Türkçe
-/// gider (`user_message`); teknik ayrıntı arayüze sızdırılmaz.
-async fn run_component_download(
-    app: &AppHandle,
-    plan: DownloadPlan,
-    job_id: &str,
-) -> Result<(), String> {
-    let cancel = component_download::register_job(job_id);
-    component_download::run_download(app, plan, job_id, cancel)
-        .await
-        .map_err(|e| e.user_message())
-}
+// NOT (7c-3): Pin boyutları, arşiv girdi listeleri (`wanted`), zip-bomba sınırları
+// ve indirme gövdesi artık burada DEĞİL. Hepsi kayıtta (`components.rs`) tanımlı ve
+// `component_download::install_component` üzerinden uygulanır; aşağıdaki komutlar
+// yalnızca delege eder. Böylece "ne iniyor" sorusunun tek kaynağı kalır.
 
 #[tauri::command]
 pub async fn ai_download_engine(app: AppHandle, payload: Value) -> Result<String, String> {
     let job_id = get_str(&payload, "job_id")?;
-    let bdir = binaries_dir(&app)?;
-    let target_exe = bdir.join("llama-server.exe");
 
-    // Tekli kuyruk: tüm indirmeler (medya/ffmpeg/whisper/AI) aynı disiplini paylaşır.
-    let _guard = crate::download::QUEUE.lock().await;
-
-    // 1. Ana llama-server + kütüphaneler — tek çubukta 0-50 (bugünkü aralık korunur).
-    //    `llama-server.exe` varsa indirme atlanır (bugünkü davranış korunur).
-    if !target_exe.exists() {
-        let plan = DownloadPlan {
-            component_id: "llama-engine".to_string(),
-            url: LLAMA_ENGINE_URL.to_string(),
-            sha256: LLAMA_ENGINE_SHA256.to_string(),
-            expected_bytes: Some(LLAMA_ENGINE_MIB * MIB),
-            disk_required_bytes: Some(LLAMA_ENGINE_PEAK_BYTES),
-            progress_span: Some((0.0, 50.0)),
-            payload: Payload::Zip {
-                dest_dir: bdir.clone(),
-                wanted: wanted_entries(LLAMA_ENGINE_ENTRIES),
-                max_entry_bytes: AI_ENGINE_MAX_ENTRY_BYTES,
-            },
-        };
-        run_component_download(&app, plan, &job_id).await?;
-    }
-
-    // 2. CUDA 12.4 Runtime kütüphaneleri (cublas64_12.dll, cudart64_12.dll) — 50-100.
-    //    İki arşiv aynı ilerleme göstergesini paylaşır: 0-50 / 50-100 (bugünkü gibi).
-    let cublas_dll = bdir.join("cublas64_12.dll");
-    if !cublas_dll.exists() {
-        let plan = DownloadPlan {
-            component_id: "llama-cudart".to_string(),
-            url: LLAMA_CUDART_URL.to_string(),
-            sha256: LLAMA_CUDART_SHA256.to_string(),
-            expected_bytes: Some(LLAMA_CUDART_MIB * MIB),
-            disk_required_bytes: Some(LLAMA_CUDART_PEAK_BYTES),
-            progress_span: Some((50.0, 100.0)),
-            payload: Payload::Zip {
-                dest_dir: bdir.clone(),
-                wanted: wanted_entries(LLAMA_CUDART_ENTRIES),
-                max_entry_bytes: AI_ENGINE_MAX_ENTRY_BYTES,
-            },
-        };
-        run_component_download(&app, plan, &job_id).await?;
-    }
+    // Sıra ve paylaşılan çubuk: iki arşiv TEK göstergeyi paylaşır (0–50 / 50–100).
+    // `span` bu yüzden motora verilir; pin/URL/zip listesi burada YOK.
+    //
+    // "Varsa atla" davranışı `install_component`'ta korunur: kayıt hedef dosya
+    // (`llama-server.exe` / `cublas64_12.dll`) varsa indirmeyi atlar ve %100 olayı yayar.
+    //
+    // ÖNEMLİ: kuyruk kilidi (`download::QUEUE`) `install_component` içinde alınır;
+    // burada ayrıca ALINMAZ (alınsaydı iç çağrı kilitlenirdi).
+    install_component(&app, "llama-engine", &job_id, Some((0.0, 50.0))).await?;
+    install_component(&app, "llama-cudart", &job_id, Some((50.0, 100.0))).await?;
 
     Ok("done".to_string())
 }
@@ -680,43 +564,18 @@ pub async fn ai_download_engine(app: AppHandle, payload: Value) -> Result<String
 pub async fn ai_download_model(app: AppHandle, payload: Value) -> Result<String, String> {
     let model_type = get_str(&payload, "model_type")?; // "llm" veya "embed"
     let job_id = get_str(&payload, "job_id")?;
-    let mdir = models_dir(&app)?;
 
-    let (url, sha256, mib, filename) = if model_type == "llm" {
-        (QWEN_14B_URL, QWEN_14B_SHA256, QWEN_14B_MIB, QWEN_14B_FILE)
+    // Tür → kayıt kimliği eşlemesi tek yerde. "llm" dışındaki değer, mevcut
+    // davranışı koruyarak gömme modeline düşer (payload şekli ve "done" dönüşü sabit).
+    let component_id = if model_type == "llm" {
+        "ai-model-llm"
     } else {
-        (BGE_M3_URL, BGE_M3_SHA256, BGE_M3_MIB, BGE_M3_FILE)
+        "ai-model-embed"
     };
 
-    // Tekli kuyruk: indirmeler seri (medya/ffmpeg/whisper/AI).
-    let _guard = crate::download::QUEUE.lock().await;
-
-    let target = mdir.join(filename);
-    // Mevcut dosya varsa indirme atlanır (bugünkü davranış): sha256 yalnızca yeni
-    // indirilen dosyaya uygulanır, kullanıcının elindeki `.gguf` yeniden doğrulanmaz.
-    if target.exists() {
-        return Ok("done".to_string());
-    }
-
-    let plan = DownloadPlan {
-        component_id: if model_type == "llm" {
-            "ai-model-llm".to_string()
-        } else {
-            "ai-model-embed".to_string()
-        },
-        url: url.to_string(),
-        sha256: sha256.to_string(),
-        expected_bytes: Some(mib * MIB),
-        // Raw yük: tepe kullanım indirilen dosyanın kendisidir — `.part` hedef
-        // klasörde kalır, doğrulamadan sonra aynı birimde atomik taşınır.
-        disk_required_bytes: Some(mib * MIB),
-        progress_span: None,
-        payload: Payload::Raw {
-            dest_dir: mdir.clone(),
-            file_name: filename.to_string(),
-        },
-    };
-    run_component_download(&app, plan, &job_id).await?;
+    // Pin/URL/yol kopyası YOK: kuruluysa `install_component` atlar (ve %100 yayar),
+    // değilse tek motordan iner; kuyruk disiplini de orada uygulanır.
+    install_component(&app, component_id, &job_id, None).await?;
     Ok("done".to_string())
 }
 

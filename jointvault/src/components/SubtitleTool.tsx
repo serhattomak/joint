@@ -117,32 +117,20 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
   };
 
   /*
-   * Hızlı yol (ön kontrol): whisper durumu BİLİNİYORSA çağrıyı hiç başlatmadan
-   * dürüst yönlendirmeyi gösterir. Sinyal-tabanlı akışın (handleMissingComponent)
-   * yerine geçmez, onu TAMAMLAR: durum okunamadıysa/eskimişse kararı backend'in
-   * döndürdüğü işaret verir. İkisi çakışmaz — burada `false` dönersek backend
-   * ÇAĞRILMAZ, dolayısıyla ikinci bir mesaj üretilemez (çift mesaj yok).
-   */
-  const guardReady = (): boolean => {
-    if (status && !status.whisper_available) {
-      setError('whisper motoru kurulu değil. Ayarlar → Konuşma bölümünden motoru indir.');
-      return false;
-    }
-    return true;
-  };
-
-  /*
    * Backend'in `BILESEN_EKSIK:<id>` tel sinyalini TEK akışa bağlar. Dönüş `true`
    * ise hata tüketilmiştir; çağıran ham metni göstermez.
    *
-   * - ffmpeg: indirilebilir bileşen. Kurulum diyaloğu açılır; kurulum başarısında
-   *   başarısız eylem `retry` ile kendiliğinden yeniden denenir. Diyalog
-   *   açılamazsa (durum okunamadı / downloadable=false) dürüst cümleye düşülür.
-   * - whisper: BİLİNÇLİ istisna. Bu dilimde (7c-2) whisper Bileşenler ekranından
-   *   indirilemez (`components_status.downloadable === false`; indirme yolu
-   *   7c-3'te gelecek). `request('whisper')` her hâlükârda 'unavailable' döneceği
-   *   için ÖLÜ bir diyalog açmak yerine hiç çağrılmaz; mevcut dürüst
-   *   "Ayarlar → Konuşma" yönlendirmesi korunur. Bu bir gözden kaçma DEĞİLDİR.
+   * ffmpeg VE whisper aynı ortak akıştan geçer: kurulum diyaloğu açılır, kurulum
+   * başarısında başarısız eylem `retry` ile kendiliğinden yeniden denenir.
+   * Diyalog açılamazsa (durum okunamadı / downloadable=false) dürüst cümleye
+   * düşülür; ölü diyalog gösterilmez.
+   *
+   * 7c-3: whisper Bileşenler'den indirilebilir olduğu için (downloadable=true)
+   * eski "whisper'a özel, yalnız dürüst metin" dalı KALDIRILDI. Ön kontrol de
+   * aynı sebeple kaldırıldı: taze `whisper_status`'a dayanan eski hızlı yol,
+   * motor kurulduktan sonra BAYAT kalıp sonsuz "kurulu değil" mesajı üretebilirdi
+   * (retry anında state henüz tazelenmemişti). Kararı artık backend'in sinyali
+   * verir — tek kaynak, bayat durum yok.
    *
    * Önek hiçbir dalda DOM'a ulaşmaz: metin daima missingComponentText'ten gelir
    * (id ve detail işaretçiden arındırılır).
@@ -150,10 +138,6 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
   const handleMissingComponent = (rawError: unknown, retry: () => void): boolean => {
     const parsed = parseMissingComponent(rawError);
     if (!parsed) return false;
-    if (parsed.id === 'whisper') {
-      setError(missingComponentText(parsed));
-      return true;
-    }
     void installer.request(parsed.id, retry).then((result) => {
       if (result === 'unavailable') setError(missingComponentText(parsed));
     });
@@ -162,9 +146,15 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
 
   const runTranscribe = async (): Promise<void> => {
     if (busy || !selected) return;
-    if (!guardReady()) return;
+    /*
+     * Model eksikse backend'e gitmeden dürüst yönlendirme. Model dosyası artık
+     * Bileşenler ekranından iner; burada diyalog AÇILMAZ çünkü ön kontrolün
+     * dayandığı `whisper_status` kurulumdan sonra bayat kalır ve aynı diyaloğu
+     * sonsuz döngüde yeniden açardı. Motor eksikse zaten backend'in
+     * `BILESEN_EKSIK:whisper` sinyali ortak kurulum akışını açar.
+     */
     if (status && !status.models[model]) {
-      setError(`Whisper ${model} modeli indirilmedi. Ayarlar → Konuşma bölümünden indir.`);
+      setError(`Whisper ${model} modeli indirilmedi. Ayarlar → Bileşenler bölümünden indirebilirsin.`);
       return;
     }
     setBusy('transcribe');
@@ -229,7 +219,8 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
 
   const runEmbed = async (srtPath: string | null): Promise<void> => {
     if (busy || !selected || !srtPath) return;
-    if (!guardReady()) return;
+    // Gömme yalnızca ffmpeg ister: whisper ön kontrolü YOK. Eksik ffmpeg,
+    // backend'in `BILESEN_EKSIK:ffmpeg` sinyaliyle ortak kurulum akışını açar.
     const output = embedOutputPath(selected.inputPath);
     setBusy('embed');
     setError(null);
@@ -264,7 +255,7 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
 
   const runExtract = async (): Promise<void> => {
     if (busy || !selected) return;
-    if (!guardReady()) return;
+    // Çıkarma yalnızca ffmpeg ister: whisper ön kontrolü burada gereksizdi.
     const output = extractSrtPath(selected.inputPath);
     setBusy('extract');
     setError(null);

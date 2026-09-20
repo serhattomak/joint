@@ -11,11 +11,12 @@
  * koruması, iptalin hata sayılmaması) ortak bir çıkarımıdır.
  *
  * Kritik kural: indirilemeyen (`downloadable === false`) bir bileşen için diyalog
- * AÇILMAZ. Bugün whisper ve yt-dlp böyledir; indirme yolları 7c-3'te gelecek.
- * Kurulum yapamayacak bir diyalog göstermek kullanıcıya yalan olurdu; bu yüzden
- * `request` bu durumda 'unavailable' döner, çağıran da dürüst yönlendirme metnine
- * düşer. Aynı sebeple durum okunamazsa da (indirilebilirliği doğrulayamayız)
- * diyalog açılmaz.
+ * AÇILMAZ. 7c-3'ten sonra böyle kalan tek bileşen gömülü gelen yt-dlp'dir;
+ * whisper ve modeller artık indirilebilir, dolayısıyla `request('whisper')`
+ * 'opened' döner. Kurulum yapamayacak bir diyalog göstermek kullanıcıya yalan
+ * olurdu; bu yüzden `request` bu durumda 'unavailable' döner, çağıran da dürüst
+ * yönlendirme metnine düşer. Aynı sebeple durum okunamazsa da
+ * (indirilebilirliği doğrulayamayız) diyalog açılmaz.
  *
  * Önek burada BİLİNMEZ: ayrıştırma `src/lib/components.ts`'te yaşar; bu modül
  * yalnızca kurulum akışıdır ve öneki hiçbir metne koymaz.
@@ -37,6 +38,7 @@ import { Stamp } from '@/components/ui/stamp';
 import {
   cancelComponentDownload,
   downloadComponent,
+  isUsable,
   useComponentDownloadProgress,
   type ComponentDownloadPhase,
   type ComponentStatus,
@@ -123,11 +125,6 @@ export function useComponentInstaller(): ComponentInstallerApi {
   return ctx;
 }
 
-/** Kurulmuş VE çalıştırılabiliyor mu (ComponentsSection ile aynı ölçüt). */
-function isUsable(component: ComponentStatus): boolean {
-  return component.installed && component.runnable;
-}
-
 /** Durum satırından diyaloğun göstereceği etiket/boyut (boş etiket id'ye düşer). */
 function infoFor(componentId: string, row: ComponentStatus): ComponentInfo {
   const label = row.label.trim();
@@ -137,6 +134,12 @@ function infoFor(componentId: string, row: ComponentStatus): ComponentInfo {
 /*
  * Kurulum başarısını GERÇEK durumdan doğrular: ffmpeg indirmesi ffprobe'u da
  * kurar (aynı paket), bu yüzden paketin TÜM satırları kullanılabilir olmalı.
+ *
+ * "Kullanılabilir" tür-farkındadır (`isUsable`, ComponentsSection ile aynı):
+ *   - binary üyeler çalışmayı (runnable) ŞART koşar,
+ *   - asset üyeler (`.gguf`/`.bin` model, cudart DLL kümesi) yalnızca DOSYANIN
+ *     varlığını — veri dosyası hiçbir zaman çalışmaz, bu bir kusur değildir.
+ * Aksi hâlde kurulumu başarıyla biten bir model "hâlâ kullanılamıyor" sanılırdı.
  * "İndirme başarılı" yanıtı tek başına yeşil damga için yeterli değildir.
  */
 function verifyInstalled(
@@ -230,7 +233,7 @@ export function ComponentInstallerProvider({ children }: { children: React.React
       // Durum okunamıyorsa indirilebilirlik DOĞRULANAMAZ; kapat (fail-closed).
       if (!rows) return 'unavailable';
       const row = rows.find((item) => item.id === componentId);
-      // İndirilemeyen bileşen için ölü diyalog açma (bugün whisper/yt-dlp böyle).
+      // İndirilemeyen bileşen için ölü diyalog açma (7c-3'ten sonra yalnız yt-dlp).
       if (!row || !row.downloadable) return 'unavailable';
       setPending({
         componentId,
