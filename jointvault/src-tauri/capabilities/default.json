@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Varsayılan yetenekler. NOT: `opener:allow-open-path` kapsamı \"**\" — indirme klasörü kullanıcı tarafından değiştirilebildiği ve herhangi bir sürücüde olabildiği için statik dar bir kapsam mümkün değil (dar kapsam, düğmelerin sessizce ölmesine yol açar). Pano okuma/yazma izinleri plugin'in boş `default` seti yüzünden açıkça eklenmiştir. Kapsamın daraltılması Faz 9'da ele alınacak.",
   "windows": [
     "main"
   ],
@@ -10,8 +10,14 @@
     "sql:default",
     "sql:allow-execute",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    },
     "dialog:default",
     "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     {
       "identifier": "shell:allow-execute",
       "allow": [

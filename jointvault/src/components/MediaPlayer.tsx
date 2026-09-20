@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { openPath } from '@tauri-apps/plugin-opener';
+import { useOpenTarget } from '@/lib/open-target';
 import {
   AlertTriangle,
   Check,
@@ -73,6 +73,7 @@ export function MediaPlayer({
   onExpand,
   className = '',
 }: MediaPlayerProps) {
+  const { open } = useOpenTarget();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -367,7 +368,7 @@ export function MediaPlayer({
               size="sm"
               variant="outline"
               className="gap-1.5 text-xs border-white/20 text-white hover:bg-white/10"
-              onClick={() => void openPath(src)}
+              onClick={() => open(src)}
             >
               <MonitorPlay className="size-3.5" /> Sistem Oynatıcısında Aç
             </Button>

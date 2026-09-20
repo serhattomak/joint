@@ -1,4 +1,4 @@
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { useOpenTarget } from '@/lib/open-target';
 import {
   FileText,
   FolderOpen,
@@ -28,6 +28,9 @@ export function MediaPlayerModal({
   onConvert,
   onOpenItem,
 }: MediaPlayerModalProps) {
+  /* Hook erken çıkıştan ÖNCE gelmeli: koşullu erken çıkışın ardından çağrılırsa
+     hook sırası render'lar arasında değişir ve React hata verir. */
+  const { open, reveal } = useOpenTarget();
   if (!item || !item.local_path) return null;
 
   const platform = PLATFORM_META[item.platform as Platform] ?? PLATFORM_META.other;
@@ -88,7 +91,7 @@ export function MediaPlayerModal({
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => {
-                      if (item.local_path) void revealItemInDir(item.local_path);
+                      if (item.local_path) reveal(item.local_path);
                     }}
                     className="text-white/80 hover:bg-white/15 hover:text-white"
                     aria-label="Dosyayı klasörde göster"
@@ -107,7 +110,7 @@ export function MediaPlayerModal({
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => {
-                      if (item.local_path) void openPath(item.local_path);
+                      if (item.local_path) open(item.local_path);
                     }}
                     className="text-white/80 hover:bg-white/15 hover:text-white"
                     aria-label="Sistem oynatıcısında (VLC vb.) aç"

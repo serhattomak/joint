@@ -238,6 +238,7 @@ Platform kararı: **Bugün Windows**; kod platform-bağımsız dikişlerle yazı
 **Neden:** `bundle.resources` **hiç yok** → `whisper.dll`/`ggml*.dll` pakete girmiyor, prod'da `0xC0000135` ile çöküyor (kendi belgesi `docs/media-tools-deferred.md:38` söylüyor). Ayrıca arayüzde **sabit kodlu "RTX 5070 Ti (16 GB GDDR7)"** yazıyor (`SettingsView.tsx:577,724`, `AiAssistantView.tsx:184`, `ai.rs:306,404`) — başka makinede yalan.
 
 **İşler**
+- **YENİ BULGU (Faz 2'de gözlemlendi): uygulama açılışta llama-server'ı otomatik başlatıyor** — iki model yüklü, 28080/28081 portlarında dinliyor. Yani "AI kapalı gelir" hedefi yalnızca arayüz durumunu değil, **süreç başlatma davranışını** da kapsamalı; aksi hâlde AI kapalıyken bile arka planda model yüklenir (GB'larca RAM/VRAM).
 - Whisper DLL sorunu Faz 7'nin bileşen yöneticisine bağlanır: ya `bundle.resources` ile gelir ya da motor indirmesi tek yol olur — **iki ayrı yol kalmaz**.
 - AI **varsayılan kapalı** gelir; Ayarlar → AI'da açık rıza akışı ("Yerel AI'yı etkinleştir"), ne indirileceği ve kaç GB olacağı önceden gösterilir.
 - Sabit donanım metinleri kaldırılır; gerçek donanım tespiti (GPU adı/bellek, tespit edilemezse "bilinmiyor").

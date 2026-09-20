@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link2, X, Zap } from 'lucide-react';
-import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { Button } from '@/components/ui/button';
+import { useNotice } from '@/components/ui/notice';
+import { readClipboardText } from '@/lib/clipboard';
 import { createItem, listItems } from '@/lib/db/client';
 import { detectPlatform } from '@/lib/platform';
 import { isKnownUrl } from '@/lib/urls';
@@ -34,17 +35,24 @@ export function ClipboardWatcher({
   const [saving, setSaving] = useState(false);
   const lastRef = useRef('');
   const dismissedRef = useRef<Set<string>>(new Set());
+  const readWarnedRef = useRef(false);
+  const notice = useNotice();
 
   useEffect(() => {
     const id = setInterval(() => {
       void (async () => {
         if (!isWatchEnabled() || candidate) return;
-        let text = '';
-        try {
-          text = (await readText()).trim();
-        } catch {
+        const read = await readClipboardText();
+        if (!read.ok) {
+          /* İzleyici 2,5 sn'de bir okur; aynı hatayı her turda göstermek gürültü
+             olur. Bir kez söyle, sonra sus — sessiz kalmak da yanlıştı. */
+          if (!readWarnedRef.current) {
+            readWarnedRef.current = true;
+            notice.push({ text: `Pano izlenemiyor: ${read.error}`, tone: 'error' });
+          }
           return;
         }
+        const text = read.text.trim();
         if (!text || text === lastRef.current) return;
         lastRef.current = text;
         if (!/^https?:\/\//i.test(text)) return;
@@ -63,7 +71,7 @@ export function ClipboardWatcher({
       })();
     }, 2500);
     return () => clearInterval(id);
-  }, [candidate]);
+  }, [candidate, notice]);
 
   if (!candidate) return null;
 

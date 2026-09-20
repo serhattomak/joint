@@ -29,3 +29,15 @@ export const ensureOutDir = (sub = '') => {
 
 /** Kanıt tarayıcısını başlatır (sistemde kurulu Edge/Chromium üzerinden). */
 export const launchEvidenceBrowser = () => chromium.launch({ executablePath: BROWSER_PATH });
+
+/**
+ * CDP ile BAĞLANILAN oturumdan çıkış.
+ *
+ * `browser.close()` burada kasıtlı olarak KULLANILMAZ: bağlanılan (launch
+ * edilmemiş) bir tarayıcıda Playwright onu kapatır — yani kanıt betiği
+ * kullanıcının açık uygulama penceresini kapatır. Kısa bir bekleme (çıktının
+ * boşalması için) ile süreçten çıkılır.
+ */
+export const exitWithoutClosingApp = (code) => {
+  setTimeout(() => process.exit(code), 150);
+};

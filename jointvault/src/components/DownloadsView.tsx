@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { useOpenTarget } from '@/lib/open-target';
 import {
   Archive,
   ArrowLeft,
@@ -74,6 +74,7 @@ type FilterStatus = 'all' | 'active' | 'queued' | 'completed' | 'paused' | 'erro
 type FilterCategory = 'all' | DownloadCategory;
 
 export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: DownloadsViewProps) {
+  const { open, reveal } = useOpenTarget();
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -564,7 +565,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                               if (onPlayMedia) {
                                 onPlayMedia(item);
                               } else if (item.local_path) {
-                                void openPath(item.local_path);
+                                open(item.local_path);
                               }
                             }}
                           >
@@ -576,7 +577,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                             className="h-8 w-8"
                             title="Windows Gezgini'nde Göster"
                             onClick={() => {
-                              if (item.local_path) void revealItemInDir(item.local_path);
+                              if (item.local_path) reveal(item.local_path);
                             }}
                           >
                             <FolderOpen className="size-3.5 text-muted-foreground" />
@@ -797,7 +798,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                             size="sm"
                             variant="outline"
                             className="h-8 gap-1 text-xs"
-                            onClick={() => void openPath(job.destination_path)}
+                            onClick={() => open(job.destination_path)}
                           >
                             <FolderOpen className="size-3.5" /> Dosyayı Aç
                           </Button>

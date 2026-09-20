@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { useOpenTarget } from '@/lib/open-target';
 import {
   categorizeAndTagItem,
   indexItemChunks,
@@ -102,6 +102,7 @@ export function ItemRecord({
   onAudio,
   onPlayMedia,
 }: ItemRecordProps) {
+  const { open, reveal } = useOpenTarget();
   const [title, setTitle] = useState(item.title ?? '');
   const [note, setNote] = useState(item.note ?? '');
   const [collectionId, setCollectionId] = useState(item.collection_id ?? '');
@@ -710,7 +711,7 @@ export function ItemRecord({
                                     embeddedTimeRef.current,
                                   );
                                 } else {
-                                  void openPath(localPath);
+                                  open(localPath);
                                 }
                               }}
                               className="flex-1 gap-1.5 text-xs font-medium"
@@ -721,7 +722,7 @@ export function ItemRecord({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => void revealItemInDir(localPath)}
+                              onClick={() => reveal(localPath)}
                               className="gap-1.5 text-xs"
                               title="Dosyayı klasörde göster"
                             >

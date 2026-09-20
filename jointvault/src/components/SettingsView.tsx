@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { writeClipboardText } from '@/lib/clipboard';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import {
   Activity,
@@ -167,11 +167,8 @@ export function SettingsView(props: SettingsViewProps) {
   };
 
   const copyToken = async (): Promise<void> => {
-    try {
-      await writeText(token);
-    } catch (e: unknown) {
-      setTokenError(String(e));
-    }
+    const result = await writeClipboardText(token);
+    setTokenError(result.ok ? null : result.error);
   };
 
   const runRegenToken = async (): Promise<void> => {

@@ -19,6 +19,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useNotice } from '@/components/ui/notice';
+import { writeClipboardText } from '@/lib/clipboard';
 import type { Item, ItemArticle } from '@/lib/db/types';
 import { openExternal } from '@/lib/external';
 import { cacheArticleImages, parseArticleImages, parseArticleVideos } from '@/lib/scraper';
@@ -31,6 +33,7 @@ interface ReaderViewProps {
 }
 
 export function ReaderView({ item, article, loading = false, onScrape }: ReaderViewProps) {
+  const notice = useNotice();
   const [copied, setCopied] = useState(false);
   const [cachingImages, setCachingImages] = useState(false);
   const [cacheSuccess, setCacheSuccess] = useState(false);
@@ -43,15 +46,17 @@ export function ReaderView({ item, article, loading = false, onScrape }: ReaderV
 
   const handleCopyText = async () => {
     if (!article) return;
-    try {
-      await navigator.clipboard.writeText(
-        `${article.title || item.title || ''}\n\n${article.content_text}`,
-      );
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error('Kopyalanamadı:', e);
+    /* Webview'de `navigator.clipboard` güvenilir değil; izinli plugin kullanılır.
+       Eskiden hata yalnızca konsola gidiyordu — düğme sessizce ölü görünüyordu. */
+    const result = await writeClipboardText(
+      `${article.title || item.title || ''}\n\n${article.content_text}`,
+    );
+    if (!result.ok) {
+      notice.push({ text: `Kopyalanamadı: ${result.error}`, tone: 'error' });
+      return;
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleCacheImages = async () => {

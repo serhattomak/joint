@@ -12,7 +12,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react';
-import { openPath } from '@tauri-apps/plugin-opener';
+import { useOpenTarget } from '@/lib/open-target';
 import { Button } from '@/components/ui/button';
 import {
   Menu,
@@ -173,6 +173,7 @@ function DownloadControl({
   onPlayMedia,
 }: Pick<ItemViewProps, 'item' | 'progress' | 'meta' | 'onAudio' | 'onPickVideo' | 'onConvert' | 'onPlayMedia'>) {
   const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
+  const { open } = useOpenTarget();
   const status = item.download_status;
 
   if (status === 'done') {
@@ -192,7 +193,7 @@ function DownloadControl({
                       if (onPlayMedia) {
                         onPlayMedia(item);
                       } else if (item.local_path) {
-                        void openPath(item.local_path);
+                        open(item.local_path);
                       }
                     }}
                     aria-label="Oynat (Sinema Modu)"
