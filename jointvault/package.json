@@ -22,6 +22,7 @@
     "verify:foreign-keys": "node dev/verify-foreign-keys.mjs",
     "verify:components": "node dev/verify-components.mjs",
     "verify:component-download": "node dev/verify-component-download.mjs",
+    "verify:missing-component": "node dev/verify-missing-component.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

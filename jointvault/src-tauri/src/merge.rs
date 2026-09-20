@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::process::CommandEvent;
@@ -27,6 +29,7 @@ fn escape_concat_path(p: &str) -> String {
 
 async fn run_ffmpeg_concat(
     app: &AppHandle,
+    ffmpeg: &Path,
     job_id: &str,
     list_path: &str,
     output: &str,
@@ -73,10 +76,12 @@ async fn run_ffmpeg_concat(
     args.push("pipe:1".to_string());
     args.push("-nostats".to_string());
 
+    // Yol kayıttan çözülmüş olarak gelir (indirilen → gömülü): `sidecar` yalnızca
+    // exe yanına bakardı ve indirilen ffmpeg'i göremezdi. Doğrudan yol komutu
+    // çalıştırıyoruz (`components::probe_version` ile aynı kanıtlanmış desen).
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -124,6 +129,9 @@ async fn run_ffmpeg_concat(
 
 #[tauri::command]
 pub async fn merge_media(app: AppHandle, payload: Value) -> Result<String, String> {
+    // Kapı: işe başlamadan aracı çöz. Eksikse `BILESEN_EKSIK:ffmpeg` hemen döner;
+    // böylece geçici concat listesi yazılmaz. Eski `sidecar` indirileni göremiyordu.
+    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
     let inputs: Vec<String> = payload
         .get("input_paths")
         .and_then(|v| v.as_array())
@@ -172,14 +180,14 @@ pub async fn merge_media(app: AppHandle, payload: Value) -> Result<String, Strin
 
     emit_merge_progress(&app, &job_id, 0.0);
     // Önce stream-copy dene (A11); olmazsa re-encode fallback.
-    match run_ffmpeg_concat(&app, &job_id, &list_str, &output, total_opt, false).await {
+    match run_ffmpeg_concat(&app, &ffmpeg, &job_id, &list_str, &output, total_opt, false).await {
         Ok(()) => {
             let _ = std::fs::remove_file(&list_path);
             emit_merge_progress(&app, &job_id, 100.0);
             return Ok("done".to_string());
         }
         Err(copy_err) => {
-            match run_ffmpeg_concat(&app, &job_id, &list_str, &output, total_opt, true).await {
+            match run_ffmpeg_concat(&app, &ffmpeg, &job_id, &list_str, &output, total_opt, true).await {
                 Ok(()) => {
                     let _ = std::fs::remove_file(&list_path);
                     emit_merge_progress(&app, &job_id, 100.0);

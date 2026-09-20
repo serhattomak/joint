@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::process::CommandEvent;
@@ -68,16 +70,19 @@ fn get_num(payload: &Value, key: &str) -> Result<f64, String> {
 
 async fn run_ffmpeg(
     app: &AppHandle,
+    ffmpeg: &Path,
     job_id: &str,
     args: Vec<String>,
     total_ms: u64,
     base: f64,
     span: f64,
 ) -> Result<(), String> {
+    // Yol kayıttan çözülmüş olarak gelir (indirilen → gömülü): `sidecar` yalnızca
+    // exe yanına bakardı ve indirilen ffmpeg'i göremezdi. Doğrudan yol komutu
+    // çalıştırıyoruz; yetenek değişikliği gerekmez (`components::probe_version` da böyle yapar).
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -124,6 +129,9 @@ async fn run_ffmpeg(
 
 #[tauri::command]
 pub async fn make_gif(app: AppHandle, payload: Value) -> Result<String, String> {
+    // Kapı: işe başlamadan aracı çöz. Eksikse `BILESEN_EKSIK:ffmpeg` hemen döner;
+    // böylece palet/yarım çıktı üretilmez. Eski `sidecar` indirilen bileşeni göremiyordu.
+    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
     let input = get_str(&payload, "input_path")?;
     let output = get_str(&payload, "output_path")?;
     let job_id = get_str(&payload, "job_id")?;
@@ -179,7 +187,7 @@ pub async fn make_gif(app: AppHandle, payload: Value) -> Result<String, String> 
             "pipe:1".to_string(),
             "-nostats".to_string(),
         ];
-        if let Err(e) = run_ffmpeg(&app, &job_id, pass1, total_ms, 0.0, 50.0).await {
+        if let Err(e) = run_ffmpeg(&app, &ffmpeg, &job_id, pass1, total_ms, 0.0, 50.0).await {
             let _ = std::fs::remove_file(&palette_path);
             return Err(format!("GIF paleti üretilemedi: {e}"));
         }
@@ -203,7 +211,7 @@ pub async fn make_gif(app: AppHandle, payload: Value) -> Result<String, String> 
             "pipe:1".to_string(),
             "-nostats".to_string(),
         ];
-        let res = run_ffmpeg(&app, &job_id, pass2, total_ms, 50.0, 50.0).await;
+        let res = run_ffmpeg(&app, &ffmpeg, &job_id, pass2, total_ms, 50.0, 50.0).await;
         let _ = std::fs::remove_file(&palette_path);
         res.map_err(|e| format!("GIF üretilemedi: {e}"))?;
     } else {
@@ -231,7 +239,7 @@ pub async fn make_gif(app: AppHandle, payload: Value) -> Result<String, String> 
             "pipe:1".to_string(),
             "-nostats".to_string(),
         ];
-        run_ffmpeg(&app, &job_id, args, total_ms, 0.0, 100.0)
+        run_ffmpeg(&app, &ffmpeg, &job_id, args, total_ms, 0.0, 100.0)
             .await
             .map_err(|e| format!("WebM üretilemedi: {e}"))?;
     }

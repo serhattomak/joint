@@ -40,15 +40,11 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  constants as FS_CONSTANTS,
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
@@ -60,6 +56,16 @@ import {
   findAppPage,
   waitForCdp,
 } from './lib/browser.mjs';
+// Temiz profil (gölge dosyaları yedekle/geri koy) TEK yerde yaşar: bu tehlikeli
+// dosya-taşıma mantığı `verify-missing-component.mjs` ile paylaşılır. Eskiden bu
+// dosyanın içindeydi; davranışı birebir korunur, yalnızca içe aktarılır.
+import {
+  backupShadows,
+  cleanupProfile,
+  findAppExeDir,
+  planShadows,
+  writeManifest,
+} from './lib/clean-profile.mjs';
 
 const CDP = process.env.JV_CDP ?? 'http://127.0.0.1:9222';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -77,11 +83,8 @@ const RUN_REAL_DOWNLOAD = forceReal ? true : forceSkip ? false : !quickFlag;
 /* --- sabitler -------------------------------------------------------------- */
 const COMPONENTS_RS = resolve(PROJECT_ROOT, 'src-tauri/src/components.rs');
 const GITHUB_API = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags';
-// Bileşenler klasöründe `resolve()` tam olarak bu adları arar (`downloaded_file`).
-const COMPONENT_SHADOW_NAMES = ['ffmpeg.exe', 'ffprobe.exe'];
-// Gömülü sidecar taraması `bundled_path` mantığını BİREBİR yansıtır: düz ad ya da
-// `<ad>-<hedef-üçlü>.exe`. Elle liste tutmak, bir gün eklenen bir varyantı kaçırır.
-const BUNDLED_BASES = ['ffmpeg', 'ffprobe'];
+// Gölge dosya adları/kuralları artık `lib/clean-profile.mjs` içinde yaşar
+// (COMPONENT_SHADOW_NAMES, BUNDLED_BASES, isBundledShadow): iki sonda ortak kullanır.
 const OFFLINE_URL = process.env.JV_OFFLINE_URL ?? 'https://127.0.0.1:9/does-not-exist';
 const MISMATCH_FALLBACK_URL =
   'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-20-13-11/checksums.sha256';
@@ -124,13 +127,6 @@ const pickFf = (list) => ({
   ffprobe: pick(findById(list, 'ffprobe')),
 });
 
-const isBundledShadow = (name) => {
-  const lower = name.toLowerCase();
-  return BUNDLED_BASES.some(
-    (base) => lower === `${base}.exe` || (lower.startsWith(`${base}-`) && lower.endsWith('.exe')),
-  );
-};
-
 const listPartFiles = (dir) => {
   try {
     return readdirSync(dir).filter((name) => name.endsWith('.part'));
@@ -140,58 +136,6 @@ const listPartFiles = (dir) => {
 };
 
 const fmtSeconds = (ms) => `${(ms / 1000).toFixed(1)} sn`;
-
-/* --- dosya taşıma (birimler arası güvenli) --------------------------------- */
-// Windows'ta `rename` YALNIZCA aynı birimde çalışır; bileşenler klasörü (C:)
-// ile depo (D:) farklı birimlerde olabilir. O yüzden kopyala-doğrula-sil'e düşeriz.
-const moveFile = (from, to) => {
-  try {
-    renameSync(from, to);
-    return 'rename';
-  } catch (renameError) {
-    try {
-      copyFileSync(from, to, FS_CONSTANTS.COPYFILE_EXCL);
-    } catch (copyError) {
-      throw new Error(`taşıma başarısız (${from} → ${to}): ${copyError.message} (rename: ${renameError.message})`);
-    }
-    if (statSync(to).size !== statSync(from).size) {
-      throw new Error(`kopya boyutu uyuşmadı, kaynak korundu: ${from}`);
-    }
-    rmSync(from, { force: true });
-    return 'copy';
-  }
-};
-
-/* --- exc klasörünü bul ------------------------------------------------------ */
-// `current_exe()` derleme moduna göre değişir: `cargo tauri dev` → `target/debug`,
-// paket → `target/release`. Sırayla: ortam değişkeni → debug → hedef ağacında ara.
-const EXE_NAME_RE = /^(app|jointvault)[^\\/]*\.exe$/i;
-
-const scanForExeDir = (dir, depth, found) => {
-  if (depth < 0) return found;
-  let entries = [];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return found;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) scanForExeDir(full, depth - 1, found);
-    else if (EXE_NAME_RE.test(entry.name)) found.add(dir);
-  }
-  return found;
-};
-
-const findAppExeDir = () => {
-  const override = process.env.JV_APP_EXE_DIR;
-  if (override && existsSync(override)) return { dir: override, how: 'JV_APP_EXE_DIR' };
-  const debugDir = resolve(PROJECT_ROOT, 'src-tauri/target/debug');
-  if (existsSync(debugDir)) return { dir: debugDir, how: 'target/debug' };
-  const found = [...scanForExeDir(resolve(PROJECT_ROOT, 'src-tauri/target'), 3, new Set())];
-  if (found[0]) return { dir: found[0], how: 'target taraması' };
-  return { dir: debugDir, how: 'varsayılan (exe bulunamadı)' };
-};
 
 /* --- CDP / sayfa köprüleri ------------------------------------------------- */
 
@@ -435,119 +379,6 @@ const stepPinIntegrity = async (ctx) => {
 
 /* --- adım 2: temiz profil (yedekle) ---------------------------------------- */
 
-const collectShadowPlan = (exeDir, componentsDir) => {
-  const plan = [];
-  let exeNames = [];
-  try {
-    exeNames = readdirSync(exeDir);
-  } catch (error) {
-    console.error(`exe klasörü okunamadı (${exeDir}): ${error.message}`);
-  }
-  for (const name of exeNames) {
-    if (isBundledShadow(name)) plan.push({ from: join(exeDir, name), kind: 'exe' });
-  }
-  for (const name of COMPONENT_SHADOW_NAMES) {
-    const path = join(componentsDir, name);
-    if (existsSync(path)) plan.push({ from: path, kind: 'components' });
-  }
-  return plan;
-};
-
-const writeManifest = (backupDir, entries) =>
-  writeFileSync(
-    join(backupDir, 'manifest.json'),
-    JSON.stringify({ createdAt: new Date().toISOString(), entries }, null, 2),
-    'utf8',
-  );
-
-const backupShadows = (plan, backupDir) => {
-  const entries = [];
-  for (const item of plan) {
-    const to = join(backupDir, `${item.kind}__${basename(item.from)}`);
-    const method = moveFile(item.from, to);
-    entries.push({ ...item, to, method });
-    // Her taşımadan sonra yaz: süreç çökerse bile ne kaldığı manifest'ten okunur.
-    writeManifest(backupDir, entries);
-    console.log(`     yedeklendi (${method}): ${item.from} → ${to}`);
-  }
-  return entries;
-};
-
-const removeTestArtifacts = (componentsDir, pristine) => {
-  const removed = [];
-  let names = [];
-  try {
-    names = readdirSync(componentsDir);
-  } catch {
-    return removed;
-  }
-  for (const name of names) {
-    // Yedeklenmiş olsun olmasın: temiz profilde kalan her ffmpeg/ffprobe testindir.
-    const testShadow = COMPONENT_SHADOW_NAMES.includes(name);
-    const testPart = name.endsWith('.part') && !pristine.has(name);
-    if (testShadow || testPart) {
-      rmSync(join(componentsDir, name), { force: true });
-      removed.push(name);
-    }
-  }
-  return removed;
-};
-
-const restoreShadows = (entries) => {
-  const out = [];
-  for (const entry of entries) {
-    if (!existsSync(entry.to)) {
-      out.push({ ...entry, restored: false, reason: 'yedek dosyası yok' });
-      continue;
-    }
-    if (existsSync(entry.from)) {
-      out.push({ ...entry, restored: false, reason: 'hedef yol beklenmedik biçimde dolu' });
-      continue;
-    }
-    try {
-      const method = moveFile(entry.to, entry.from);
-      out.push({ ...entry, restored: true, method, reason: null });
-    } catch (error) {
-      out.push({ ...entry, restored: false, reason: String(error?.message ?? error) });
-    }
-  }
-  return out;
-};
-
-/** İdempotent: test artıklarını siler, sonra yedekleri ESKİ YERİNE koyar. */
-const cleanupProfile = (ctx) => {
-  const { state, report, errors } = ctx;
-  if (state.cleaned) return;
-  state.cleaned = true;
-
-  if (state.componentsDir) {
-    state.removed = removeTestArtifacts(state.componentsDir, state.pristine);
-    if (state.removed.length > 0) {
-      console.log(`     test artıkları silindi (bileşenler klasörü): ${state.removed.join(', ')}`);
-    }
-  }
-  rmSync(resolve(OUT_DIR, 'probe-tmp'), { recursive: true, force: true });
-
-  const restored = restoreShadows(state.backupEntries);
-  state.restoreReport = { restored, removedTestArtifacts: state.removed };
-  const failed = restored.filter((entry) => !entry.restored);
-  if (failed.length === 0) {
-    report(`geri yükleme: ${restored.length} gölge dosya eski yerine kondu`, true);
-    for (const entry of restored) console.log(`     geri kondu: ${entry.from}`);
-  } else {
-    report(
-      'geri yükleme: TÜM gölge dosyalar eski yerine kondu',
-      false,
-      failed.map((entry) => `${entry.from} (${entry.reason})`).join(' · '),
-    );
-    for (const entry of failed) {
-      const message = `YEDEK GERİ YÜKLENEMEDİ: ${entry.from} — yedek ${entry.to} konumunda duruyor (${entry.reason}). Elle geri taşıyın!`;
-      errors.push({ step: 'restore', message });
-      console.error(message);
-    }
-  }
-};
-
 const stepCleanProfile = async (ctx) => {
   const { page, report, state, artifact } = ctx;
 
@@ -557,7 +388,7 @@ const stepCleanProfile = async (ctx) => {
   mkdirSync(state.componentsDir, { recursive: true });
 
   const before = await getComponents(page);
-  const plan = collectShadowPlan(state.exeDir, state.componentsDir);
+  const plan = planShadows({ exeDir: state.exeDir, componentsDir: state.componentsDir });
   state.backupDir = ensureOutDir(join('clean-profile-backup', STAMP));
   console.log(`temiz profil: ${plan.length} gölge dosya yedeklenecek → ${state.backupDir}`);
   state.backupEntries = backupShadows(plan, state.backupDir);

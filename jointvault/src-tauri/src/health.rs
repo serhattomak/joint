@@ -1,44 +1,9 @@
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
 
-// `-version` probu: sidecar çözülemez ya da çalıştırılamazsa kurulu değil.
-// Eksik parça hata değildir (wizard asla engellemez) — sadece bayrak döner.
-async fn probe_version(app: &AppHandle, name: &str) -> (bool, Option<String>) {
-    let cmd = match app.shell().sidecar(name) {
-        Ok(c) => c,
-        Err(_) => return (false, None),
-    };
-    let (mut rx, _child) = match cmd.args(["-version"]).spawn() {
-        Ok(pair) => pair,
-        Err(_) => return (false, None),
-    };
-    let mut first: Option<String> = None;
-    let mut ran = false;
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(line) | CommandEvent::Stderr(line) => {
-                if first.is_none() {
-                    let text = String::from_utf8_lossy(&line).trim().to_string();
-                    // ponytail: ilk satır yeterli ("ffmpeg version 7.x ..." gibi).
-                    if let Some(l) = text.lines().next().map(|l| l.trim().to_string()) {
-                        if !l.is_empty() {
-                            first = Some(l);
-                        }
-                    }
-                }
-            }
-            CommandEvent::Terminated(_) => {
-                ran = true;
-                break;
-            }
-            _ => {}
-        }
-    }
-    (ran, first)
-}
-
-// whisper.rs'teki 5 satırlık path join'in kopyası (whisper.rs'a dokunmadan).
+// Modeller klasörünün yolu burada whisper.rs'teki yardımcıdan KOPYALANIYOR.
+// Bu, `docs/media-tools-deferred.md`'te kayıtlı bilinen bir borçtur; 7c-1 kapsamı
+// yalnızca kullanılabilirlik ölçümünü kayda bağlamaktı, bu yüzden kopya burada
+// bırakıldı (düzeltmek whisper.rs'e dokunmayı gerektirirdi — paralel ajanın dosyası).
 fn model_present(app: &AppHandle, model: &str) -> bool {
     match app.path().app_data_dir() {
         Ok(dir) => dir
@@ -51,11 +16,27 @@ fn model_present(app: &AppHandle, model: &str) -> bool {
 
 #[tauri::command]
 pub async fn health_check(app: AppHandle) -> Result<String, String> {
-    let (ffmpeg_available, ffmpeg_version) = probe_version(&app, "ffmpeg").await;
-    let (ffprobe_available, ffprobe_version) = probe_version(&app, "ffprobe").await;
-    // Binary yoksa hata değil: kullanılabilirlik bayrağı yeterli.
-    let whisper_available = app.shell().sidecar("whisper").is_ok();
+    // Kullanılabilirliğin TEK ölçütü bileşen kaydıdır (`components::probe_component`).
+    //
+    // Neden? Eskiden burada özel bir `probe_version` vardı ve `app.shell().sidecar(name)`
+    // kullanıyordu: sidecar yalnızca **exe yanına** bakar, yani bileşenler klasörüne
+    // indirilmiş bir ikiliyi göremez. Dahası whisper yalnızca "çözülebildi mi" diye
+    // ölçülüyordu; `whisper.rs` ise gerçekten `--help` çalıştırıyordu. İki kod yolu
+    // çelişebiliyordu — 7a'nın yakaladığı "kurulu ama çalıştırılamıyor" sınıfı tam
+    // buydu. Artık ffmpeg, ffprobe ve whisper aynı çözümleyiciyi ve aynı çalıştırma
+    // probunu kullanır; `components_status` ile `health_check` **inşa gereği** ayrışamaz.
+    let (ffmpeg_available, ffmpeg_version) =
+        crate::components::probe_component(&app, "ffmpeg").await;
+    let (ffprobe_available, ffprobe_version) =
+        crate::components::probe_component(&app, "ffprobe").await;
+    // Whisper'ın "dürüst" tanımı: dosya çözülüyor VE `--help` gerçekten çalışıyor.
+    // Yalnızca dosya varlığı yetmez: DLL'leri eksik bir `whisper.exe` burada `false`
+    // döner. Kayıt o anda `installed: true, runnable: false` der — bu bilinçli bir
+    // farktır, çelişki değil: kırık bir motoru "çalışıyor" saymayız.
+    let (whisper_available, _) = crate::components::probe_component(&app, "whisper").await;
     let download_dir = crate::settings::get_download_dir(app.clone()).ok();
+    // Eksik parça hata değildir: araç yoksa `available: false` döneriz, `Err` değil.
+    // Sihirbaz/tanılama asla engellenmez; JSON şekli 7a'dan beri sabittir.
     Ok(serde_json::json!({
         "ffmpeg": { "available": ffmpeg_available, "version": ffmpeg_version },
         "ffprobe": { "available": ffprobe_available, "version": ffprobe_version },

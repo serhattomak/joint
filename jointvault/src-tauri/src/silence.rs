@@ -33,14 +33,18 @@ fn preset_detect_params(preset: &str) -> Option<(i32, f64)> {
 }
 
 // 1. pass: silencedetect çıktısından (başlangıç, bitiş) aralıklarını topla.
-// Tespit başarısız olursa boş liste döner — çağıran kopyaya düşer, hata vermez.
+// Eksik/çalıştırılamaz ffmpeg artık SESSİZCE boş liste dönmez (bu, "sessizlik yok"
+// yalanına yol açıyordu); `Err` döner ve tek çağıran `?` ile geçirir.
 async fn detect_silences(
     app: &AppHandle,
     input: &str,
     thr_db: i32,
     min_d: f64,
     preview: bool,
-) -> Vec<(f64, f64)> {
+) -> Result<Vec<(f64, f64)>, String> {
+    // Yol kayıttan çözülür (indirilen → gömülü): `sidecar` yalnızca exe yanına
+    // bakardı ve indirilen ffmpeg'i göremezdi. Eksikse yapılandırılmış sinyal döner.
+    let ffmpeg = crate::components::require_tool(app, "ffmpeg")?;
     let mut args: Vec<String> = vec![
         "-y".to_string(),
         "-err_detect".to_string(),
@@ -60,14 +64,12 @@ async fn detect_silences(
     args.push("-f".to_string());
     args.push("null".to_string());
     args.push("-".to_string());
-    let sidecar = match app.shell().sidecar("ffmpeg") {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-    let (mut rx, _child) = match sidecar.args(args).spawn() {
-        Ok(t) => t,
-        Err(_) => return Vec::new(),
-    };
+    let (mut rx, _child) = app
+        .shell()
+        .command(ffmpeg.to_string_lossy().to_string())
+        .args(args)
+        .spawn()
+        .map_err(|e| e.to_string())?;
     let mut out = String::new();
     while let Some(event) = rx.recv().await {
         match event {
@@ -93,11 +95,14 @@ async fn detect_silences(
             }
         }
     }
-    starts.into_iter().zip(ends).collect()
+    Ok(starts.into_iter().zip(ends).collect())
 }
 
 #[tauri::command]
 pub async fn trim_silence(app: AppHandle, payload: Value) -> Result<String, String> {
+    // Kapı: işe başlamadan aracı çöz. Eksikse `BILESEN_EKSIK:ffmpeg` hemen döner;
+    // böylece iki pass'lik işin hiçbir parçası başlamaz. Eski `sidecar` indirileni göremiyordu.
+    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
     let get = |key: &str| -> Result<String, String> {
         payload
             .get(key)
@@ -121,7 +126,7 @@ pub async fn trim_silence(app: AppHandle, payload: Value) -> Result<String, Stri
     let _guard = crate::download::QUEUE.lock().await;
 
     // 1. pass: sessizlik aralıklarını tespit et (eşik + minimum süre preset'ten gelir).
-    let silences = detect_silences(&app, &input, thr_db, min_d, preview).await;
+    let silences = detect_silences(&app, &input, thr_db, min_d, preview).await?;
 
     let total_ms: Option<u64> = if preview {
         Some(30_000)
@@ -208,8 +213,7 @@ pub async fn trim_silence(app: AppHandle, payload: Value) -> Result<String, Stri
 
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;

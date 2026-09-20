@@ -79,10 +79,14 @@ pub(crate) fn parse_duration_ms(stderr: &str) -> Option<u64> {
 }
 
 pub(crate) async fn probe_duration_ms(app: &AppHandle, input: &str) -> Option<u64> {
+    // Yol kayıttan çözülür (indirilen → gömülü): `sidecar` yalnızca exe yanına
+    // bakardı ve bileşen yöneticisinin `components/`e indirdiği ffmpeg'i görmezdi.
+    // İmza `Option` kalır: süre ölçümü best-effort'tur, çağıranlar zaten komut
+    // kapısından (`require_tool`) geçtiği için buradaki `None` yalnızca yarış durumudur.
+    let (ffmpeg, _) = crate::components::resolve_tool(app, "ffmpeg")?;
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .ok()?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(["-i", input])
         .spawn()
         .ok()?;
@@ -102,6 +106,10 @@ pub(crate) async fn probe_duration_ms(app: &AppHandle, input: &str) -> Option<u6
 
 #[tauri::command]
 pub async fn convert_media(app: AppHandle, payload: Value) -> Result<String, String> {
+    // Kapı: işe başlamadan aracı çöz. Eksikse `BILESEN_EKSIK:ffmpeg` hemen döner;
+    // böylece yarım çıktı ya da yarım iş durumu oluşmaz. Eski sidecar çözümlemesi
+    // yalnızca exe yanına bakıyordu ve indirilen bileşeni göremiyordu.
+    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
     let get = |key: &str| -> Result<String, String> {
         payload
             .get(key)
@@ -258,8 +266,7 @@ pub async fn convert_media(app: AppHandle, payload: Value) -> Result<String, Str
 
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;

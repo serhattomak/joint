@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::CommandEvent;
@@ -22,11 +24,13 @@ fn job_dir(app: &AppHandle, job_id: &str) -> Result<std::path::PathBuf, String> 
     Ok(dir)
 }
 
-async fn run_ffmpeg(app: &AppHandle, args: Vec<String>) -> Result<(), String> {
+async fn run_ffmpeg(app: &AppHandle, ffmpeg: &Path, args: Vec<String>) -> Result<(), String> {
+    // Yol kayıttan çözülmüş olarak gelir (indirilen → gömülü): `sidecar` yalnızca
+    // exe yanına bakardı ve indirilen ffmpeg'i göremezdi. Doğrudan yol komutu
+    // çalıştırıyoruz (`components::probe_version` ile aynı kanıtlanmış desen).
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -57,6 +61,9 @@ async fn run_ffmpeg(app: &AppHandle, args: Vec<String>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn media_probe(app: AppHandle, payload: Value) -> Result<MediaProbeResult, String> {
+    // Kapı: işe başlamadan aracı çöz. Eksikse `BILESEN_EKSIK:ffmpeg` hemen döner;
+    // böylece önbellek klasörü/yarım thumbnail oluşmaz. Eski `sidecar` indirileni göremiyordu.
+    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
     let input = payload
         .get("input_path")
         .and_then(|v| v.as_str())
@@ -85,6 +92,7 @@ pub async fn media_probe(app: AppHandle, payload: Value) -> Result<MediaProbeRes
     let thumb_pattern = lossy(&dir.join("thumb_%03d.jpg"));
     run_ffmpeg(
         &app,
+        &ffmpeg,
         vec![
             "-y".to_string(),
             "-i".to_string(),
@@ -119,6 +127,7 @@ pub async fn media_probe(app: AppHandle, payload: Value) -> Result<MediaProbeRes
     let wave_path = dir.join("wave.png");
     let wave = match run_ffmpeg(
         &app,
+        &ffmpeg,
         vec![
             "-y".to_string(),
             "-i".to_string(),

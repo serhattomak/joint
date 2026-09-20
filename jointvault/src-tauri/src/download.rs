@@ -43,38 +43,31 @@ fn parse_progress(line: &str) -> Option<(f64, Option<String>, Option<String>)> {
     Some((percent, speed, eta))
 }
 
-// ponytail: win-first triple; başka platformda sidecar adı değişir.
-const FFMPEG_BIN: &str = "ffmpeg-x86_64-pc-windows-msvc.exe";
-const FFPROBE_BIN: &str = "ffprobe-x86_64-pc-windows-msvc.exe";
-
 // yt-dlp, --ffmpeg-location dizininde DÜZ adlı ffmpeg.exe/ffprobe.exe arar;
-// triple-suffixed sidecar adını görmez. Bu yüzden ilk indirmede
-// <indirme>/.tools altına düz adlarla kopyalanır (tek seferlik).
-fn ffmpeg_source_dir() -> Option<std::path::PathBuf> {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if dir.join(FFMPEG_BIN).exists() {
-                return Some(dir.to_path_buf());
-            }
-        }
-    }
-    // dev fallback: src-tauri/binaries
-    let dev = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries");
-    if dev.join(FFMPEG_BIN).exists() {
-        return Some(dev);
-    }
-    None
-}
-
-fn ensure_ffmpeg_tools(download_dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+// triple-suffixed sidecar adını GÖRMEZ. Bu yüzden ilk indirmede <indirme>/.tools
+// altına düz adlarla kopyalanır (tek seferlik; sonraki çağrılar hızlı yolu kullanır).
+//
+// Kaynak artık kayıttan gelir (`components::require_tool`): **indirilenler
+// (components/) → gömülü sidecar**. Böylece Ayarlar'dan indirilen ffmpeg de
+// yt-dlp'ye görünür hâle gelir. Eski "exe yanı → CARGO_MANIFEST_DIR/binaries"
+// varsayımı ve triple ad bilgisi burada TUTULMAZ: gömülü yol artıklarını
+// `bundled_path` zaten hem `<ad>.exe` hem `<ad>-*.exe` biçiminde tarar.
+fn ensure_ffmpeg_tools(
+    app: &AppHandle,
+    download_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
     let tools = download_dir.join(".tools");
+    // İdempotent hızlı yol: iki düz ad da duruyorsa yeniden kopyalama.
     if tools.join("ffmpeg.exe").exists() && tools.join("ffprobe.exe").exists() {
         return Ok(tools);
     }
+    // Eksik araç yapılandırılmış sinyal üretir (BILESEN_EKSIK:<id>); ham OS
+    // hatası ya da teknik bir "sidecar yok" metni kullanıcıya çıkmaz.
+    let ffmpeg = crate::components::require_tool(app, "ffmpeg")?;
+    let ffprobe = crate::components::require_tool(app, "ffprobe")?;
     std::fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
-    let src = ffmpeg_source_dir().ok_or("ffmpeg sidecar bulunamadı")?;
-    std::fs::copy(src.join(FFMPEG_BIN), tools.join("ffmpeg.exe")).map_err(|e| e.to_string())?;
-    std::fs::copy(src.join(FFPROBE_BIN), tools.join("ffprobe.exe")).map_err(|e| e.to_string())?;
+    std::fs::copy(ffmpeg, tools.join("ffmpeg.exe")).map_err(|e| e.to_string())?;
+    std::fs::copy(ffprobe, tools.join("ffprobe.exe")).map_err(|e| e.to_string())?;
     Ok(tools)
 }
 fn push_capped(buf: &mut String, chunk: &str) {
@@ -192,7 +185,7 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
         args.push("mp4".to_string());
     }
     // Birleştirme HARİÇ indirme yok: araçlar hazır değilse dürüst hata ver.
-    let tools = ensure_ffmpeg_tools(&dir)?;
+    let tools = ensure_ffmpeg_tools(&app, &dir)?;
     args.push("--ffmpeg-location".to_string());
     args.push(tools.to_string_lossy().replace('\\', "/"));
     args.push(url);
@@ -200,6 +193,9 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
 }
 
 async fn run_sidecar(app: &AppHandle, item_id: &str, args: Vec<String>) -> Result<String, String> {
+    // NOT: yt-dlp bilinçli olarak kayda bağlanmadı — paketle GÖMÜLÜ gelir ve her
+    // zaman vardır; ortak kayıt yoluna taşınması dilim **7c-3**'e bırakıldı.
+    // (ffmpeg/ffprobe indirilebilir olduğundan `require_tool` ile çözülür.)
     let (mut rx, _child) = app
         .shell()
         .sidecar("yt-dlp")
@@ -280,6 +276,7 @@ pub async fn list_formats(app: AppHandle, payload: serde_json::Value) -> Result<
         .and_then(|v| v.as_str())
         .ok_or("missing required key url")?
         .to_string();
+    // yt-dlp: bkz. `run_sidecar` başındaki not — kasıtlı olarak henüz kayıt dışı.
     let (mut rx, _child) = app
         .shell()
         .sidecar("yt-dlp")

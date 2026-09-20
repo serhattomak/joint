@@ -109,12 +109,18 @@ fn transcript_path(input: &str) -> String {
     }
 }
 
-// whisper.cpp CLI `--help` probu: sidecar çözülemez ya da çalıştırılamazsa kurulu değil.
+// whisper.cpp CLI `--help` probu: bileşen KAYITTAN çözülür (indirilenler → gömülü) ve
+// ÇÖZÜLEN yol çalıştırılır.
+//
+// Ad tarihsel kalıntı: artık sidecar'a değil kayıt çözümleyicisine bakar. Neden? Eskiden
+// `health_check` dosya varlığına, `whisper_status` ise exe yanı `--help` çalıştırmaya
+// bakıyordu; ikisi çelişebiliyordu. Tek çözümleme kaynağına bağlanınca kayıt ile durum
+// aynı gerçeği söyler. `--help` semantiği ve `bool` dönüşü korunur.
 async fn sidecar_available(app: &AppHandle) -> bool {
-    let cmd = match app.shell().sidecar("whisper") {
-        Ok(c) => c,
-        Err(_) => return false,
+    let Some((path, _)) = crate::components::resolve_tool(app, "whisper") else {
+        return false;
     };
+    let cmd = app.shell().command(path.to_string_lossy().to_string());
     let (mut rx, _child) = match cmd.args(["--help"]).spawn() {
         Ok(pair) => pair,
         Err(_) => return false,
@@ -341,10 +347,14 @@ pub async fn download_whisper_engine(app: AppHandle, payload: Value) -> Result<S
 
 // Kısa ffmpeg adımı: ilerleme yok, sadece çalıştır + stderr topla.
 async fn run_ffmpeg_simple(app: &AppHandle, args: Vec<String>) -> Result<(), String> {
+    // ffmpeg sidecar yerine kayıttan çözülür (indirilenler → gömülü); böylece
+    // bileşen yöneticisinin indirdiği kopya da görünür. Eksikse ham OS hatası yerine
+    // BILESEN_EKSIK:ffmpeg sinyali döner (çağıran transcribe daha işe başlamadan kapıyı
+    // zaten çalar; buradaki çağrı yardımcıyı tek başına da doğru kılar).
+    let ffmpeg = crate::components::require_tool(app, "ffmpeg")?;
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -394,6 +404,12 @@ pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String
             "Whisper {model} modeli indirilmedi. Ayarlar → Konuşma bölümünden indir."
         ));
     }
+    // Araçlar işe BAŞLAMADAN kayıttan çözülür: eksikse ham OS hatası yerine
+    // BILESEN_EKSIK:<id> sinyali döner. Sinyalin ikinci satırı okunabilir Türkçe
+    // cümleyi taşır; arayüz (7c-2) öneki soyar. whisper önce sorulur ki transkript
+    // yolu eksik motorda net sinyal versin.
+    let whisper = crate::components::require_tool(&app, "whisper")?;
+    crate::components::require_tool(&app, "ffmpeg")?;
     // Tekli kuyruk (A13): CPU donmasın.
     let _guard = crate::download::QUEUE.lock().await;
     emit_whisper_progress(&app, &job_id, 0.0);
@@ -440,13 +456,15 @@ pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String
         "-of".to_string(),
         out_base_str,
     ];
-    let cmd = app
+    // Çözülen yol doğrudan çalıştırılır (sidecar yalnızca exe yanına bakar). Eksik
+    // motor durumu yukarıdaki require_tool kapısında zaten BILESEN_EKSIK sinyaliyle
+    // karşılanır; burada yinelenen Türkçe mesaj tutulmaz (tek kaynak: components).
+    let (mut rx, _child) = app
         .shell()
-        .sidecar("whisper")
-        .map_err(|_| "whisper motoru kurulu değil. Ayarlar → Konuşma bölümünden motoru indir.".to_string())?;
-    let (mut rx, _child) = cmd.args(wargs).spawn().map_err(|_| {
-        "whisper motoru kurulu değil. Ayarlar → Konuşma bölümünden motoru indir.".to_string()
-    })?;
+        .command(whisper.to_string_lossy().to_string())
+        .args(wargs)
+        .spawn()
+        .map_err(|e| e.to_string())?;
     let mut last_err = String::new();
     let mut ok = false;
     while let Some(event) = rx.recv().await {
@@ -494,6 +512,10 @@ pub async fn embed_subtitle(app: AppHandle, payload: Value) -> Result<String, St
     let output = get_str(&payload, "output_path")?;
     let job_id = get_str(&payload, "job_id")?;
 
+    // ffmpeg işe başlamadan kayıttan çözülür (indirilenler → gömülü): eksikse ham OS
+    // hatası yerine BILESEN_EKSIK:ffmpeg sinyali döner; arayüz kurulum akışını açar.
+    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
+
     // Soft subs: `-c copy` + `-c:s mov_text` — libass bağımlılığı yok.
     // -y first: never block on an overwrite prompt.
     let args: Vec<String> = [
@@ -524,8 +546,7 @@ pub async fn embed_subtitle(app: AppHandle, payload: Value) -> Result<String, St
 
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -581,6 +602,10 @@ pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, 
         .unwrap_or(0);
     let map = format!("0:s:{stream_index}");
 
+    // ffmpeg işe başlamadan kayıttan çözülür (indirilenler → gömülü): eksikse ham OS
+    // hatası yerine BILESEN_EKSIK:ffmpeg sinyali döner; arayüz kurulum akışını açar.
+    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
+
     // -y first: never block on an overwrite prompt.
     let args: Vec<String> = [
         "-y",
@@ -605,8 +630,7 @@ pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, 
 
     let (mut rx, _child) = app
         .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
+        .command(ffmpeg.to_string_lossy().to_string())
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
