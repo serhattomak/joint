@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackageOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackageOpen, TriangleAlert } from 'lucide-react';
 import { BulkActions } from '@/components/BulkActions';
 import { RuleStrip } from '@/components/RuleStrip';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
@@ -19,6 +19,7 @@ import {
 } from '@/lib/db/client';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { generateEmbeddings, getAiStatus } from '@/lib/ai';
+import { describeError } from '@/lib/errors';
 import { startDownload, useDownloadProgress, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
 
 interface ItemGridProps {
@@ -105,6 +106,9 @@ export function ItemGrid({
   const [progress, setProgress] = useState<Record<string, number>>({});
   // Hız/ETA metası (ölçüm için de kullanılır).
   const [dlMeta, setDlMeta] = useState<Record<string, { speed?: string | null; eta?: string | null }>>({});
+  /* Yükleme hatası: eskiden yakalanmıyordu ve `loaded` hiç true olmuyordu —
+     yani kullanıcı sonsuza kadar iskelet görüyordu. */
+  const [loadError, setLoadError] = useState<string | null>(null);
   // Guards the one-time queued→active DB flip per download (progress events stream in).
   const markedActive = useRef<Set<string>>(new Set());
 
@@ -136,23 +140,30 @@ export function ItemGrid({
         }
       }
 
-      const res = await listItemsPage(size, p * size, {
-        query: debouncedQuery,
-        platform,
-        collectionId,
-        categoryId,
-        tagId,
-        favoritesOnly,
-        downloadedOnly,
-        sort,
-      });
-      if (res.total <= p * size && p > 0) {
-        setPage(p - 1); // son sayfa boşaldıysa geri adım
-        return;
+      try {
+        const res = await listItemsPage(size, p * size, {
+          query: debouncedQuery,
+          platform,
+          collectionId,
+          categoryId,
+          tagId,
+          favoritesOnly,
+          downloadedOnly,
+          sort,
+        });
+        if (res.total <= p * size && p > 0) {
+          setPage(p - 1); // son sayfa boşaldıysa geri adım
+          return;
+        }
+        setRows(res.rows);
+        setTotal(res.total);
+        setLoadError(null);
+        setLoaded(true);
+      } catch (error) {
+        /* İskelet SONSUZA kadar dönmesin: hata görünür olmalı. */
+        setLoadError(describeError(error, 'Kayıtlar yüklenemedi.'));
+        setLoaded(true);
       }
-      setRows(res.rows);
-      setTotal(res.total);
-      setLoaded(true);
     },
     [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, sort, semantic],
   );
@@ -165,15 +176,20 @@ export function ItemGrid({
   useEffect(() => {
     let live = true;
     void (async () => {
-      const [tagMap, catMap, articleIds] = await Promise.all([
-        getAllTagsByItem(),
-        getAllCategoriesByItem(),
-        getArticleItemIds(),
-      ]);
-      if (!live) return;
-      setTagsByItem(tagMap);
-      setCatsByItem(catMap);
-      setHasArticleIds(articleIds);
+      try {
+        const [tagMap, catMap, articleIds] = await Promise.all([
+          getAllTagsByItem(),
+          getAllCategoriesByItem(),
+          getArticleItemIds(),
+        ]);
+        if (!live) return;
+        setTagsByItem(tagMap);
+        setCatsByItem(catMap);
+        setHasArticleIds(articleIds);
+      } catch (error) {
+        /* Taksonomi çipleri çizilemez ama ızgara çalışmaya devam eder; sessiz kalmayalım. */
+        console.warn('[ItemGrid:taxonomy]', error);
+      }
     })();
     return () => {
       live = false;
@@ -311,7 +327,26 @@ export function ItemGrid({
     <>
       {strip}
       <div className="min-h-0 flex-1 px-4 py-4">
-        {!loaded ? (
+        {loadError ? (
+          <div className="animate-rise flex flex-col items-center gap-3 py-20 text-center">
+            <TriangleAlert className="size-7 text-destructive" strokeWidth={1.5} />
+            <div className="flex flex-col gap-1">
+              <p className="text-title">Kayıtlar yüklenemedi</p>
+              <p className="max-w-[46ch] text-sm text-muted-foreground">{loadError}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLoadError(null);
+                setLoaded(false);
+                refreshAll();
+              }}
+            >
+              Yeniden dene
+            </Button>
+          </div>
+        ) : !loaded ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex flex-col overflow-hidden border border-border bg-card">

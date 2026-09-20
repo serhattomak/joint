@@ -175,6 +175,36 @@ const colors = await page.evaluate(() => {
 check('favori arsiv yesilini giymiyor', colors.favorite !== colors.local, true);
 check('donusturuldu arsiv yesilini giymiyor', colors.converted !== colors.local, true);
 
+// ---------- 6. Çökme ekranı (kasayı bozmadan) ----------
+await page.goto('about:blank');
+await page.goto(`${URL}#crash`, { waitUntil: 'load', timeout: 30000 });
+await page.evaluate(() => document.fonts.ready);
+await page.waitForTimeout(700);
+
+check('çökme başlığı çizildi', await page.getByText('Kasa açılamadı').isVisible(), true);
+check('çökme mesajı çizildi', await page.getByText('kilitlenmiş görünüyor').isVisible(), true);
+check('yeniden dene düğmesi var', await page.getByRole('button', { name: 'Yeniden dene' }).isVisible(), true);
+check(
+  'veri klasörü düğmesi var',
+  await page.getByRole('button', { name: 'Veri klasörünü aç' }).isVisible(),
+  true,
+);
+check('ayrıntı varsayılan olarak kapalı', await page.getByText('database is locked').isVisible(), false);
+
+await page.getByRole('button', { name: 'Ayrıntı' }).click();
+await page.waitForTimeout(250);
+check('ayrıntı açıldı', await page.getByText('database is locked').isVisible(), true);
+
+/* Tauri yok → app_data_path reddeder; hatanın GÖRÜNÜR olması beklenir
+   (eskiden bu tür hatalar konsola gidip kaybolurdu). */
+await page.getByRole('button', { name: 'Veri klasörünü aç' }).click();
+await page.waitForTimeout(600);
+check(
+  'klasör açılamazsa hata görünür kalıyor',
+  await page.getByText('Veri klasörü açılamadı').isVisible(),
+  true,
+);
+
 // ---------- rapor ----------
 console.log(results.join('\n'));
 console.log('\n--- sayfa hataları ---');

@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { NoticeProvider } from '@/components/ui/notice';
+import { CrashScreen } from '@/components/CrashScreen';
 import { SettingsView } from '@/components/SettingsView';
 import { TagPicker } from '@/components/TagPicker';
 
@@ -175,10 +176,22 @@ function SurfacesApp() {
   );
 }
 
-const surfaceMode = window.location.hash === '#surfaces';
+/* Çökme ekranı: kasayı gerçekten bozmadan hata yüzeyini ölçer. */
+function CrashApp() {
+  return (
+    <CrashScreen
+      title="Kasa açılamadı"
+      message="Kasa veritabanı başka bir süreç tarafından kilitlenmiş görünüyor."
+      detail="SqliteError: database is locked"
+      onRetry={noop}
+    />
+  );
+}
 
-/* Bildirim sağlayıcısı şart: SettingsView artık `useNotice` kullanıyor
+const surfaceMode = window.location.hash === '#surfaces';
+const crashMode = window.location.hash === '#crash';
+/* Bildirim sağlayıcısı şart: SettingsView ve CrashScreen `useNotice` kullanıyor
    (dosya açma hataları görünür olsun diye) ve sağlayıcısız çağrı hata verir. */
 createRoot(document.getElementById('root')!).render(
-  <NoticeProvider>{surfaceMode ? <SurfacesApp /> : <App />}</NoticeProvider>,
+  <NoticeProvider>{crashMode ? <CrashApp /> : surfaceMode ? <SurfacesApp /> : <App />}</NoticeProvider>,
 );

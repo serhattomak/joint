@@ -41,6 +41,7 @@ pub fn run() {
       pairing::get_pairing_token,
       pairing::regenerate_pairing_token,
       settings::get_download_dir,
+    settings::app_data_path,
       settings::set_download_dir,
       settings::write_text_file,
       settings::get_close_behavior,

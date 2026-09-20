@@ -21,6 +21,15 @@ fn read_saved_dir(app: &tauri::AppHandle) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Veri klasörünün yolu (veritabanı, ayarlar, yedekler).
+/// Hata ekranı ve Ayarlar → Hakkında bunu açar; kullanıcı kendi dosyalarına erişebilsin.
+#[tauri::command]
+pub fn app_data_path(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = app_data_dir(&app)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub fn get_download_dir(app: tauri::AppHandle) -> Result<String, String> {
     if let Some(saved) = read_saved_dir(&app) {

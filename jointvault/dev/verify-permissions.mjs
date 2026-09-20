@@ -6,9 +6,14 @@
  * son kararı çalışan uygulama verir; bu betik ona sorar. `opener:allow-open-path`
  * için kapsam (scope) şart olduğu da tam olarak böyle anlaşıldı.
  *
- * YIKICI DEĞİL:
+ * YIKICI DEĞİL ama GÖRÜNÜR BİR YAN ETKİSİ VAR:
  *   - panoya yazdığı değer, az önce OKUDUĞU değerdir; pano içeriği değişmez.
- *   - `open_path`'e var olmayan bir yol verilir; hiçbir uygulama açılmaz.
+ *   - `open_path`'e VAR OLMAYAN bir yol verilir; hiçbir uygulama açılmaz AMA
+ *     kapsam kontrolü geçtiğinde Windows "dosya bulunamadı" penceresi açar.
+ *     Bu BEKLENEN sonuçtur: tam da kanıtlanmak istenen şey, çağrının kapsam
+ *     kontrolünü geçip işletim sistemine ulaştığıdır. Pencereyi kapatabilirsin.
+ *     (Kapsam reddetseydi pencere hiç açılmaz, "Not allowed to open path"
+ *     hatası dönerdi — hatanın kendisi kanıt olurdu.)
  *
  *   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222"
  *   npx tauri dev        # pencere açıldıktan sonra:
@@ -70,8 +75,10 @@ const main = async () => {
     const openMissing = await attempt('plugin:opener|open_path', {
       path: 'C:/__jointvault-izin-sondasi-yok__/yok.txt',
     });
+    /* Faz 4 yardımcı komutu: hata ekranındaki "veri klasörünü aç" buna dayanır. */
+    const appData = await attempt('app_data_path');
 
-    return { bridge: true, read, write, openMissing };
+    return { bridge: true, read, write, openMissing, appData };
   });
 
   if (!probe.bridge) {
@@ -88,9 +95,16 @@ const main = async () => {
   };
 
   console.log('');
+  console.log('NOT: `open_path` adımı Windows\'ta "dosya bulunamadı" penceresi açabilir.');
+  console.log('     Bu BEKLENEN sonuçtur (kapsam geçti, işletim sistemi dosyayı aradı); pencereyi kapatabilirsin.\n');
   report('pano okuma (allow-read-text)', probe.read);
   report('pano yazma (allow-write-text)', probe.write);
   report('open_path (allow-open-path)', probe.openMissing);
+
+  const appDataOk = probe.appData?.ok === true && typeof probe.appData.value === 'string';
+  results.push({ label: 'app_data_path', verdict: appDataOk ? 'VAR' : 'YOK', error: probe.appData?.error ?? null });
+  console.log(`app_data_path (Faz 4 yardımcı komutu): ${appDataOk ? 'VAR' : 'YOK'}`);
+  if (probe.appData?.error) console.log(`    hata: ${probe.appData.error.slice(0, 200)}`);
 
   ensureOutDir();
   writeFileSync(

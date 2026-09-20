@@ -28,10 +28,13 @@ import { SilenceTool } from '@/components/SilenceTool';
 import { SubtitleTool } from '@/components/SubtitleTool';
 import { ToolboxHub } from '@/components/ToolboxHub';
 import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
+import { CrashScreen } from '@/components/CrashScreen';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { NoticeProvider } from '@/components/ui/notice';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { listCategories, listCollections, listItems, listTags, type ItemSort } from '@/lib/db/client';
+import { listCategories, listCollections, listItems, listTags, resetDb, type ItemSort } from '@/lib/db/client';
+import { classifyDbError, type DbInitError } from '@/lib/db/db-errors';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { startDownload, type DownloadQuality } from '@/lib/downloads';
 import { cycleTheme } from '@/lib/theme';
@@ -97,6 +100,17 @@ function App() {
 
   const refresh = useCallback((): void => setRefreshKey((k) => k + 1), []);
 
+  /* Kasa açılamazsa boş kabuk göstermek yerine ne olduğunu söyleriz. */
+  const [bootError, setBootError] = useState<DbInitError | null>(null);
+
+  const retryBoot = useCallback((): void => {
+    /* Başarısız başlatma önbellekte tutulmaz; ama yine de unuttur ki
+       ilk denemede takılı kalan bir yol varsa temiz başlasın. */
+    resetDb();
+    setBootError(null);
+    refresh();
+  }, [refresh]);
+
   const handlePlayMedia = useCallback((item: Item, initialTime?: number) => {
     setPlayingInitialTime(initialTime ?? 0);
     setPlayingItem(item);
@@ -127,9 +141,22 @@ function App() {
   };
 
   useEffect(() => {
-    void listCollections().then(setCollections);
-    void listCategories().then(setCategories);
-    void listTags().then(setTags);
+    let live = true;
+    /* Hatayı yutmak yok: kasa açılamadıysa kullanıcı bunu görmeli. */
+    void Promise.all([listCollections(), listCategories(), listTags()])
+      .then(([nextCollections, nextCategories, nextTags]) => {
+        if (!live) return;
+        setCollections(nextCollections);
+        setCategories(nextCategories);
+        setTags(nextTags);
+        setBootError(null);
+      })
+      .catch((error: unknown) => {
+        if (live) setBootError(classifyDbError(error));
+      });
+    return () => {
+      live = false;
+    };
   }, [refreshKey, collectionsOnly]);
 
   useEffect(() => {
@@ -362,6 +389,16 @@ function App() {
 
   return (
     <NoticeProvider>
+      <ErrorBoundary>
+      {/* Kasa açılamadıysa kabuğu çizmek yerine nedeni söylenir. */}
+      {bootError ? (
+        <CrashScreen
+          title="Kasa açılamadı"
+          message={bootError.message}
+          detail={bootError.detail}
+          onRetry={retryBoot}
+        />
+      ) : (
       <TooltipProvider delay={300}>
         <div className="flex min-h-screen bg-background text-foreground">
           <Sidebar {...sidebarProps} />
@@ -640,6 +677,8 @@ function App() {
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
         </div>
       </TooltipProvider>
+      )}
+      </ErrorBoundary>
     </NoticeProvider>
   );
 }

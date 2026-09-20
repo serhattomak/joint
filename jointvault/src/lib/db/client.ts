@@ -2,6 +2,7 @@ import Database from '@tauri-apps/plugin-sql';
 import schema from './schema.sql?raw';
 import type { Category, Collection, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
 import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
+import { createRetryCache } from '../retry-cache';
 import { splitSqlStatements } from './sql-split';
 
 const DB_PATH = 'sqlite:jointvault.db';
@@ -12,7 +13,18 @@ const toItem = (r: ItemRow): Item => ({ ...r, favorite: r.favorite === 1 });
 
 const now = (): string => new Date().toISOString();
 
-let dbPromise: Promise<Database> | null = null;
+export function getDb(): Promise<Database> {
+  return dbCache.get();
+}
+
+/* Başarısız başlatma önbelleğe ALINMAZ (bkz. retry-cache): aksi hâlde tek bir
+   geçici hata oturumun tamamını kilitler ve "yeniden dene" yolu kalmazdı. */
+const dbCache = createRetryCache(initDb);
+
+/** Başarısız başlatmayı unutturur; "yeniden dene" bunu çağırır. */
+export function resetDb(): void {
+  dbCache.reset();
+}
 
 async function initDb(): Promise<Database> {
   const db = await Database.load(DB_PATH);
@@ -49,11 +61,6 @@ async function ensureConvertedPath(db: Database): Promise<void> {
   } catch (e) {
     if (!/duplicate column name/i.test(String(e))) throw e;
   }
-}
-
-export function getDb(): Promise<Database> {
-  if (!dbPromise) dbPromise = initDb();
-  return dbPromise;
 }
 
 // --- items ---
