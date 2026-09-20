@@ -1,9 +1,8 @@
 import Database from '@tauri-apps/plugin-sql';
-import schema from './schema.sql?raw';
 import type { Category, Collection, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
 import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
 import { createRetryCache } from '../retry-cache';
-import { splitSqlStatements } from './sql-split';
+import { runMigrations, type MigrationExecutor } from './migrations';
 
 /*
  * Veritabanı yolu.
@@ -39,39 +38,25 @@ export function resetDb(): void {
 
 async function initDb(): Promise<Database> {
   const db = await Database.load(DB_PATH);
-  for (const sql of splitSqlStatements(schema)) {
-    await db.execute(sql);
-  }
-  await ensureDownloadColumns(db);
-  await ensureConvertedPath(db);
+  await runMigrations(migrationExecutor(db));
   return db;
 }
 
-// ponytail: existing DBs lack the download columns (added later). ALTER fails on
-// second run (SQLite: duplicate column name), so ignore that error — keeps init
-// green on both fresh (columns already in CREATE TABLE) and existing DBs.
-async function ensureDownloadColumns(db: Database): Promise<void> {
-  for (const sql of [
-    'ALTER TABLE items ADD COLUMN local_path TEXT',
-    "ALTER TABLE items ADD COLUMN download_status TEXT NOT NULL DEFAULT 'none'",
-    'ALTER TABLE items ADD COLUMN download_error TEXT',
-  ]) {
-    try {
+/* Göç çalıştırıcısı: SQL'i plugin'e devreder, sürümü `PRAGMA user_version`'da tutar.
+   `beforeApply` kancası boş bırakıldı; göç öncesi zorunlu yedek oraya bağlanacak. */
+function migrationExecutor(db: Database): MigrationExecutor {
+  return {
+    currentVersion: async () => {
+      const rows = await db.select<{ user_version: number }[]>('PRAGMA user_version');
+      return rows[0]?.user_version ?? 0;
+    },
+    execute: async (sql) => {
       await db.execute(sql);
-    } catch (e) {
-      if (!/duplicate column name/i.test(String(e))) throw e;
-    }
-  }
-}
-
-// ponytail: existing DBs lack converted_path (added later). Same duplicate-column-ignore
-// keeps init green on fresh (column already in CREATE TABLE) and existing DBs.
-async function ensureConvertedPath(db: Database): Promise<void> {
-  try {
-    await db.execute('ALTER TABLE items ADD COLUMN converted_path TEXT');
-  } catch (e) {
-    if (!/duplicate column name/i.test(String(e))) throw e;
-  }
+    },
+    setVersion: async (version) => {
+      await db.execute(`PRAGMA user_version = ${version}`);
+    },
+  };
 }
 
 // --- items ---

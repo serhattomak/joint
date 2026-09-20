@@ -16,6 +16,7 @@
     "verify:permissions": "node dev/verify-permissions.mjs",
     "verify:download-dir": "node dev/verify-download-dir.mjs",
     "verify:boot-error": "node dev/verify-boot-error.mjs",
+    "verify:migrations": "node dev/verify-migrations.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
