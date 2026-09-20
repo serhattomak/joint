@@ -7,6 +7,7 @@ import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startSilence, useSilenceProgress, type SilencePreset } from '@/lib/silence';
 import { basenameOf, silenceOutputPath } from '@/lib/convert-path';
+import { toVaultSources } from '@/lib/vault-sources';
 
 interface SilenceSource {
   label: string;
@@ -45,13 +46,7 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
   useEffect(() => {
     void listItems()
       .then((items: Item[]) => {
-        const next = items
-          .filter((it) => it.local_path)
-          .map((it) => ({
-            label: it.title || basenameOf(it.local_path as string),
-            inputPath: it.local_path as string,
-            itemId: it.id,
-          }));
+        const next = toVaultSources(items);
         setSources(next);
         setSelected((prev) => prev && next.some((s) => s.inputPath === prev.inputPath) ? prev : null);
       })

@@ -563,8 +563,8 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                             onClick={() => {
                               if (onPlayMedia) {
                                 onPlayMedia(item);
-                              } else {
-                                void openPath(item.local_path!);
+                              } else if (item.local_path) {
+                                void openPath(item.local_path);
                               }
                             }}
                           >
@@ -575,7 +575,9 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                             variant="ghost"
                             className="h-8 w-8"
                             title="Windows Gezgini'nde Göster"
-                            onClick={() => void revealItemInDir(item.local_path!)}
+                            onClick={() => {
+                              if (item.local_path) void revealItemInDir(item.local_path);
+                            }}
                           >
                             <FolderOpen className="size-3.5 text-muted-foreground" />
                           </Button>

@@ -7,6 +7,7 @@ import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startMerge, useMergeProgress } from '@/lib/merge';
 import { basenameOf, mergeOutputPath } from '@/lib/convert-path';
+import { toVaultSources } from '@/lib/vault-sources';
 
 interface MergeSource {
   label: string;
@@ -36,17 +37,7 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
 
   useEffect(() => {
     void listItems()
-      .then((items: Item[]) =>
-        setVaultSources(
-          items
-            .filter((it) => it.local_path)
-            .map((it) => ({
-              label: it.title || basenameOf(it.local_path as string),
-              inputPath: it.local_path as string,
-              itemId: it.id,
-            })),
-        ),
-      )
+      .then((items: Item[]) => setVaultSources(toVaultSources(items)))
       .catch(() => setVaultSources([]));
   }, [refreshKey]);
 

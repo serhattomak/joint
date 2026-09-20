@@ -219,7 +219,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       setConfig(updated);
       void saveSyncConfig(updated);
     } catch (e) {
-      alert(`Tarama hatası (youtube): ${e instanceof Error ? e.message : e}`);
+      alert(`Tarama hatası (youtube): ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setScanning((prev) => ({ ...prev, [platform]: false }));
     }

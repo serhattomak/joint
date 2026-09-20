@@ -120,7 +120,9 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 
 export function Sidebar(props: SidebarProps) {
   const entries = useNavEntries(props);
-  const byKey = (k: string): NavEntry => entries.find((e) => e.key === k) as NavEntry;
+  /* 'settings' her zaman entries içinde olmalı (useNavEntries sabit tanımlardan
+     kurar); yine de yoksa sessizce kırılmak yerine düğme çizilmez. */
+  const settingsEntry = entries.find((e) => e.key === 'settings');
   const warmup = useAiWarmupStatus();
   const [chatRunning, setChatRunning] = useState(false);
 
@@ -161,7 +163,7 @@ export function Sidebar(props: SidebarProps) {
           <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
         ))}
         <GroupLabel>Sistem</GroupLabel>
-        <NavButton entry={byKey('settings')} />
+        {settingsEntry && <NavButton entry={settingsEntry} />}
       </nav>
     </aside>
   );

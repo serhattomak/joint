@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { isHealthReport } from './backend-contracts';
 
 export interface HealthToolStatus {
   available: boolean;
@@ -13,11 +14,17 @@ export interface HealthReport {
   download_dir: string | null;
 }
 
-// Never-throw: backend'e ulaşılamazsa null döner, çağıran "bilinmiyor" gösterir.
+// Never-throw: backend'e ulaşılamazsa VEYA yanıt şekli beklenenden farklıysa
+// null döner; çağıran "bilinmiyor" gösterir. Şekil uyuşmazlığı sessiz kalmaz.
 export async function getHealth(): Promise<HealthReport | null> {
   try {
     const raw = await invoke<string>('health_check');
-    return JSON.parse(raw) as HealthReport;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isHealthReport(parsed)) {
+      console.warn('[health_check] beklenmeyen yanıt şekli');
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }

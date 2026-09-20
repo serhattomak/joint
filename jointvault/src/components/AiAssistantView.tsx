@@ -387,15 +387,15 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
                                   </div>
 
                                   <div className="flex shrink-0 items-center gap-1.5">
-                                    {hasTime && (
-                                      <Badge
-                                        variant="secondary"
-                                        className="flex items-center gap-1 font-mono text-3xs text-muted-foreground"
-                                      >
-                                        <Clock className="size-2.5" />
-                                        {formatSeconds(ref.chunk.start_seconds!)}
-                                      </Badge>
-                                    )}
+                                        {hasTime && typeof ref.chunk.start_seconds === 'number' && (
+                                          <Badge
+                                            variant="secondary"
+                                            className="flex items-center gap-1 font-mono text-3xs text-muted-foreground"
+                                          >
+                                            <Clock className="size-2.5" />
+                                            {formatSeconds(ref.chunk.start_seconds)}
+                                          </Badge>
+                                        )}
 
                                     <a
                                       href={ref.item.url}

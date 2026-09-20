@@ -30,7 +30,6 @@ export const waitForServer = async (url, timeoutMs = 45000) => {
 
 /**
  * Dev sunucusunu başlatır. Zaten ayaktaysa `null` döner ve hiçbir şey kapatılmaz.
- * @returns {Promise<import('node:child_process').ChildProcess | null>}
  */
 export const startDevServer = async (cwd, url) => {
   if (await isReachable(url)) {

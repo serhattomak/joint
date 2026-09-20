@@ -19,6 +19,7 @@ import {
   type WhisperStatus,
 } from '@/lib/whisper';
 import { basenameOf, embedOutputPath, splitPath, stemOf, transcriptSrtPath } from '@/lib/convert-path';
+import { toVaultSources } from '@/lib/vault-sources';
 
 interface SubtitleSource {
   label: string;
@@ -77,13 +78,7 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
   useEffect(() => {
     void listItems()
       .then((items: Item[]) => {
-        const next = items
-          .filter((it) => it.local_path)
-          .map((it) => ({
-            label: it.title || basenameOf(it.local_path as string),
-            inputPath: it.local_path as string,
-            itemId: it.id,
-          }));
+        const next = toVaultSources(items);
         setSources(next);
         setSelected((prev) => (prev && next.some((s) => s.inputPath === prev.inputPath) ? prev : null));
       })
@@ -370,7 +365,9 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
                             size="sm"
                             className="h-6 px-2 text-3xs font-medium"
                             onClick={async () => {
-                              await applyCategorization(aiNotice.itemId!, aiNotice.categories!, aiNotice.tags || []);
+                              const { itemId, categories, tags } = aiNotice;
+                              if (!itemId || !categories) return;
+                              await applyCategorization(itemId, categories, tags || []);
                               setAiNotice({
                                 message: 'Kategoriler ve etiketler kasaya başarıyla uygulandı.',
                                 status: 'applied',

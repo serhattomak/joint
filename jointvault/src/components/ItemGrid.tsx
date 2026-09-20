@@ -216,7 +216,7 @@ export function ItemGrid({
     // ponytail: downloaded file stays on disk (orphan cleanup later).
     await removeItem(pendingDelete.id);
     setPendingDelete(null);
-    await refreshAll();
+    refreshAll();
   }, [pendingDelete, refreshAll]);
 
   const runDownload = useCallback(
@@ -234,7 +234,7 @@ export function ItemGrid({
         delete next[item.id];
         return next;
       });
-      await refreshAll();
+      refreshAll();
     },
     [refreshAll],
   );

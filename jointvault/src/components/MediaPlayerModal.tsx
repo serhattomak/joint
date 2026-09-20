@@ -87,7 +87,9 @@ export function MediaPlayerModal({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => void revealItemInDir(item.local_path!)}
+                    onClick={() => {
+                      if (item.local_path) void revealItemInDir(item.local_path);
+                    }}
                     className="text-white/80 hover:bg-white/15 hover:text-white"
                     aria-label="Dosyayı klasörde göster"
                   />
@@ -104,7 +106,9 @@ export function MediaPlayerModal({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => void openPath(item.local_path!)}
+                    onClick={() => {
+                      if (item.local_path) void openPath(item.local_path);
+                    }}
                     className="text-white/80 hover:bg-white/15 hover:text-white"
                     aria-label="Sistem oynatıcısında (VLC vb.) aç"
                   />

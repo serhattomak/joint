@@ -38,8 +38,8 @@ const targets = [
 ];
 
 for (const [name, loc] of targets) {
-  await loc.screenshot({ path: `${OUT}/detail-${name}-dark.png` });
-  console.log(`ok: detail-${name}-dark`);
+  await loc.screenshot({ path: `${OUT}/detail-${String(name)}-dark.png` });
+  console.log(`ok: detail-${String(name)}-dark`);
 }
 
 await browser.close();

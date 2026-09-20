@@ -16,6 +16,14 @@
     "no-constant-condition": "error",
     "no-empty": "warn",
     "react-hooks/exhaustive-deps": "warn",
-    "typescript/no-floating-promises": "warn"
-  }
+    "typescript/no-floating-promises": "error"
+  },
+  "overrides": [
+    {
+      "files": ["extension/**"],
+      "rules": {
+        "typescript/no-floating-promises": "off"
+      }
+    }
+  ]
 }

@@ -639,12 +639,14 @@ export async function searchHybridChunks(
     }
   }
 
-  const sorted = Array.from(chunkMap.entries())
-    .filter(([_, val]) => val.chunk !== undefined)
-    .sort((a, b) => b[1].rrf - a[1].rrf)
+  /* `chunk` alanı isteğe bağlıdır. flatMap ile süzmek TS'in daraltma yapmasını
+     sağlar; aksi hâlde `!` ile susturmak gerekirdi. */
+  const scored = Array.from(chunkMap.values())
+    .flatMap((entry) => (entry.chunk ? [{ ...entry, chunk: entry.chunk }] : []))
+    .sort((a, b) => b.rrf - a.rrf)
     .slice(0, limit);
 
-  const itemIds = Array.from(new Set(sorted.map(([_, v]) => v.chunk!.item_id)));
+  const itemIds = Array.from(new Set(scored.map((entry) => entry.chunk.item_id)));
   if (itemIds.length === 0) return [];
 
   const inItemsClause = itemIds.map((_, i) => `$${i + 1}`).join(', ');
@@ -658,8 +660,8 @@ export async function searchHybridChunks(
   }
 
   const results: HybridSearchResult[] = [];
-  for (const [_, entry] of sorted) {
-    const ch = entry.chunk!;
+  for (const entry of scored) {
+    const ch = entry.chunk;
     const it = itemMap.get(ch.item_id);
     if (it) {
       results.push({

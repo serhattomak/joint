@@ -75,11 +75,17 @@ interface ItemRecordProps {
   onPlayMedia?: (item: Item, initialTime?: number) => void;
 }
 
+/* Tooltip metni: bir React düğümünü `String()` ile başlığa çevirmek eleman
+   çocuklarında `[object Object]` üretir. Yalnızca gerçekten metne çevrilebilen
+   değerler başlık olur; aksi hâlde başlık hiç konmaz. */
+const toTitleText = (value: React.ReactNode): string | undefined =>
+  typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
+
 function DataRow({ label, value, mono = true }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2 py-1 text-xs">
       <span className="text-muted-foreground shrink-0">{label}</span>
-      <span className={mono ? 'truncate font-mono text-3xs text-foreground/80 max-w-[220px]' : 'truncate text-xs text-foreground/90 max-w-[220px]'} title={String(value)}>
+      <span className={mono ? 'truncate font-mono text-3xs text-foreground/80 max-w-[220px]' : 'truncate text-xs text-foreground/90 max-w-[220px]'} title={toTitleText(value)}>
         {value}
       </span>
     </div>

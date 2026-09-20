@@ -93,9 +93,13 @@ export function useAiWarmupStatus(): AiWarmupStatus {
     let unlisten: UnlistenFn | undefined;
     listen<AiWarmupStatus>('ai-warmup-status', (e) => {
       setWarmup(e.payload);
-    }).then((fn) => {
-      unlisten = fn;
-    });
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((error: unknown) => {
+        console.warn('[ai-warmup-status] dinleyici kurulamadı', error);
+      });
     return () => {
       unlisten?.();
     };

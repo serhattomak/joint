@@ -194,7 +194,11 @@ const grid = scenarios.map((s) => ({
   cntNew: indexed.prepare(s.s().count).get().n,
 }));
 
-const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+/* Karşılaştırıcısız `.sort()` burada doğru sonuç verirdi (iki liste de aynı
+   biçimde sıralanıyor) ama niyet açık yazılır: kimlikler metne çevrilip sıralanır. */
+const sortKeys = (ids) => [...ids].map(String).sort();
+
+const sameSet = (a, b) => a.length === b.length && sortKeys(a).join() === sortKeys(b).join();
 
 const f = (n) => n.toFixed(2).padStart(8);
 if (BRIEF) {

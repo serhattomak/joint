@@ -9,6 +9,7 @@ import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startConvert, useConvertProgress, type ConvertOp } from '@/lib/convert';
 import { OP_LABEL, basenameOf, outputPathFor } from '@/lib/convert-path';
+import { toVaultSources } from '@/lib/vault-sources';
 
 interface StudioSource {
   label: string;
@@ -41,17 +42,7 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
 
   useEffect(() => {
     void listItems()
-      .then((items: Item[]) =>
-        setVaultSources(
-          items
-            .filter((it) => it.local_path)
-            .map((it) => ({
-              label: it.title || basenameOf(it.local_path as string),
-              inputPath: it.local_path as string,
-              itemId: it.id,
-            })),
-        ),
-      )
+      .then((items: Item[]) => setVaultSources(toVaultSources(items)))
       .catch(() => setVaultSources([]));
   }, [refreshKey]);
 

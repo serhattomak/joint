@@ -191,8 +191,8 @@ function DownloadControl({
                     onClick={() => {
                       if (onPlayMedia) {
                         onPlayMedia(item);
-                      } else {
-                        void openPath(item.local_path!);
+                      } else if (item.local_path) {
+                        void openPath(item.local_path);
                       }
                     }}
                     aria-label="Oynat (Sinema Modu)"

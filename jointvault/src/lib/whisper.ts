@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { isTranscriptData, isWhisperStatus } from './backend-contracts';
 
 export type WhisperModel = 'tiny' | 'base' | 'small';
 export type WhisperLang = 'auto' | 'tr' | 'en';
@@ -29,11 +30,17 @@ export interface WhisperStatus {
   models_dir: string;
 }
 
-// Never-throw: backend'e ulaşılamazsa null döner, çağıran "bilinmiyor" gösterir.
+// Never-throw: backend'e ulaşılamazsa VEYA yanıt şekli beklenenden farklıysa
+// null döner; çağıran "bilinmiyor" gösterir.
 export async function getWhisperStatus(): Promise<WhisperStatus | null> {
   try {
     const raw = await invoke<string>('whisper_status');
-    return JSON.parse(raw) as WhisperStatus;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isWhisperStatus(parsed)) {
+      console.warn('[whisper_status] beklenmeyen yanıt şekli');
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -97,7 +104,11 @@ export async function startTranscribe(
     const raw = await invoke<string>('transcribe', {
       payload: { input_path: inputPath, job_id: jobId, model, language },
     });
-    return { ok: true, data: JSON.parse(raw) as TranscriptData };
+    const parsed: unknown = JSON.parse(raw);
+    if (!isTranscriptData(parsed)) {
+      return { ok: false, error: 'Transkript yanıtı beklenmeyen şekilde geldi.' };
+    }
+    return { ok: true, data: parsed };
   } catch (e) {
     return { ok: false, error: toError(e, 'Transkript üretilemedi.') };
   }
