@@ -18,6 +18,11 @@ describe('classifyDbError', () => {
     expect(classifyDbError('attempt to write a readonly database').kind).toBe('unwritable');
   });
 
+  it('açılamayan dosyayı izin/sınıflandırmasına koyar', () => {
+    /* SQLite klasörü kendisi oluşturmaz; eksik klasör bu hatayı verir. */
+    expect(classifyDbError('unable to open database file').kind).toBe('unwritable');
+  });
+
   it('şema sorununu tanır', () => {
     expect(classifyDbError('no such table: items').kind).toBe('schema');
   });

@@ -5,7 +5,18 @@ import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
 import { createRetryCache } from '../retry-cache';
 import { splitSqlStatements } from './sql-split';
 
-const DB_PATH = 'sqlite:jointvault.db';
+/*
+ * Veritabanı yolu.
+ *
+ * `VITE_JV_DB` yalnızca bir TEST DİKİŞİDİR: bozuk/eksik bir kasayla açılışın
+ * davranışını (hata ekranı + "yeniden dene") gerçek arşive DOKUNMADAN
+ * sınamak için. Tanımlı değilse üretim yolu kullanılır.
+ */
+const dbPathOverride: unknown = import.meta.env.VITE_JV_DB;
+const DB_PATH =
+  typeof dbPathOverride === 'string' && dbPathOverride.trim().length > 0
+    ? dbPathOverride
+    : 'sqlite:jointvault.db';
 
 // SQLite returns favorite as 0/1; map to boolean at the boundary.
 type ItemRow = Omit<Item, 'favorite'> & { favorite: number };

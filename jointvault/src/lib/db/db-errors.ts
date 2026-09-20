@@ -29,7 +29,7 @@ const MESSAGES: Record<DbInitErrorKind, string> = {
 const PATTERNS: { kind: DbInitErrorKind; test: RegExp }[] = [
   { kind: 'locked', test: /database is locked|is locked|busy/i },
   { kind: 'corrupt', test: /not a database|malformed|corrupt|encrypted/i },
-  { kind: 'unwritable', test: /readonly|read-only|permission denied|access is denied|os error 5/i },
+  { kind: 'unwritable', test: /readonly|read-only|permission denied|access is denied|unable to open database file|os error 5/i },
   { kind: 'schema', test: /no such table|no such column|syntax error/i },
 ];
 

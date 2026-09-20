@@ -15,6 +15,7 @@
     "evidence:live": "node dev/recapture-live.mjs",
     "verify:permissions": "node dev/verify-permissions.mjs",
     "verify:download-dir": "node dev/verify-download-dir.mjs",
+    "verify:boot-error": "node dev/verify-boot-error.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
