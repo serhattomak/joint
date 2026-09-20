@@ -2,7 +2,8 @@ import Database from '@tauri-apps/plugin-sql';
 import type { Category, Collection, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
 import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
 import { createRetryCache } from '../retry-cache';
-import { runMigrations, type MigrationExecutor } from './migrations';
+import { createBackupWith, runDailyBackupIfDue } from './backup';
+import { MIGRATIONS, runMigrations, type MigrationExecutor } from './migrations';
 
 /*
  * Veritabanı yolu.
@@ -36,10 +37,50 @@ export function resetDb(): void {
   dbCache.reset();
 }
 
+/**
+ * Açılış yedeği (günde en fazla bir kez) + kırpma.
+ * Bağlantı burada sağlanır, böylece backup modülü client'a bağımlı olmaz.
+ */
+export async function runDailyBackup(): Promise<string | null> {
+  return runDailyBackupIfDue(await getDb());
+}
+
+/** Son başarıyla açılan bağlantı: `closeDb` yalnızca gerçekten açılmış olanı kapatır. */
+let liveDb: Database | null = null;
+
 async function initDb(): Promise<Database> {
   const db = await Database.load(DB_PATH);
-  await runMigrations(migrationExecutor(db));
+
+  await runMigrations(migrationExecutor(db), MIGRATIONS, async (pending) => {
+    /* Göç geri alınamaz: yedek ZORUNLU. Taze kasada (items tablosu yok)
+       kaybedilecek bir şey olmadığı için yedek atlanır. */
+    if (!(await hasExistingVault(db))) return;
+    await createBackupWith(db);
+    console.info(`[db] göç öncesi yedek alındı (${pending.length} göç bekliyordu)`);
+  });
+
+  liveDb = db;
   return db;
+}
+
+const hasExistingVault = async (db: Database): Promise<boolean> => {
+  const rows = await db.select<{ name: string }[]>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'items'",
+  );
+  return rows.length > 0;
+};
+
+/**
+ * Bağlantı havuzunu kapatır ve önbelleği sıfırlar.
+ * Yedekten geri dönme ve sıfırlama, canlı dosyanın üzerine yazmadan ÖNCE bunu
+ * çağırmalıdır: açık bir SQLite dosyası kilitlidir (Windows'ta üzerine yazma
+ * başarısız olur).
+ */
+export async function closeDb(): Promise<void> {
+  const db = liveDb;
+  liveDb = null;
+  dbCache.reset();
+  if (db) await db.close().catch(() => undefined);
 }
 
 /* Göç çalıştırıcısı: SQL'i plugin'e devreder, sürümü `PRAGMA user_version`'da tutar.

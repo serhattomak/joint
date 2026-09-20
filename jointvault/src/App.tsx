@@ -33,7 +33,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { NoticeProvider } from '@/components/ui/notice';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { listCategories, listCollections, listItems, listTags, resetDb, type ItemSort } from '@/lib/db/client';
+import { listCategories, listCollections, listItems, listTags, resetDb, runDailyBackup, type ItemSort } from '@/lib/db/client';
 import { classifyDbError, type DbInitError } from '@/lib/db/db-errors';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { startDownload, type DownloadQuality } from '@/lib/downloads';
@@ -150,6 +150,11 @@ function App() {
         setCategories(nextCategories);
         setTags(nextTags);
         setBootError(null);
+        /* Açılış yedeği (günde bir). Başarısız olsa bile uygulama çalışmaya
+           devam eder — yedek alamamak, kasayı açamamaktan iyidir. */
+        void runDailyBackup().catch((error: unknown) => {
+          console.warn('[backup:günlük]', error);
+        });
       })
       .catch((error: unknown) => {
         if (live) setBootError(classifyDbError(error));
