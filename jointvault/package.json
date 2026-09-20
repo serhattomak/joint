@@ -20,6 +20,7 @@
     "verify:backup": "node dev/verify-backup.mjs",
     "verify:backup-ui": "node dev/verify-backup-ui.mjs",
     "verify:foreign-keys": "node dev/verify-foreign-keys.mjs",
+    "verify:components": "node dev/verify-components.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

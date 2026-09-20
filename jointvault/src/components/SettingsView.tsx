@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { DataBackupSection } from '@/components/DataBackupSection';
+import { ComponentsSection } from '@/components/ComponentsSection';
 import { writeClipboardText } from '@/lib/clipboard';
 import { useOpenTarget } from '@/lib/open-target';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
@@ -11,6 +12,7 @@ import {
   Download,
   Eye,
   Mic,
+  PackageCheck,
   Plug,
   Settings,
   Sparkles,
@@ -60,7 +62,7 @@ import {
   type AiStatus,
 } from '@/lib/ai';
 
-export type SettingsTab = 'view' | 'downloads' | 'speech' | 'ai' | 'diagnostics' | 'extension' | 'backup';
+export type SettingsTab = 'view' | 'downloads' | 'speech' | 'ai' | 'diagnostics' | 'extension' | 'backup' | 'components';
 
 export interface SettingsViewProps {
   pageSize: number;
@@ -431,6 +433,7 @@ export function SettingsView(props: SettingsViewProps) {
     { id: 'speech', label: 'Konuşma (Whisper)', icon: <Mic className="size-4" />, desc: 'Whisper.cpp yerel konuşma tanıma motoru ve modelleri' },
     { id: 'view', label: 'Görünüm', icon: <Eye className="size-4" />, desc: 'Arayüz teması, sayfalama ve pano izleme tercihleri' },
     { id: 'downloads', label: 'İndirme', icon: <Download className="size-4" />, desc: 'Medya indirme klasörü, varsayılan kalite ve sistem çekmecesi' },
+    { id: 'components', label: 'Bileşenler', icon: <PackageCheck className="size-4" />, desc: 'ffmpeg, ffprobe, yt-dlp ve whisper motorunun kurulum durumu' },
     { id: 'diagnostics', label: 'Tanılama', icon: <Activity className="size-4" />, desc: 'Sistem donanımı, CUDA, ffmpeg ve yt-dlp sağlık kontrolleri' },
     { id: 'extension', label: 'Eklenti', icon: <Plug className="size-4" />, desc: 'Tarayıcı uzantısı ile güvenli bağlantı eşleşme anahtarı' },
     { id: 'backup', label: 'Yedekleme', icon: <Database className="size-4" />, desc: 'Kasa veritabanını JSON olarak dışa aktar veya geri yükle' },
@@ -1113,6 +1116,9 @@ export function SettingsView(props: SettingsViewProps) {
                 {tokenError && <p className="text-sm text-destructive">{tokenError}</p>}
               </div>
             )}
+
+            {/* TAB: BİLEŞENLER */}
+            {tab === 'components' && <ComponentsSection />}
 
             {/* TAB: YEDEKLEME */}
             {tab === 'backup' && (

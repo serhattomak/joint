@@ -14,6 +14,7 @@ mod tray;
 mod whisper;
 mod ai;
 mod backup;
+mod components;
 mod turbo_download;
 mod sync;
 mod scraper;
@@ -49,6 +50,8 @@ pub fn run() {
     backup::delete_backup,
     backup::restore_backup,
     backup::reset_database,
+    components::components_status,
+    components::components_path,
       settings::set_download_dir,
       settings::write_text_file,
       settings::get_close_behavior,
