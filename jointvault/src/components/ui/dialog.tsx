@@ -41,18 +41,15 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
 
 function DialogContent({
   className,
-  overlayClassName,
   children,
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
-  /** Perdeye ek sınıf — denetçi modunda geniş ekranda perde kalkar (`lg:hidden`). */
-  overlayClassName?: string;
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay className={overlayClassName} />
+      <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(

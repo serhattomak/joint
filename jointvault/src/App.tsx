@@ -456,7 +456,7 @@ function App() {
             onViewChange={isVault ? switchView : undefined}
           />
 
-          <div className={`flex flex-1 ${record ? 'lg:pr-[380px]' : ''}`}>
+          <div className="flex flex-1">
             <Sidebar {...sidebarProps} />
 
             <div className="flex min-w-0 flex-1 flex-col">

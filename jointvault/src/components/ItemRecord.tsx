@@ -18,7 +18,6 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { motion } from 'motion/react';
 import { useOpenTarget } from '@/lib/open-target';
-import { useIsWide } from '@/lib/use-is-wide';
 import { useDragDismiss } from '@/lib/use-drag-dismiss';
 import {
   categorizeAndTagItem,
@@ -109,11 +108,8 @@ export function ItemRecord({
 }: ItemRecordProps) {
   const { open, reveal } = useOpenTarget();
   const installer = useComponentInstaller();
-  /* Geniş pencerede kayıt paneli modal değil, sağda sabit bir denetçi olur:
-     perde kalkar, odak kilitlenmez, içerik yanında akar (App sağdan içeri kaydırır). */
-  const wide = useIsWide();
-  /* Çekip-kapat: geniş pencerede sağa, dar pencerede aşağı. */
-  const drag = useDragDismiss(wide ? 'x' : 'y', onClose);
+  /* Çekip-kapat: fiş yaprağı merkezîdir — aşağı çekince kapanır. */
+  const drag = useDragDismiss('y', onClose);
   const [title, setTitle] = useState(item.title ?? '');
   const [note, setNote] = useState(item.note ?? '');
   const [collectionId, setCollectionId] = useState(item.collection_id ?? '');
@@ -342,12 +338,11 @@ export function ItemRecord({
   const platform = PLATFORM_META[item.platform as Platform] ?? PLATFORM_META.other;
 
   return (
-    <Dialog open={true} modal={!wide} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         showCloseButton={false}
-        overlayClassName={wide ? 'lg:hidden' : undefined}
         render={<motion.div {...drag} />}
-        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-5xl h-[88vh] max-h-[88vh] sm:max-w-5xl p-0 flex flex-col overflow-hidden bg-card text-card-foreground border border-border rounded-xl z-50 focus:outline-none lg:top-[52px] lg:right-0 lg:left-auto lg:h-[calc(100vh-52px)] lg:max-h-[calc(100vh-52px)] lg:w-[380px] lg:max-w-[380px] lg:translate-x-0 lg:translate-y-0 lg:rounded-none lg:border-y-0 lg:border-r-0"
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-5xl h-[88vh] max-h-[88vh] sm:max-w-5xl p-0 flex flex-col overflow-hidden bg-card text-card-foreground border border-border rounded-xl z-50 focus:outline-none"
       >
         <DialogTitle className="sr-only">Kayıt Detayı - {item.title || item.url}</DialogTitle>
         <DialogDescription className="sr-only">Öğe fiş detayı ve okuyucu modu</DialogDescription>

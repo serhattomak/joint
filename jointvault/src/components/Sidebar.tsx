@@ -29,12 +29,18 @@ interface NavEntry {
   icon: React.ReactNode;
   active: boolean;
   run: () => void;
+  group: NavGroup;
 }
+
+type NavGroup = 'kasa' | 'araclar' | 'sistem';
 
 /*
  * Çekmece rayı — kataloğun omurgası. Bölümler gerçek gruplardır (KASA · ARAÇLAR · SİSTEM);
  * aktif öğe bir çekmece sekmesidir: yüzeyi içerikle birleşir, sağ kenara taşan çentik
  * rayın hairline'ını keser. Renkli sol şerit yok — sekme fiziksel olarak taşar.
+ *
+ * Gruplama işin doğasına göre: KASA = kendi arşivin (tümü/favori/koleksiyon),
+ * ARAÇLAR = kazı besleyen ve işleyen araçlar, SİSTEM = durum ve ayar.
  */
 function useNavEntries(props: SidebarProps): NavEntry[] {
   const { view, homeActive } = props;
@@ -42,25 +48,27 @@ function useNavEntries(props: SidebarProps): NavEntry[] {
     target: Exclude<SidebarView, 'all'>,
     icon: React.ReactNode,
     label: string,
+    group: NavGroup,
   ): NavEntry => ({
     key: target,
     label,
     icon,
     active: view === target,
     run: () => props.onView(target),
+    group,
   });
 
   return [
-    { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome },
-    viewBtn('favorites', <Star />, 'Favoriler'),
-    viewBtn('sync', <RefreshCw />, 'Eşitleme'),
-    viewBtn('downloads', <Download />, 'İndirme Yöneticisi'),
-    viewBtn('collections', <FolderKanban />, 'Koleksiyonlar'),
-    viewBtn('ai', <Sparkles />, 'Kasa Asistanı'),
-    viewBtn('converter', <Clapperboard />, 'Dönüştürücü'),
-    viewBtn('toolbox', <Wrench />, 'Araç Kutusu'),
-    viewBtn('stats', <BarChart3 />, 'İstatistikler'),
-    viewBtn('settings', <Settings />, 'Ayarlar'),
+    { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome, group: 'kasa' },
+    viewBtn('favorites', <Star />, 'Favoriler', 'kasa'),
+    viewBtn('collections', <FolderKanban />, 'Koleksiyonlar', 'kasa'),
+    viewBtn('downloads', <Download />, 'İndirme Yöneticisi', 'araclar'),
+    viewBtn('sync', <RefreshCw />, 'Eşitleme', 'araclar'),
+    viewBtn('converter', <Clapperboard />, 'Dönüştürücü', 'araclar'),
+    viewBtn('toolbox', <Wrench />, 'Araç Kutusu', 'araclar'),
+    viewBtn('stats', <BarChart3 />, 'İstatistikler', 'sistem'),
+    viewBtn('ai', <Sparkles />, 'Kasa Asistanı', 'sistem'),
+    viewBtn('settings', <Settings />, 'Ayarlar', 'sistem'),
   ];
 }
 
@@ -125,9 +133,6 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 
 export function Sidebar(props: SidebarProps) {
   const entries = useNavEntries(props);
-  /* 'settings' her zaman entries içinde olmalı (useNavEntries sabit tanımlardan
-     kurar); yine de yoksa sessizce kırılmak yerine düğme çizilmez. */
-  const settingsEntry = entries.find((e) => e.key === 'settings');
   const warmup = useAiWarmupStatus();
   const [chatRunning, setChatRunning] = useState(false);
   // Offload kararı: "VRAM Aktif" etiketi buna bağlı (CPU'da söylenmez).
@@ -159,15 +164,23 @@ export function Sidebar(props: SidebarProps) {
     <aside className="material-rail sticky top-[52px] hidden h-[calc(100vh-52px)] w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border pt-2 text-rail-foreground md:flex">
       <nav className="flex flex-1 flex-col gap-0.5 px-2 pb-4">
         <GroupLabel>Kasa</GroupLabel>
-        {entries.slice(0, 5).map((e) => (
-          <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
-        ))}
+        {entries
+          .filter((e) => e.group === 'kasa')
+          .map((e) => (
+            <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
+          ))}
         <GroupLabel>Araçlar</GroupLabel>
-        {entries.slice(5, 9).map((e) => (
-          <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
-        ))}
+        {entries
+          .filter((e) => e.group === 'araclar')
+          .map((e) => (
+            <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
+          ))}
         <GroupLabel>Sistem</GroupLabel>
-        {settingsEntry && <NavButton entry={settingsEntry} />}
+        {entries
+          .filter((e) => e.group === 'sistem')
+          .map((e) => (
+            <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
+          ))}
       </nav>
     </aside>
   );
