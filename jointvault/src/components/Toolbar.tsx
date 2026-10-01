@@ -185,8 +185,14 @@ export function Toolbar({
                   ? 'Arşivde semantik ara: doğal dil, kavramlar, transkriptler…'
                   : 'Arşivde ara: başlık · not · URL'
             }
-            className={`h-9 pl-8 text-[0.9375rem] ${semantic && !capture ? 'border-primary/50' : ''}`}
+            className={`h-9 rounded-lg bg-card/60 pl-8 text-[0.9375rem] ${!capture ? 'pr-16' : ''} ${semantic && !capture ? 'border-primary/50' : ''}`}
           />
+          {!capture && (
+            <span className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-1 font-mono text-2xs text-muted-foreground">
+              <kbd className="rounded-xs border border-border px-1 py-px">Ctrl</kbd>
+              <kbd className="rounded-xs border border-border px-1 py-px">K</kbd>
+            </span>
+          )}
         </div>
 
         {capture ? (
@@ -252,11 +258,6 @@ export function Toolbar({
                 <span className="hidden md:inline">Eşitle</span>
               </Button>
             )}
-            <span className="hidden shrink-0 items-center gap-1.5 font-mono text-2xs text-muted-foreground xl:flex">
-              <kbd className="rounded-xs border border-border px-1 py-px">Ctrl</kbd>
-              <kbd className="rounded-xs border border-border px-1 py-px">K</kbd>
-              <span>palet</span>
-            </span>
           </div>
         )}
       </div>
