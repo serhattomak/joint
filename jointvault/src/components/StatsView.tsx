@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { PageSurface } from '@/components/ui/page-surface';
 import {
   getAllCategoriesByItem,
   getAllTagsByItem,
@@ -151,11 +152,7 @@ export function StatsView({ refreshKey }: StatsViewProps) {
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <BarChart3 className="size-[18px] text-primary" strokeWidth={2} />
-        <h2 className="text-title">İstatistikler</h2>
-      </div>
+    <PageSurface icon={<BarChart3 strokeWidth={2} />} title="İstatistikler" width="4xl">
       <section className="max-w-2xl divide-y divide-border border border-border bg-card">
         <h3 className="px-3 py-1.5 text-micro font-medium text-muted-foreground">Kasa özeti</h3>
         {stats.map(([label, value]) => (
@@ -199,6 +196,6 @@ export function StatsView({ refreshKey }: StatsViewProps) {
         {bar(categoryData, 'Kategoriler (ilk 8)')}
         {bar(tagData, 'Etiketler (ilk 8)')}
       </div>
-    </div>
+    </PageSurface>
   );
 }

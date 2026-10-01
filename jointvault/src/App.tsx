@@ -518,9 +518,7 @@ function App() {
                   />
                 </div>
               ) : syncOnly ? (
-                <div className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
-                  <SyncView onSyncDone={refresh} />
-                </div>
+                <SyncView onSyncDone={refresh} />
               ) : aiOnly ? (
                 <div className="min-w-0 flex-1">
                   <AiAssistantView
@@ -568,72 +566,46 @@ function App() {
                     }}
                   />
                 </div>
-              ) : (
+              ) : statsOnly ? (
+                <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
+                  <StatsView refreshKey={refreshKey} />
+                </Suspense>
+              ) : converterOnly ? (
                 <div className="min-w-0 flex-1 px-4 py-5">
-                  {statsOnly ? (
-                    <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
-                      <StatsView refreshKey={refreshKey} />
-                    </Suspense>
-                  ) : converterOnly ? (
-                    <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
-                  ) : toolboxTool === 'duplicates' ? (
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                          <ArrowLeft /> Araç Kutusu&apos;na dön
-                        </Button>
-                      </div>
-                      <DuplicatesView onDone={refresh} />
-                    </div>
-                  ) : toolboxTool === 'merge' ? (
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                          <ArrowLeft /> Araç Kutusu&apos;na dön
-                        </Button>
-                      </div>
-                      <MergeTool refreshKey={refreshKey} onDone={refresh} />
-                    </div>
-                  ) : toolboxTool === 'silence' ? (
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                          <ArrowLeft /> Araç Kutusu&apos;na dön
-                        </Button>
-                      </div>
-                      <SilenceTool refreshKey={refreshKey} onDone={refresh} />
-                    </div>
-                  ) : toolboxTool === 'gif' ? (
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                          <ArrowLeft /> Araç Kutusu&apos;na dön
-                        </Button>
-                      </div>
-                      <GifTool refreshKey={refreshKey} onDone={refresh} />
-                    </div>
-                  ) : toolboxTool === 'subtitle' ? (
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                          <ArrowLeft /> Araç Kutusu&apos;na dön
-                        </Button>
-                      </div>
-                      <SubtitleTool refreshKey={refreshKey} onDone={refresh} />
-                    </div>
-                  ) : (
-                    <ToolboxHub
-                      onPick={(toolId) => {
-                        if (toolId === 'merge') setToolboxTool('merge');
-                        else if (toolId === 'silence') setToolboxTool('silence');
-                        else if (toolId === 'gif') setToolboxTool('gif');
-                        else if (toolId === 'subtitle') setToolboxTool('subtitle');
-                        else if (toolId === 'duplicates') setToolboxTool('duplicates');
-                        else openConverter();
-                      }}
-                    />
-                  )}
+                  <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
                 </div>
+              ) : toolboxTool ? (
+                <div className="min-w-0 flex-1 px-4 py-5">
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
+                        <ArrowLeft /> Araç Kutusu&apos;na dön
+                      </Button>
+                    </div>
+                    {toolboxTool === 'duplicates' ? (
+                      <DuplicatesView onDone={refresh} />
+                    ) : toolboxTool === 'merge' ? (
+                      <MergeTool refreshKey={refreshKey} onDone={refresh} />
+                    ) : toolboxTool === 'silence' ? (
+                      <SilenceTool refreshKey={refreshKey} onDone={refresh} />
+                    ) : toolboxTool === 'gif' ? (
+                      <GifTool refreshKey={refreshKey} onDone={refresh} />
+                    ) : (
+                      <SubtitleTool refreshKey={refreshKey} onDone={refresh} />
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <ToolboxHub
+                  onPick={(toolId) => {
+                    if (toolId === 'merge') setToolboxTool('merge');
+                    else if (toolId === 'silence') setToolboxTool('silence');
+                    else if (toolId === 'gif') setToolboxTool('gif');
+                    else if (toolId === 'subtitle') setToolboxTool('subtitle');
+                    else if (toolId === 'duplicates') setToolboxTool('duplicates');
+                    else openConverter();
+                  }}
+                />
               )}
             </main>
           </div>

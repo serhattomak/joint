@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PageSurface } from '@/components/ui/page-surface';
 import {
   createCategory,
   createCollection,
@@ -186,28 +187,19 @@ export function CollectionsView({
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-background px-6 py-8 text-foreground md:px-10">
-      {/* ÜST BAŞLIK & GERİ DÖNÜŞ */}
-      <div className="mb-6 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2.5">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <FolderKanban className="size-5" />
-            </span>
-            <h1 className="text-2xl font-bold tracking-tight">Koleksiyonlar & Düzenleme</h1>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Kasandaki tüm kayıtları koleksiyonlara ayır, kategori ve etiket ağacını düzenle.
-          </p>
-        </div>
-
-        {onClose && (
-          <Button variant="outline" size="sm" onClick={onClose} className="self-start sm:self-auto">
-            <ArrowLeft className="mr-1.5 size-4" /> Kasaya Dön
+    <PageSurface
+      icon={<FolderKanban />}
+      title="Koleksiyonlar & Düzenleme"
+      description="Kasandaki tüm kayıtları koleksiyonlara ayır, kategori ve etiket ağacını düzenle."
+      width="5xl"
+      actions={
+        onClose ? (
+          <Button variant="outline" size="sm" onClick={onClose}>
+            <ArrowLeft /> Kasaya Dön
           </Button>
-        )}
-      </div>
-
+        ) : undefined
+      }
+    >
       {/* SEKME DÜĞMELERİ VE ARAMA ÇUBUĞU */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1">
@@ -688,6 +680,6 @@ export function CollectionsView({
         tone="destructive"
         onConfirm={() => void handleConfirmDelete()}
       />
-    </div>
+    </PageSurface>
   );
 }

@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PageSurface } from '@/components/ui/page-surface';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { openExternal } from '@/lib/external';
@@ -358,28 +359,15 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-12">
-      {/* Header */}
-      <header className="flex flex-col justify-between gap-4 border-b border-border pb-4 md:flex-row md:items-center">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <RefreshCw className="size-6 text-primary" strokeWidth={2.2} />
-            <h1 className="text-display font-semibold tracking-tight">Eşitleme Merkezi</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Instagram, X (Twitter) ve YouTube'daki kayıtlarınızı tarayıcı oturumunuzla doğrudan diske
-            indirin ve yerel AI ile etiketleyin.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void handleSaveConfig()}
-            className="gap-1.5"
-          >
-            <Save className="size-3.5" />
+    <PageSurface
+      icon={<RefreshCw strokeWidth={2.2} />}
+      title="Eşitleme Merkezi"
+      description="Instagram, X (Twitter) ve YouTube'daki kayıtlarınızı tarayıcı oturumunuzla doğrudan diske indirin ve yerel AI ile etiketleyin."
+      width="6xl"
+      actions={
+        <>
+          <Button variant="outline" size="sm" onClick={() => void handleSaveConfig()}>
+            <Save />
             <span>{savedSuccess ? 'Kaydedildi ✓' : 'Ayarları Kaydet'}</span>
           </Button>
           <Button
@@ -387,17 +375,13 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
             size="sm"
             onClick={() => void handleScanAll()}
             disabled={isAnyScanning}
-            className="gap-1.5"
           >
-            {isAnyScanning ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
-            )}
+            {isAnyScanning ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             <span>Tümünü Tara</span>
           </Button>
-        </div>
-      </header>
+        </>
+      }
+    >
 
       {/* Hidden file input for cookies.txt upload */}
       <input
@@ -951,6 +935,6 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
           </div>
         )}
       </section>
-    </div>
+    </PageSurface>
   );
 }

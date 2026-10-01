@@ -5,6 +5,7 @@
  * Buradaki her örnek içerik SENTETİK'tir; ürün iddiası taşımaz.
  */
 import { useState } from 'react';
+import { ArrowLeft, FolderKanban } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import '../src/index.css';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Field, FieldGroup, SettingRow } from '@/components/ui/field';
 import { Input, Textarea } from '@/components/ui/input';
 import { NoticeProvider, useNotice } from '@/components/ui/notice';
+import { PageSurface } from '@/components/ui/page-surface';
 import { ComponentInstallerProvider } from '@/components/ComponentInstaller';
 import { Progress } from '@/components/ui/progress';
 import { Select } from '@/components/ui/select';
@@ -245,6 +247,26 @@ function Harness() {
               </span>
             </SettingRow>
           </FieldGroup>
+        </Section>
+
+        <Section title="Sayfa yüzeyi">
+          <div className="overflow-hidden rounded-xl border border-border">
+            <PageSurface
+              icon={<FolderKanban />}
+              title="Örnek sayfa"
+              description="Tek kabuk: ikon çipi, tek başlık ölçeği, sağda eylemler."
+              width="full"
+              actions={
+                <Button variant="outline" size="sm">
+                  <ArrowLeft /> Geri
+                </Button>
+              }
+            >
+              <div className="settings-card p-4 text-sm text-muted-foreground">
+                Sayfa içeriği buraya gelir.
+              </div>
+            </PageSurface>
+          </div>
         </Section>
       </div>
 

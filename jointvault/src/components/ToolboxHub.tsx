@@ -1,5 +1,6 @@
 import { Captions, ChevronRight, Combine, Copy, Film, Scissors, Wrench } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { PageSurface } from '@/components/ui/page-surface';
 
 export type ToolboxToolId = 'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates';
 
@@ -47,13 +48,8 @@ const TOOLS: { id: ToolboxToolId; icon: React.ReactNode; title: string; desc: st
  */
 export function ToolboxHub({ onPick }: ToolboxHubProps) {
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex items-center gap-2.5">
-        <Wrench className="size-[18px] text-primary" strokeWidth={2} aria-hidden />
-        <h2 className="text-title">Araç Kutusu</h2>
-      </header>
-
-      <div className="flex max-w-2xl flex-col divide-y divide-border border border-border bg-card">
+    <PageSurface icon={<Wrench strokeWidth={2} />} title="Araç Kutusu" width="3xl">
+      <div className="flex flex-col divide-y divide-border border border-border bg-card">
         {TOOLS.map((t) => (
           <button
             key={t.id}
@@ -78,6 +74,6 @@ export function ToolboxHub({ onPick }: ToolboxHubProps) {
           </button>
         ))}
       </div>
-    </div>
+    </PageSurface>
   );
 }

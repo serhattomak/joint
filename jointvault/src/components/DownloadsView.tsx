@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { PageSurface } from '@/components/ui/page-surface';
 import { Switch } from '@/components/ui/switch';
 import {
   clearCompletedDownloads,
@@ -374,29 +375,24 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background px-6 py-8 text-foreground md:px-10">
-      {/* ÜST BAŞLIK, KAYNAK SEKMELERİ VE AKSİYONLAR */}
-      <div className="mb-6 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2.5">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Download className="size-5" />
-            </span>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">İndirme Yöneticisi</h1>
-              <Badge variant="outline" className="text-xs font-mono font-normal">
-                {sourceTab === 'vault' ? 'Kasa Medyaları' : 'Turbo Engine'}
-              </Badge>
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {sourceTab === 'vault'
-              ? "Kasa'daki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
-              : 'Çok kanallı paralel parçalı indirme motoru ile dosyalarınızı en yüksek hızda indirin ve yönetin.'}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
+    <PageSurface
+      icon={<Download />}
+      title={
+        <span className="inline-flex items-center gap-2">
+          İndirme Yöneticisi
+          <Badge variant="outline" className="font-mono text-xs font-normal">
+            {sourceTab === 'vault' ? 'Kasa Medyaları' : 'Turbo Engine'}
+          </Badge>
+        </span>
+      }
+      description={
+        sourceTab === 'vault'
+          ? "Kasa'daki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
+          : 'Çok kanallı paralel parçalı indirme motoru ile dosyalarınızı en yüksek hızda indirin ve yönetin.'
+      }
+      width="5xl"
+      actions={
+        <>
           {/* Ana Kaynak Seçici: Kasa Medyaları vs Turbo İndirmeler */}
           <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 shadow-2xs">
             <button
@@ -449,11 +445,12 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
 
           {onClose && (
             <Button variant="outline" size="sm" onClick={onClose}>
-              <ArrowLeft className="mr-1.5 size-4" /> Kasaya Dön
+              <ArrowLeft /> Kasaya Dön
             </Button>
           )}
-        </div>
-      </div>
+        </>
+      }
+    >
 
       {sourceTab === 'vault' ? (
         <div className="flex flex-col gap-5">
@@ -1157,6 +1154,6 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageSurface>
   );
 }

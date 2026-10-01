@@ -237,6 +237,18 @@ Değişen yalnızca görünümdür: native başlık çubuğunun sağ-tık sistem
 "maximize üzerine gel → snap layouts" paneli yoktur; geri kalan davranış (taşıma, boyutlandırma,
 yarı-ekran, tepsiye kapanma) aynen sürer.
 
+### Sayfa yüzeyi
+
+Tam-sayfa görünümler (Koleksiyonlar, İndirilenler, Eşitleme, İstatistikler, Araç Kutusu) tek bir
+`PageSurface` kabuğu kullanır — Apple'ın gruplandırılmış sayfa ritmi: solda ikon çipi, yanında
+**tek** başlık ölçeği (`text-title`), altında açıklama, sağda eylemler; tek padding ve içeriğe göre
+seçilen genişlik. Görünüm kendi `min-h-screen` / `max-w-*` / `px-*` kabuğunu ve kendi başlık ölçeğini
+(`text-2xl` · `text-display` · `text-title` karışımı) yazmaz; bu üçe ayrışma bir sürüklenmeydi.
+
+**The Tek-Sayfa-Kabuğu Kuralı.** Yeni bir tam-sayfa görünüm eklerken başlık, padding ve genişlik elle
+kurulmaz; `PageSurface` kullanılır. Kaydırma yüzeye ait değildir: kök `min-h-screen`, yakala çubuğu
+`sticky`tir ve içerik sayfa olarak akar — yüzey kendi kaydırma kabını açmaz.
+
 ## Materials
 
 Malzeme, dünyanın en belirgin Apple izidir: yüzen katman **yarı saydamdır ve arkasını
