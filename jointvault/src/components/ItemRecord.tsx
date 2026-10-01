@@ -431,8 +431,8 @@ export function ItemRecord({
           ) : (
             <div className="p-6">
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-                {/* Sol Sütun (7 col): Başlık, Notlar, AI Özetleme ve Taksonomi */}
-                <div className="flex flex-col gap-4 lg:col-span-7">
+                {/* Sağ Sütun (5 col): Başlık, Notlar, AI Özetleme ve Taksonomi */}
+                <div className="flex flex-col gap-4 lg:order-2 lg:col-span-5">
                   {/* Başlık */}
                   <div className="flex flex-col gap-1.5">
                     <label htmlFor="rec-title" className="text-xs font-medium text-muted-foreground">
@@ -642,8 +642,8 @@ export function ItemRecord({
                   </div>
                 </div>
 
-                {/* Sağ Sütun (5 col): Medya Önizleme, İndirme ve Dosya İşlemleri, Künye */}
-                <div className="flex flex-col gap-4 lg:col-span-5">
+                {/* Sol Sütun (7 col): Medya Önizleme, İndirme ve Dosya İşlemleri, Künye */}
+                <div className="flex flex-col gap-4 lg:order-1 lg:col-span-7">
                   {/* Medya Önizleme & İndirme Kartı */}
                   <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card">
                     <div className="relative aspect-video w-full overflow-hidden border-b border-border bg-muted/40">
