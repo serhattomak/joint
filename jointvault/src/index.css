@@ -372,6 +372,15 @@
   );
 }
 
+/* --- Apple gruplandırılmış iç liste: ayar/panel kartının tek dili ---
+   Aynı sınıf dizisi Ayarlar'da 15 kez elle tekrarlanıyordu (üç farklı
+   opaklıkta); sürüklenmeyi kapatmak için tek yardımcıya bağlandı. */
+@utility settings-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--color-card);
+}
+
 /* Ekran dışı satır/kartların layout+paint maliyetini atla (1000+ öğe bütçesi). */
 @utility cv-row {
   content-visibility: auto;
