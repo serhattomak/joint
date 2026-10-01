@@ -222,7 +222,7 @@ function DownloadControl({
 
   if (status === 'queued' || status === 'active') {
     return (
-      <div className="flex min-w-32 flex-1 flex-col gap-1" aria-label={`İndiriliyor %${Math.round(progress ?? 0)}`}>
+      <div className="flex w-full flex-col gap-1" aria-label={`İndiriliyor %${Math.round(progress ?? 0)}`}>
         {status === 'queued' ? <Stamp state="queued" /> : null}
         <Progress value={progress ?? 0} />
         {(meta?.speed || meta?.eta) && (
@@ -244,9 +244,9 @@ function DownloadControl({
   const failureText = missing ? missingComponentText(missing) : item.download_error ?? 'Hata';
 
   return (
-    <div className="flex min-w-0 items-center gap-1">
+    <div className="flex w-full min-w-0 items-center justify-end gap-1">
       {failing && (
-        <span className="max-w-40 truncate text-2xs text-state-error" title={failureText}>
+        <span className="min-w-0 flex-1 truncate text-2xs text-state-error" title={failureText}>
           {failureText}
         </span>
       )}
@@ -338,10 +338,47 @@ function Accession({
   variant,
 }: Pick<ItemViewProps, 'item' | 'tags' | 'categories' | 'collectionLabel' | 'hasArticle'> & { variant: 'card' | 'row' }) {
   const hasTaxonomy = Boolean(collectionLabel) || categories.length > 0 || tags.length > 0 || hasArticle;
-  if (variant === 'card' && !hasTaxonomy) return null;
+
+  if (variant === 'row') {
+    /*
+     * Satır künyesi: tek satır, taşarsa kırpılır. Sağda "Okunabilir" ve tarih
+     * SABİT genişlikli sütunlardır — etiket uzunluğu ya da durum ne olursa olsun
+     * her satırda aynı x'e oturur (satırlar arası hizalama).
+     */
+    return (
+      <p data-num className="flex min-w-0 items-center gap-2 text-2xs text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate">
+          <span>{platformLabel(item.platform)}</span>
+          {collectionLabel && <> · {collectionLabel}</>}
+          {categories.map((c) => (
+            <span key={c.id}> · {c.name}</span>
+          ))}
+          {tags.map((t) => (
+            <span key={t.id} className="text-primary">
+              {' '}
+              #{t.name}
+            </span>
+          ))}
+        </span>
+        <span className="flex w-[84px] shrink-0 justify-end">
+          {hasArticle && (
+            <span
+              className="inline-flex items-center gap-1 rounded-xs bg-primary/10 px-1.5 py-px font-mono text-2xs font-medium text-primary"
+              title="Okunabilir makale/metin içeriği hazır"
+            >
+              <BookOpen className="size-2.5" />
+              Okunabilir
+            </span>
+          )}
+        </span>
+        <span className="w-[72px] shrink-0 text-right">{formatDate(item.created_at)}</span>
+      </p>
+    );
+  }
+
+  if (!hasTaxonomy) return null;
   return (
     <p data-num className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
-      {variant === 'row' && <span>{platformLabel(item.platform)}</span>}
       {hasArticle && (
         <span
           className="inline-flex items-center gap-1 rounded-xs bg-primary/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-primary"
@@ -360,7 +397,6 @@ function Accession({
           #{t.name}
         </span>
       ))}
-      <span className="ml-auto">{formatDate(item.created_at)}</span>
     </p>
   );
 }
@@ -433,16 +469,20 @@ export const ItemRowView = memo(function ItemRowView({
         </button>
         <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="row" />
       </div>
-      <DownloadControl
-        item={item}
-        progress={progress}
-        meta={meta}
-        onAudio={onAudio}
-        onPickVideo={onPickVideo}
-        onConvert={onConvert}
-        onPlayMedia={onPlayMedia}
-      />
-      <div className="flex shrink-0 items-center gap-0.5 transition-opacity duration-150 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+      {/* Sağ bloklar SABİT genişlikte ve sağa hizalı: durum/aksiyon sayısı
+          değişse de künye ve tarih sütunları her satırda aynı hizada kalır. */}
+      <div className="flex w-[140px] shrink-0 items-center justify-end">
+        <DownloadControl
+          item={item}
+          progress={progress}
+          meta={meta}
+          onAudio={onAudio}
+          onPickVideo={onPickVideo}
+          onConvert={onConvert}
+          onPlayMedia={onPlayMedia}
+        />
+      </div>
+      <div className="flex w-[148px] shrink-0 items-center justify-end gap-0.5 transition-opacity duration-150 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
         <ActionButtons item={item} hasArticle={hasArticle} onFavorite={onFavorite} onDelete={onDelete} onOpen={onOpen} />
       </div>
     </div>
