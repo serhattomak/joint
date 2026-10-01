@@ -7,6 +7,7 @@ import {
   Download,
   ExternalLink,
   FolderDown,
+  Info,
   KeyRound,
   Layers,
   Loader2,
@@ -393,13 +394,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       />
 
       {/* Cookie Status Banner */}
-      <div
-        className={`flex flex-col justify-between gap-3 rounded-sm border p-3.5 sm:flex-row sm:items-center ${
-          hasCookies
-            ? 'border-emerald-500/30 bg-emerald-500/5'
-            : 'border-amber-500/30 bg-amber-500/5'
-        }`}
-      >
+      <div className="settings-card flex flex-col justify-between gap-3 p-4 sm:flex-row sm:items-center">
         <div className="flex items-start gap-2.5">
           <KeyRound
             className={`mt-0.5 size-4 shrink-0 ${
@@ -457,7 +452,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       </div>
 
       {/* Global Config Card */}
-      <section className="grid grid-cols-1 gap-4 rounded-sm border border-border bg-card p-4 md:grid-cols-3">
+      <section className="settings-card grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">Varsayılan Tarayıcı (Çerezler)</label>
           <div className="flex items-center gap-2">
@@ -520,7 +515,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       {/* Platform Cards */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {/* X / Twitter */}
-        <div className="flex flex-col justify-between rounded-sm border border-border bg-card p-4 transition-colors">
+        <div className="settings-card flex flex-col justify-between p-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -538,10 +533,12 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
               />
             </div>
 
-            <div className="rounded-xs border border-sky-500/20 bg-sky-500/5 p-2 text-2xs text-muted-foreground">
-              <span className="font-semibold text-foreground">💡 Eklenti ile Toplama:</span>
-              <p className="mt-0.5 leading-relaxed">
-                X yer imleri dinamik SPA korumalıdır. Sayfayı açıp JointVault eklentisindeki <b>Topla</b> butonuna basarak tüm yer imlerinizi tek tıkla buraya aktarabilirsiniz.
+            <div className="flex items-start gap-2 text-2xs text-muted-foreground">
+              <Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
+              <p className="leading-relaxed">
+                <span className="font-semibold text-foreground">Eklenti ile toplama: </span>
+                X yer imleri dinamik SPA korumalıdır; sayfayı açıp eklentideki <b>Topla</b> ile tüm yer
+                imlerini tek tıkla buraya aktarabilirsin.
               </p>
             </div>
 
@@ -572,7 +569,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
         </div>
 
         {/* Instagram */}
-        <div className="flex flex-col justify-between rounded-sm border border-border bg-card p-4 transition-colors">
+        <div className="settings-card flex flex-col justify-between p-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -590,10 +587,12 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
               />
             </div>
 
-            <div className="rounded-xs border border-pink-500/20 bg-pink-500/5 p-2 text-2xs text-muted-foreground">
-              <span className="font-semibold text-foreground">💡 Eklenti ile Toplama:</span>
-              <p className="mt-0.5 leading-relaxed">
-                Instagram kaydedilenler tarayıcı korumalıdır. Sayfayı açıp JointVault eklentisindeki <b>Topla</b> butonuna basarak gönderileri tek tıkla buraya aktarabilirsiniz.
+            <div className="flex items-start gap-2 text-2xs text-muted-foreground">
+              <Info className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
+              <p className="leading-relaxed">
+                <span className="font-semibold text-foreground">Eklenti ile toplama: </span>
+                Instagram kaydedilenler tarayıcı korumalıdır; sayfayı açıp eklentideki <b>Topla</b> ile
+                gönderileri tek tıkla buraya aktarabilirsin.
               </p>
             </div>
 
@@ -624,7 +623,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
         </div>
 
         {/* YouTube */}
-        <div className="flex flex-col justify-between rounded-sm border border-border bg-card p-4 transition-colors">
+        <div className="settings-card flex flex-col justify-between p-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -711,7 +710,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       </section>
 
       {/* Scanned Items Results Table & Batch Actions */}
-      <section className="flex flex-col gap-4 rounded-sm border border-border bg-card p-4">
+      <section className="flex flex-col gap-3">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div className="flex items-center gap-1.5">
             <Layers className="size-4 text-primary" />
@@ -725,13 +724,13 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Filter Buttons */}
-            <div className="flex items-center rounded-xs border border-border p-0.5">
+            <div className="flex items-center rounded-lg border border-border p-0.5">
               {(['all', 'x', 'instagram', 'youtube'] as const).map((filter) => (
                 <button
                   key={filter}
                   type="button"
                   onClick={() => setActiveFilter(filter)}
-                  className={`rounded-2xs px-2.5 py-1 text-xs transition-colors ${
+                  className={`rounded-md px-2.5 py-1 text-xs transition-colors duration-150 ease-out ${
                     activeFilter === filter
                       ? 'bg-primary text-primary-foreground font-medium'
                       : 'text-muted-foreground hover:text-foreground'
