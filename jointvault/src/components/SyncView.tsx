@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { SettingRow } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { PageSurface } from '@/components/ui/page-surface';
 import { Select, type SelectOption } from '@/components/ui/select';
@@ -393,6 +394,8 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
         onChange={(e) => void handleUploadCookieFile(e)}
       />
 
+      {/* Bölümler arası ritim — PageSurface gövdesi kendi boşluğunu vermez. */}
+      <div className="flex flex-col gap-6">
       {/* Cookie Status Banner */}
       <div className="settings-card flex flex-col justify-between gap-3 p-4 sm:flex-row sm:items-center">
         <div className="flex items-start gap-2.5">
@@ -451,35 +454,32 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
         </div>
       </div>
 
-      {/* Global Config Card */}
-      <section className="settings-card grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Varsayılan Tarayıcı (Çerezler)</label>
-          <div className="flex items-center gap-2">
-            <Select
-              label="Tarayıcı Seçimi"
-              value={config.default_browser}
-              onValueChange={(val) => void handleBrowserChange(val)}
-              options={BROWSER_OPTIONS}
-            />
-            {browserOk !== null && (
-              <span
-                className={`size-2.5 shrink-0 rounded-full ${
-                  browserOk ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]' : 'bg-amber-500'
-                }`}
-                title={browserOk ? 'Tarayıcı profili bulundu' : 'Tarayıcı profili tespit edilemedi'}
-              />
-            )}
-          </div>
-          <p className="text-2xs text-muted-foreground/70">
-            {browserOk
+      {/* Global Config — Ayarlar'ın satır dili: etiket solda, kontrol sağda, hairline */}
+      <section className="settings-card flex flex-col divide-y divide-border/70 px-4">
+        <SettingRow
+          label="Varsayılan tarayıcı"
+          hint={
+            browserOk
               ? 'Tarayıcı hazır; oturum çerezleri okunabilir.'
-              : 'Profil klasörü bulunamadı veya varsayılan konumda değil.'}
-          </p>
-        </div>
+              : 'Profil klasörü bulunamadı veya varsayılan konumda değil.'
+          }
+        >
+          <Select
+            label="Tarayıcı Seçimi"
+            className="w-44"
+            value={config.default_browser}
+            onValueChange={(val) => void handleBrowserChange(val)}
+            options={BROWSER_OPTIONS}
+          />
+          {browserOk !== null && (
+            <span
+              className={`size-2.5 shrink-0 rounded-full ${browserOk ? 'bg-emerald-500' : 'bg-amber-500'}`}
+              title={browserOk ? 'Tarayıcı profili bulundu' : 'Tarayıcı profili tespit edilemedi'}
+            />
+          )}
+        </SettingRow>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Tarama Parti Limiti</label>
+        <SettingRow label="Tarama parti limiti" hint="Rate-limit koruması için önerilen: 50 öğe.">
           <Input
             type="number"
             min={5}
@@ -488,38 +488,32 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
             onChange={(e) =>
               setConfig({ ...config, batch_limit: Math.max(5, parseInt(e.target.value) || 50) })
             }
-            className="h-8 text-sm"
+            className="h-8 w-24 text-sm"
           />
-          <p className="text-2xs text-muted-foreground/70">Rate-limit koruması için önerilen: 50 öğe.</p>
-        </div>
+        </SettingRow>
 
-        <div className="flex flex-col justify-between gap-1.5">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Otomatik AI Analiz Hattı</label>
-            <p className="text-2xs text-muted-foreground/70">
-              Whisper transkripti, LLM özet & etiketleme ve BGE-M3 arama indekslemesi.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={config.auto_ai_pipeline}
-              onCheckedChange={(checked) => setConfig({ ...config, auto_ai_pipeline: checked })}
-            />
-            <span className="text-xs font-medium">
-              {config.auto_ai_pipeline ? 'Aktif (Önerilen)' : 'Kapalı'}
-            </span>
-          </div>
-        </div>
+        <SettingRow
+          label="Otomatik AI analiz hattı"
+          hint="Whisper transkripti, LLM özet & etiketleme ve BGE-M3 arama indekslemesi."
+        >
+          <Switch
+            checked={config.auto_ai_pipeline}
+            onCheckedChange={(checked) => setConfig({ ...config, auto_ai_pipeline: checked })}
+          />
+          <span className="text-xs font-medium text-muted-foreground">
+            {config.auto_ai_pipeline ? 'Aktif' : 'Kapalı'}
+          </span>
+        </SettingRow>
       </section>
 
       {/* Platform Cards */}
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <section className="grid grid-cols-1 items-start gap-4 md:grid-cols-3">
         {/* X / Twitter */}
-        <div className="settings-card flex flex-col justify-between p-4">
+        <div className="settings-card flex flex-col gap-4 p-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="flex size-7 items-center justify-center rounded-xs bg-muted font-bold text-foreground">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-muted text-sm font-semibold text-foreground">
                   𝕏
                 </span>
                 <div>
@@ -569,11 +563,11 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
         </div>
 
         {/* Instagram */}
-        <div className="settings-card flex flex-col justify-between p-4">
+        <div className="settings-card flex flex-col gap-4 p-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="flex size-7 items-center justify-center rounded-xs bg-pink-500/10 font-bold text-pink-500">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-pink-500/10 text-sm font-semibold text-pink-500">
                   IG
                 </span>
                 <div>
@@ -623,11 +617,11 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
         </div>
 
         {/* YouTube */}
-        <div className="settings-card flex flex-col justify-between p-4">
+        <div className="settings-card flex flex-col gap-4 p-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="flex size-7 items-center justify-center rounded-xs bg-red-500/10 font-bold text-red-500">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-red-500/10 text-red-500 [&_svg]:size-[18px]">
                   <Tv className="size-4" />
                 </span>
                 <div>
@@ -934,6 +928,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
           </div>
         )}
       </section>
+      </div>
     </PageSurface>
   );
 }

@@ -153,7 +153,8 @@ export function StatsView({ refreshKey }: StatsViewProps) {
 
   return (
     <PageSurface icon={<BarChart3 strokeWidth={2} />} title="İstatistikler" width="4xl">
-      <section className="max-w-2xl divide-y divide-border border border-border bg-card">
+      <div className="flex flex-col gap-4">
+      <section className="settings-card max-w-2xl divide-y divide-border/70">
         <h3 className="px-3 py-1.5 text-micro font-medium text-muted-foreground">Kasa özeti</h3>
         {stats.map(([label, value]) => (
           <div key={label} className="flex items-baseline justify-between gap-4 px-3 py-2">
@@ -195,6 +196,7 @@ export function StatsView({ refreshKey }: StatsViewProps) {
         {bar(collectionData, 'Koleksiyonlar (ilk 8)')}
         {bar(categoryData, 'Kategoriler (ilk 8)')}
         {bar(tagData, 'Etiketler (ilk 8)')}
+      </div>
       </div>
     </PageSurface>
   );
