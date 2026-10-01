@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowLeft, Copy, ScanSearch, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Copy, Loader2, ScanSearch, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { PageSurface } from '@/components/ui/page-surface';
@@ -187,10 +187,7 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
       <h3 className="text-micro font-medium text-muted-foreground">
         {title} ({groups.length})
       </h3>
-      {groups.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Tekrar yok.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2">
           {groups.map((g) => (
             <li key={g.key} className="settings-card p-3">
               <p className="mb-2 text-xs text-muted-foreground">{g.meta}</p>
@@ -214,8 +211,7 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
               </ul>
             </li>
           ))}
-        </ul>
-      )}
+      </ul>
     </section>
   );
 
@@ -243,39 +239,68 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
         </>
       }
     >
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {!scanned && !scanning && (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          Aynı URL'li kayıtlar ve birebir aynı dosyalar bulunur. Tutulacak seçilir, gerisi silinir.
-        </p>
-      )}
-      {groupBlock(
-        'Aynı bağlantı',
-        urlGroups.map((g) => ({ key: g.key, items: g.items, meta: g.items[0]?.url ?? g.key })),
-        'u',
-      )}
-      {groupBlock(
-        'Aynı dosya',
-        fileGroups.map((g) => ({ key: g.hash.slice(0, 12), items: g.items, meta: `${formatBytes(g.size)} · ${g.hash.slice(0, 12)}…` })),
-        'f',
-      )}
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <h3 className="text-micro font-medium text-muted-foreground">
-            Yetim dosyalar ({orphans.length})
-          </h3>
-          {orphanChecked.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => setPendingRemove('orphans')} disabled={deleting}>
-              <Trash2 /> {orphanChecked.size} dosyayı sil
-            </Button>
-          )}
-        </div>
-        {scanned && orphans.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Yetim yok.</p>
+      <div className="flex flex-col gap-6">
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        {!scanned ? (
+          /* Tarama öncesi/sırası: sonuç bölümleri HİÇ çizilmez; boş kart olmaz. */
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            {scanning ? (
+              <>
+                <Loader2 className="size-7 animate-spin text-muted-foreground" />
+                <p className="text-sm font-medium">Taranıyor…</p>
+                <p className="max-w-[44ch] text-sm text-muted-foreground">Kasa ve indirme klasörü taranıyor.</p>
+              </>
+            ) : (
+              <>
+                <ScanSearch className="size-7 text-muted-foreground" strokeWidth={1.5} />
+                <div className="flex flex-col gap-1">
+                  <p className="text-title">Kasa taranmadı</p>
+                  <p className="max-w-[46ch] text-sm text-muted-foreground">
+                    Aynı URL'li kayıtlar ve birebir aynı dosyalar bulunur; tutulacak seçilir, gerisi silinir.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        ) : urlGroups.length === 0 && fileGroups.length === 0 && orphans.length === 0 ? (
+          /* Tarandı ve hiçbir şey yok: tek temiz durum. */
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            <CheckCircle2 className="size-7 text-state-acquired" strokeWidth={1.5} />
+            <div className="flex flex-col gap-1">
+              <p className="text-title">Temiz</p>
+              <p className="text-sm text-muted-foreground">Yinelenen kayıt veya yetim dosya yok.</p>
+            </div>
+          </div>
         ) : (
-          <ul className="settings-card flex flex-col gap-1 p-3">
+          <>
+            {urlGroups.length > 0 &&
+              groupBlock(
+                'Aynı bağlantı',
+                urlGroups.map((g) => ({ key: g.key, items: g.items, meta: g.items[0]?.url ?? g.key })),
+                'u',
+              )}
+            {fileGroups.length > 0 &&
+              groupBlock(
+                'Aynı dosya',
+                fileGroups.map((g) => ({ key: g.hash.slice(0, 12), items: g.items, meta: `${formatBytes(g.size)} · ${g.hash.slice(0, 12)}…` })),
+                'f',
+              )}
+            {orphans.length > 0 && (
+              <section className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-micro font-medium text-muted-foreground">
+                    Yetim dosyalar ({orphans.length})
+                  </h3>
+                  {orphanChecked.size > 0 && (
+                    <Button variant="destructive" size="sm" onClick={() => setPendingRemove('orphans')} disabled={deleting}>
+                      <Trash2 /> {orphanChecked.size} dosyayı sil
+                    </Button>
+                  )}
+                </div>
+          <ul className="settings-card flex flex-col divide-y divide-border/70 overflow-hidden">
             {orphans.map((o) => (
-              <li key={o.path} className="flex items-center gap-2">
+              <li key={o.path} className="flex items-center gap-2 px-3 py-2">
                 <input
                   type="checkbox"
                   checked={orphanChecked.has(o.path)}
@@ -295,8 +320,11 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
               </li>
             ))}
           </ul>
+            </section>
+            )}
+          </>
         )}
-      </section>
+      </div>
 
       <ConfirmDialog
         open={pendingRemove !== null}
