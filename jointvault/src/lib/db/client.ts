@@ -199,6 +199,8 @@ export interface ItemFilters {
   categoryId?: string; // 'all' or id
   tagId?: string; // 'all' or id
   favoritesOnly?: boolean;
+  /** Yalnızca diske inmiş kayıtlar (local_path dolu). */
+  localOnly?: boolean;
   downloadedOnly?: boolean;
   sort?: ItemSort;
 }
@@ -248,6 +250,7 @@ export async function listItemsPage(
     params.push(f.tagId);
   }
   if (f.favoritesOnly) conds.push('i.favorite = 1');
+  if (f.localOnly) conds.push('i.local_path IS NOT NULL');
   if (f.downloadedOnly) conds.push("i.download_status = 'done'");
   /*
    * Taksonomi katılımı yalnızca gerçekten gerektiğinde yapılır. LEFT JOIN

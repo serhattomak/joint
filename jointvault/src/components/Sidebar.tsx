@@ -8,12 +8,11 @@ import {
   RefreshCw,
   Settings,
   Sparkles,
-  Star,
   Wrench,
 } from 'lucide-react';
 import { getAiStatus, useAiWarmupStatus } from '@/lib/ai';
 
-export type SidebarView = 'all' | 'favorites' | 'sync' | 'downloads' | 'collections' | 'converter' | 'toolbox' | 'stats' | 'ai' | 'settings';
+export type SidebarView = 'all' | 'sync' | 'downloads' | 'collections' | 'converter' | 'toolbox' | 'stats' | 'ai' | 'settings';
 
 interface SidebarProps {
   view: SidebarView;
@@ -60,7 +59,6 @@ function useNavEntries(props: SidebarProps): NavEntry[] {
 
   return [
     { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome, group: 'kasa' },
-    viewBtn('favorites', <Star />, 'Favoriler', 'kasa'),
     viewBtn('collections', <FolderKanban />, 'Koleksiyonlar', 'kasa'),
     viewBtn('downloads', <Download />, 'İndirme Yöneticisi', 'araclar'),
     viewBtn('sync', <RefreshCw />, 'Eşitleme', 'araclar'),

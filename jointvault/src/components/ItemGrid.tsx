@@ -31,7 +31,10 @@ interface ItemGridProps {
   categoryId: string; // 'all' or a category id
   tagId: string; // 'all' or a tag id
   favoritesOnly: boolean;
-  downloadedOnly: boolean;
+  /** Kapsam: yalnızca diske inmiş kayıtlar. */
+  localOnly: boolean;
+  /** Kapsam sekmesi (Tümü · Favoriler · Yerel). */
+  onScope: (scope: 'all' | 'favorites' | 'local') => void;
   refreshKey: number;
   view: 'grid' | 'rows';
   sort: ItemSort;
@@ -59,6 +62,14 @@ interface ItemGridProps {
 // content-visibility granted, ama 1000+ düğümün tek commit'te kurulması dev build'de pahalı.
 export const PAGE_SIZES = [24, 48, 96] as const;
 
+/* Kapsam sekmeleri: kasanın üç görünümü. Favoriler/Yerel birer gözetim değil,
+   aynı ızgaranın kapsamıdır — bu yüzden sidebar'da değil başlığın altındadır. */
+const SCOPES = [
+  { id: 'all', label: 'Tümü' },
+  { id: 'favorites', label: 'Favoriler' },
+  { id: 'local', label: 'Yerel' },
+] as const;
+
 export function readPageSize(): number {
   const v = Number.parseInt(window.localStorage.getItem('jv-page-size') ?? '', 10);
   return (PAGE_SIZES as readonly number[]).includes(v) ? v : 48;
@@ -72,7 +83,8 @@ export function ItemGrid({
   categoryId,
   tagId,
   favoritesOnly,
-  downloadedOnly,
+  localOnly,
+  onScope,
   refreshKey,
   view,
   sort,
@@ -162,7 +174,7 @@ export function ItemGrid({
           categoryId,
           tagId,
           favoritesOnly,
-          downloadedOnly,
+          localOnly,
           sort,
         });
         if (res.total <= p * size && p > 0) {
@@ -179,7 +191,7 @@ export function ItemGrid({
         setLoaded(true);
       }
     },
-    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, sort, semantic, aiEnabled],
+    [debouncedQuery, platform, collectionId, categoryId, tagId, favoritesOnly, localOnly, sort, semantic, aiEnabled],
   );
 
   useEffect(() => {
@@ -220,7 +232,7 @@ export function ItemGrid({
   useEffect(() => {
     setPage(0);
     setSelected(new Set());
-  }, [platform, collectionId, categoryId, tagId, favoritesOnly, downloadedOnly, debouncedQuery, sort]);
+  }, [platform, collectionId, categoryId, tagId, favoritesOnly, localOnly, debouncedQuery, sort]);
 
   const toggleSelect = useCallback((id: string): void => {
     setSelected((prev) => {
@@ -301,7 +313,7 @@ export function ItemGrid({
     categoryId !== 'all' ||
     tagId !== 'all' ||
     favoritesOnly ||
-    downloadedOnly;
+    localOnly;
 
   // AI kapalı + semantik sorgu: sessiz FTS fallback yerine dürüst durum çizilir.
   const semanticOff = semantic === true && debouncedQuery.trim() !== '' && !aiEnabled;
@@ -321,8 +333,8 @@ export function ItemGrid({
   // Apple büyük başlık: "neredeyim" sorusunun tek cevabı — kapsam adı.
   const scopeTitle = favoritesOnly
     ? 'Favoriler'
-    : downloadedOnly
-      ? 'İndirilenler'
+    : localOnly
+      ? 'Yerel'
       : platform !== 'all'
         ? (PLATFORM_META[platform as Platform]?.label ?? 'Tümü')
         : collectionId !== 'all'
@@ -332,6 +344,8 @@ export function ItemGrid({
             : tagId !== 'all'
               ? `#${tags.find((t) => t.id === tagId)?.name ?? 'Etiket'}`
               : 'Tümü';
+
+  const scope: 'all' | 'favorites' | 'local' = favoritesOnly ? 'favorites' : localOnly ? 'local' : 'all';
 
   const strip = (
     <RuleStrip
@@ -355,8 +369,30 @@ export function ItemGrid({
 
   return (
     <>
-      {/* Büyük başlık — macOS large title deseni; kaydırınca araç çubuğuna çekilir. */}
-      <h1 className="shrink-0 px-5 pt-5 pb-1 text-display">{scopeTitle}</h1>
+      {/* Büyük başlık — macOS large title deseni. */}
+      <h1 className="shrink-0 px-5 pt-5 text-display">{scopeTitle}</h1>
+
+      {/* Kapsam sekmeleri: Tümü · Favoriler · Yerel */}
+      <div className="shrink-0 px-5 pt-3">
+        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5 text-xs">
+          {SCOPES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onScope(s.id)}
+              aria-pressed={scope === s.id}
+              className={`rounded-md px-3 py-1 transition-colors duration-150 ease-out ${
+                scope === s.id
+                  ? 'bg-background font-medium shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {strip}
       <div className="min-h-0 flex-1 px-4 py-4">
         {semanticOff ? (

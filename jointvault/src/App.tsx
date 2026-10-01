@@ -65,6 +65,7 @@ function App() {
   const [categoryId, setCategoryId] = useState('all');
   const [tagId, setTagId] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [localOnly, setLocalOnly] = useState(false);
   const [downloadedOnly, setDownloadedOnly] = useState(false);
   const [quickDlOpen, setQuickDlOpen] = useState(false);
   const [quickDlUrl, setQuickDlUrl] = useState('');
@@ -211,6 +212,7 @@ function App() {
     setCategoryId('all');
     setTagId('all');
     setFavoritesOnly(false);
+    setLocalOnly(false);
     setDownloadedOnly(false);
     setConverterOnly(false);
     setToolboxOnly(false);
@@ -289,19 +291,30 @@ function App() {
   };
 
   const goFavorites = (): void => {
+    leaveViews();
     setFavoritesOnly(true);
+    setLocalOnly(false);
     setPlatform('all');
     setCollectionId('all');
     setCategoryId('all');
     setTagId('all');
-    setDownloadedOnly(false);
-    setConverterOnly(false);
-    setToolboxOnly(false);
-    setToolboxTool(null);
-    setStatsOnly(false);
-    setAiOnly(false);
-    setSettingsOnly(false);
-    setCollectionsOnly(false);
+  };
+
+  const goLocal = (): void => {
+    leaveViews();
+    setFavoritesOnly(false);
+    setLocalOnly(true);
+    setPlatform('all');
+    setCollectionId('all');
+    setCategoryId('all');
+    setTagId('all');
+  };
+
+  /** Kapsam sekmesi (Tümü · Favoriler · Yerel). */
+  const openScope = (scope: 'all' | 'favorites' | 'local'): void => {
+    if (scope === 'favorites') goFavorites();
+    else if (scope === 'local') goLocal();
+    else showAll();
   };
 
   const goDownloads = (): void => {
@@ -331,7 +344,8 @@ function App() {
     { id: 'dupes', label: 'Yinelenenler', icon: <Copy className="size-4" />, run: openDuplicates },
     { id: 'stats', label: 'İstatistikler', icon: <BarChart3 className="size-4" />, run: openStats },
     { id: 'all', label: 'Tümü', icon: <LayoutGrid className="size-4" />, run: showAll },
-    { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: goFavorites },
+    { id: 'fav', label: 'Favoriler', icon: <Star className="size-4" />, run: () => openScope('favorites') },
+    { id: 'local', label: 'Yerel (indirilmiş)', icon: <Download className="size-4" />, run: () => openScope('local') },
     { id: 'sync', label: 'Eşitleme Merkezi', icon: <RefreshCw className="size-4" />, run: openSync },
     { id: 'dl', label: 'İndirme Yöneticisi', icon: <Download className="size-4" />, run: goDownloads },
     { id: 'organize', label: 'Koleksiyonlar', icon: <SlidersHorizontal className="size-4" />, run: openCollections },
@@ -343,7 +357,8 @@ function App() {
   ];
 
   const leaveViews = (): void => {
-    setFavoritesOnly(false);
+    /* Favoriler/Yerel artık birer görünüm değil, ızgaranın kapsam sekmesidir:
+       filtre uygulamak seçili sekmeyi bozmaz. Yalnızca araç yüzeyleri kapanır. */
     setDownloadedOnly(false);
     setConverterOnly(false);
     setToolboxOnly(false);
@@ -386,11 +401,9 @@ function App() {
               ? 'toolbox'
               : statsOnly
                 ? 'stats'
-                : favoritesOnly
-                  ? 'favorites'
-                  : downloadedOnly
-                    ? 'downloads'
-                    : 'all';
+                : downloadedOnly
+                  ? 'downloads'
+                  : 'all';
 
   const [hist, setHist] = useState<NavHistory<SidebarView>>(() => ({ stack: ['all'], index: 0 }));
 
@@ -402,8 +415,7 @@ function App() {
   }, [currentView]);
 
   const applyDest = (d: SidebarView): void => {
-    if (d === 'favorites') goFavorites();
-    else if (d === 'downloads') goDownloads();
+    if (d === 'downloads') goDownloads();
     else if (d === 'sync') openSync();
     else if (d === 'collections') openCollections();
     else if (d === 'converter') openConverter();
@@ -434,27 +446,15 @@ function App() {
 
   const sidebarProps = {
     view: currentView,
-    homeActive:
-      platform === 'all' &&
-      collectionId === 'all' &&
-      categoryId === 'all' &&
-      tagId === 'all' &&
-      !favoritesOnly &&
-      !downloadedOnly &&
-      !converterOnly &&
-      !toolboxOnly &&
-      !statsOnly &&
-      !aiOnly &&
-      !syncOnly &&
-      !settingsOnly &&
-      !collectionsOnly,
+    /* Kapsam sekmeleri (Favoriler/Yerel) kasada kaldığı için "Tümü" öğesi kasa
+       açık olduğu sürece aktiftir; ayrım başlık altındaki sekmelerdedir. */
+    homeActive: isVault,
     onHome: showAll,
     onView: (v: Exclude<SidebarView, 'all'>) => {
       if (v === 'ai') openAi();
       else if (v === 'sync') openSync();
       else if (v === 'settings') openSettings();
       else if (v === 'collections') openCollections();
-      else if (v === 'favorites') goFavorites();
       else if (v === 'downloads') goDownloads();
       else if (v === 'converter') openConverter();
       else if (v === 'toolbox') openToolbox();
@@ -526,7 +526,8 @@ function App() {
                     categoryId={categoryId}
                     tagId={tagId}
                     favoritesOnly={favoritesOnly}
-                    downloadedOnly={downloadedOnly}
+                    localOnly={localOnly}
+                    onScope={openScope}
                     refreshKey={refreshKey}
                     view={view}
                     sort={sort}
