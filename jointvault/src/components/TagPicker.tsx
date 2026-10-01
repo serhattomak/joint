@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Check, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 interface TagPickerProps {
@@ -10,25 +12,25 @@ interface TagPickerProps {
 }
 
 /*
- * Mevcutlardan seç + yenilerini yazarak oluştur. Etiket ve kategori için ortak
- * (loadNames ile veri kaynağı değişir).
+ * Etiket/kategori alanı — İKİ kipli.
  *
- * Varsayılan olarak YALNIZCA bu kayda ait olanlar görünür — veritabanındaki tüm
- * etiketler ekrana dökülmez. Geri kalanlar tek bir `+N daha` düğmesinin ardında
- * durur; tıklanınca açılır, "Daha az" ile toplanır.
+ * Görüntüleme (varsayılan): yalnızca bu kayda ait olanlar; veritabanındaki tüm
+ * liste ekrana dökülmez. Ekleme/çıkarma "Düzenle" ile açılan ayrı bir alanda
+ * yapılır. Böylece fiş okunur kalır, taksonomi duvarı görünmez.
+ *
+ * Düzenleme: mevcutların tamamı (seçilebilir) + yeni yazma alanı.
+ * `loadNames` ile veri kaynağı değişir (etiket veya kategori).
  */
 export function TagPicker({ selected, onChange, loadNames, placeholder }: TagPickerProps) {
   const [existing, setExisting] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
-  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     void loadNames().then((ns) => setExisting(ns.map((n) => n.name)));
   }, [loadNames]);
 
   const all = [...new Set([...existing, ...selected])];
-  const others = all.filter((n) => !selected.includes(n));
-  const visible = expanded ? all : selected;
 
   const toggle = (name: string): void =>
     onChange(selected.includes(name) ? selected.filter((s) => s !== name) : [...selected, name]);
@@ -41,66 +43,68 @@ export function TagPicker({ selected, onChange, loadNames, placeholder }: TagPic
     setDraft('');
   };
 
+  if (!editing) {
+    return (
+      <div className="flex min-h-8 flex-wrap items-center gap-1.5">
+        {selected.length === 0 ? (
+          <span className="text-xs text-muted-foreground">Yok</span>
+        ) : (
+          selected.map((name) => (
+            /* Etiket bir sınıflandırmadır, durum değil — damga değil Badge. */
+            <Badge key={name} variant="default">
+              #{name}
+            </Badge>
+          ))
+        )}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-xs px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        >
+          <Pencil className="size-3" />
+          Düzenle
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {all.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {visible.map((name) => {
+        <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+          {all.map((name) => {
             const active = selected.includes(name);
-            /*
-             * Etiket bir sınıflandırmadır, durum değil — bu yüzden damga değil Badge.
-             * Hap biçimi yasak: Badge zaten 2px radius, mono 11px, 20px.
-             * Seçili hâl dolgu değil ultramarin ton; sıra hâlinde dolu aksan dünyayı
-             * panoya çevirirdi (Tek Damga Kuralı).
-             */
             return (
               <Badge
                 key={name}
                 variant={active ? 'default' : 'outline'}
                 className={active ? undefined : 'transition-colors hover:border-input hover:text-foreground'}
-                render={
-                  <button type="button" onClick={() => toggle(name)} aria-pressed={active} />
-                }
+                render={<button type="button" onClick={() => toggle(name)} aria-pressed={active} />}
               >
                 #{name}
               </Badge>
             );
           })}
-
-          {!expanded && others.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              title="Diğerlerini göster"
-              className="rounded-xs border border-dashed border-border px-2 py-0.5 font-mono text-2xs text-muted-foreground transition-colors hover:border-input hover:text-foreground"
-            >
-              +{others.length} daha
-            </button>
-          )}
-
-          {expanded && (
-            <button
-              type="button"
-              onClick={() => setExpanded(false)}
-              className="rounded-xs px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Daha az
-            </button>
-          )}
         </div>
       )}
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commitDraft();
-          }
-        }}
-        onBlur={commitDraft}
-        placeholder={placeholder ?? 'Yeni yaz, Enter\'a bas'}
-      />
+      <div className="flex items-center gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitDraft();
+            }
+          }}
+          onBlur={commitDraft}
+          placeholder={placeholder ?? 'Yeni yaz, Enter\'a bas'}
+          className="flex-1"
+        />
+        <Button variant="outline" size="sm" type="button" onClick={() => setEditing(false)}>
+          <Check /> Bitti
+        </Button>
+      </div>
     </div>
   );
 }
