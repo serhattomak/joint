@@ -20,6 +20,7 @@ import {
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { generateEmbeddings, getAiStatus } from '@/lib/ai';
 import { describeError } from '@/lib/errors';
+import { PLATFORM_META, type Platform } from '@/lib/platform';
 import { startDownload, useDownloadProgress, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
 
 interface ItemGridProps {
@@ -317,6 +318,21 @@ export function ItemGrid({
     setPage(Math.min(pages - 1, Math.max(0, n - 1)));
   };
 
+  // Apple büyük başlık: "neredeyim" sorusunun tek cevabı — kapsam adı.
+  const scopeTitle = favoritesOnly
+    ? 'Favoriler'
+    : downloadedOnly
+      ? 'İndirilenler'
+      : platform !== 'all'
+        ? (PLATFORM_META[platform as Platform]?.label ?? 'Tümü')
+        : collectionId !== 'all'
+          ? (collections.find((c) => c.id === collectionId)?.name ?? 'Koleksiyon')
+          : categoryId !== 'all'
+            ? (categories.find((c) => c.id === categoryId)?.name ?? 'Kategori')
+            : tagId !== 'all'
+              ? `#${tags.find((t) => t.id === tagId)?.name ?? 'Etiket'}`
+              : 'Tümü';
+
   const strip = (
     <RuleStrip
       platform={platform}
@@ -339,6 +355,8 @@ export function ItemGrid({
 
   return (
     <>
+      {/* Büyük başlık — macOS large title deseni; kaydırınca araç çubuğuna çekilir. */}
+      <h1 className="shrink-0 px-5 pt-5 pb-1 text-display">{scopeTitle}</h1>
       {strip}
       <div className="min-h-0 flex-1 px-4 py-4">
         {semanticOff ? (
