@@ -1,7 +1,6 @@
 import { ArrowDown, Check, Clock3, Copy, FileOutput, Minus, Star, X } from 'lucide-react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from 'cn';
-import { PLATFORM_META } from '@/lib/platform';
 
 /*
  * Damga — durum renkle değil mühürle bildirilir.
@@ -71,20 +70,5 @@ export function Stamp({ state = 'none', children, className, title }: StampProps
       <Mark className="size-3 shrink-0" strokeWidth={2.5} aria-hidden />
       {children ?? STAMP_LABEL[state]}
     </span>
-  );
-}
-
-/*
- * Platform kuralı — kütüphane sınıflandırması: fişin üstünde 2px mürekkep şeridi.
- * Renk tek başına anlam taşımaz; her zaman etiketle birlikte kullanılır.
- */
-export function PlatformRule({ platform, className }: { platform: string; className?: string }) {
-  const meta = (PLATFORM_META as Record<string, { dot: string } | undefined>)[platform];
-  return (
-    <span
-      aria-hidden
-      className={cn('block h-0.5 w-full bg-src-other', meta?.dot ?? PLATFORM_META.other.dot, className)}
-      data-platform={platform}
-    />
   );
 }

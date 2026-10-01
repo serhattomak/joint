@@ -38,7 +38,7 @@ import { Switch } from '@/components/ui/switch';
 import { Input, Textarea } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Select } from '@/components/ui/select';
-import { Stamp, PlatformRule } from '@/components/ui/stamp';
+import { Stamp } from '@/components/ui/stamp';
 import { TagPicker } from '@/components/TagPicker';
 import { ReaderView } from '@/components/ReaderView';
 import { MediaPlayer } from '@/components/MediaPlayer';
@@ -341,8 +341,6 @@ export function ItemRecord({
       >
         <DialogTitle className="sr-only">Kayıt Detayı - {item.title || item.url}</DialogTitle>
         <DialogDescription className="sr-only">Öğe fiş detayı ve okuyucu modu</DialogDescription>
-
-        <PlatformRule platform={item.platform} />
 
         {/* Üst Başlık & Sekme Çubuğu */}
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/90 px-5 backdrop-blur-xs">

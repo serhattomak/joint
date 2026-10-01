@@ -15,7 +15,7 @@ import { NoticeProvider, useNotice } from '@/components/ui/notice';
 import { ComponentInstallerProvider } from '@/components/ComponentInstaller';
 import { Progress } from '@/components/ui/progress';
 import { Select } from '@/components/ui/select';
-import { Stamp, PlatformRule, type StampState } from '@/components/ui/stamp';
+import { Stamp, type StampState } from '@/components/ui/stamp';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -119,19 +119,6 @@ function Harness() {
               ] as StampState[]
             ).map((s) => (
               <Stamp key={s} state={s} />
-            ))}
-          </div>
-        </Section>
-
-        <Section title="Platform kuralı">
-          <div className="grid grid-cols-6 gap-3">
-            {['instagram', 'tiktok', 'x', 'pinterest', 'youtube', 'other'].map((p) => (
-              <div key={p} className="border border-border bg-card">
-                <PlatformRule platform={p} />
-                <p data-num className="px-2 py-1.5 text-2xs text-muted-foreground">
-                  {p}
-                </p>
-              </div>
             ))}
           </div>
         </Section>

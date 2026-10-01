@@ -24,7 +24,7 @@ import {
   MenuTrigger,
 } from '@/components/ui/menu';
 import { Progress } from '@/components/ui/progress';
-import { Stamp, PlatformRule } from '@/components/ui/stamp';
+import { Stamp } from '@/components/ui/stamp';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useComponentInstaller } from '@/components/ComponentInstaller';
 import {
@@ -61,9 +61,6 @@ export interface ItemViewProps {
 
 const platformLabel = (p: string): string =>
   PLATFORM_META[p as Platform]?.label ?? p;
-
-const platformDot = (p: string): string =>
-  PLATFORM_META[p as Platform]?.dot ?? PLATFORM_META.other.dot;
 
 const formatDate = (iso: string): string => new Date(iso).toLocaleDateString('tr-TR');
 
@@ -401,7 +398,6 @@ export const ItemRowView = memo(function ItemRowView({
         className="size-3.5 shrink-0"
         aria-label="Öğeyi seç"
       />
-      <span aria-hidden className={`h-6 w-0.5 shrink-0 ${platformDot(item.platform)}`} />
       <button
         type="button"
         onClick={() => onOpen(item, hasArticle ? 'reader' : 'detail')}
@@ -480,7 +476,6 @@ export const ItemCardView = memo(function ItemCardView({
       style={{ animationDelay: `${Math.min(index * 30, 240)}ms` }}
       data-selected={selected || undefined}
     >
-      <PlatformRule platform={item.platform} />
       <div className="record-band text-muted-foreground">
         <span>{platformLabel(item.platform)}</span>
         <span className="ml-auto">{formatDate(item.created_at)}</span>

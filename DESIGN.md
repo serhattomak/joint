@@ -162,6 +162,8 @@ Palet ölçülü ve **semantik**. Apple'ın `system*` renkleri anlam taşır; ak
 - **Ayırıcı** (`#3a3a3c` gece · `#e0e0e5` gündüz): Bölmeler ve hairline kenarlar.
 - **Platform Mürekkebi** (instagram #d94f8a · tiktok #35c4c4 · x #8f8c83 · pinterest #b8352f ·
   youtube #d0443a · diğer #6f6c65): Marka rengidir, semantik değil; etiket metni olmadan kullanılmaz.
+  Yalnızca **nokta** olarak yaşar (filtre çipi, algılama rozeti, kayıt başlığı) — kart ya da satır
+  yüzeyine renkli şerit olarak uzanmaz.
 
 ### Named Rules
 **The Tek Damga Kuralı.** Ekranda tek bir doygun aksan vardır: systemBlue. İkinci bir doygun renk
@@ -277,8 +279,8 @@ Sürekli köşe: radius 4px (xs) – 16px (2xl). Kartlar 10px, girdi ve butonlar
 yapraklar 12–16px. Tam yuvarlak (`rounded-full`) yalnızca durum noktaları, anahtar yuvası,
 avatar kırpımı ve pencerenin trafik ışıkları için ayrılmıştır — bir kart ya da buton asla hap değildir.
 
-Kenarlar 1px hairline'dır ve rolü bölmektir. Bir yüzeyin soluna kalın renkli şerit koymak yasaktır
-(platform kuralı 2px'tir ve *veri* taşır).
+Kenarlar 1px hairline'dır ve rolü bölmektir. Bir yüzeyin kenarına kalın renkli şerit koymak yasaktır:
+platform artık bir renk alanı değil, künye bandındaki bir *sözcüktür*. Renk yalnızca noktada kalır.
 
 ## Motion
 
@@ -371,7 +373,7 @@ Mod her zaman görünürdür; tahmin edilmez. Çubuğun sağ ucunda pencere kont
 ### Don't:
 - **Don't** ikinci bir doygun aksan ekleme; systemBlue tek damgadır.
 - **Don't** harf aralığını tek değere sabitleme; boyutun fonksiyonudur.
-- **Don't** bir yüzeyin soluna kalın renkli şerit koyma; platform kuralı 2px'tir ve veri taşır.
+- **Don't** bir yüzeyin kenarına kalın renkli şerit koyma; platform künye bandında sözcüktür, renk noktada.
 - **Don't** kart ya da butonu hap biçiminde yapma; 4–16px sürekli köşe kuraldır.
 - **Don't** `scale(0)`'dan animasyon başlatma; hiçbir şey yoktan belirmez.
 - **Don't** `ease-in` kullanma; arayüzü yavaş hissettirir. Giriş her zaman `ease-out`.
