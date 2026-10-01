@@ -158,9 +158,19 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside className="sticky top-0 hidden h-screen w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border bg-rail text-rail-foreground md:flex">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-rail-border px-4">
-        <Archive className="size-[18px] text-primary" strokeWidth={2.25} aria-hidden />
-        <span className="text-title leading-none font-semibold tracking-[-0.02em]">JointVault</span>
+      <div
+        data-tauri-drag-region
+        className="flex h-14 shrink-0 items-center gap-2.5 border-b border-rail-border px-4"
+      >
+        <Archive
+          data-tauri-drag-region
+          className="size-[18px] text-primary"
+          strokeWidth={2.25}
+          aria-hidden
+        />
+        <span data-tauri-drag-region className="text-title leading-none font-semibold tracking-[-0.02em]">
+          JointVault
+        </span>
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 px-2 pb-4">
@@ -185,6 +195,7 @@ export function SidebarStrip(props: SidebarProps) {
   return (
     <nav
       aria-label="Gezinme"
+      data-tauri-drag-region
       className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-rail px-2 py-1.5 text-rail-foreground md:hidden"
     >
       {entries.map((e) => (

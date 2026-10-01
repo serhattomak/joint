@@ -33,6 +33,7 @@ import { CrashScreen } from '@/components/CrashScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { NoticeProvider } from '@/components/ui/notice';
+import { ResizeHandles } from '@/components/ui/window-controls';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { listCategories, listCollections, listItems, listTags, resetDb, runDailyBackup, type ItemSort } from '@/lib/db/client';
 import { getAiStatus, isAiEnabled } from '@/lib/ai';
@@ -434,6 +435,9 @@ function App() {
       ) : (
       <TooltipProvider delay={300}>
         <div className="flex min-h-screen bg-background text-foreground">
+          {/* Pencere kenarından boyutlandırma: `decorations: false` sonrası yerel
+              kenar kalktığı için tutamaçlar burada bir kez bağlanır. */}
+          <ResizeHandles />
           <Sidebar {...sidebarProps} />
 
           <div className="flex min-w-0 flex-1 flex-col">

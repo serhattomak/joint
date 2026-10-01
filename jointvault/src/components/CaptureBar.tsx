@@ -3,6 +3,7 @@ import { CornerDownLeft, Link2, Plus, RefreshCw, Search, Sparkles } from 'lucide
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { WindowControls } from '@/components/ui/window-controls';
 import { useNotice } from '@/components/ui/notice';
 import { createItem, removeItem, updateItem } from '@/lib/db/client';
 import { PLATFORM_META, detectPlatform, fetchPreview } from '@/lib/platform';
@@ -97,7 +98,10 @@ export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticT
   };
 
   return (
-    <div className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+    <div
+      data-tauri-drag-region
+      className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4"
+    >
       <div className="relative min-w-0 flex-1">
         {capture ? (
           <Link2 className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-primary" aria-hidden />
@@ -196,6 +200,8 @@ export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticT
           </span>
         </div>
       )}
+
+      <WindowControls />
     </div>
   );
 }
