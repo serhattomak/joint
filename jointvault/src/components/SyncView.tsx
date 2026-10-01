@@ -790,7 +790,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col divide-y divide-border border border-border">
+          <div className="settings-card flex flex-col divide-y divide-border/70 overflow-hidden">
             {/* Table Header */}
             <div className="flex items-center gap-3 bg-muted/40 px-3 py-2 text-2xs font-medium text-muted-foreground">
               <input

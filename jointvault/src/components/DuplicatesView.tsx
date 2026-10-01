@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Copy, ScanSearch, Trash2 } from 'lucide-react';
+import { ArrowLeft, Copy, ScanSearch, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { PageSurface } from '@/components/ui/page-surface';
 import { listItems, removeItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { formatBytes } from '@/lib/downloads';
@@ -21,9 +22,11 @@ interface FileGroup {
 
 interface DuplicatesViewProps {
   onDone: () => void;
+  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  onClose?: () => void;
 }
 
-export function DuplicatesView({ onDone }: DuplicatesViewProps) {
+export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
   const [scanned, setScanned] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [urlGroups, setUrlGroups] = useState<UrlGroup[]>([]);
@@ -189,7 +192,7 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
       ) : (
         <ul className="flex flex-col gap-2">
           {groups.map((g) => (
-            <li key={g.key} className="rounded-xl border border-border bg-card p-3 shadow-card">
+            <li key={g.key} className="settings-card p-3">
               <p className="mb-2 text-xs text-muted-foreground">{g.meta}</p>
               <ul className="flex flex-col gap-1.5">
                 {g.items.map((it) => (
@@ -217,11 +220,18 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Copy className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="text-title">Yinelenenler</h2>
-        <div className="ml-auto flex items-center gap-2">
+    <PageSurface
+      icon={<Copy />}
+      title="Yinelenenler & Temizlik"
+      description="Kopya URL, dosya tekrarları ve yetim dosyaları temizle."
+      width="4xl"
+      actions={
+        <>
+          {onClose && (
+            <Button variant="outline" size="sm" onClick={onClose}>
+              <ArrowLeft /> Araç Kutusu&apos;na dön
+            </Button>
+          )}
           {totalVictims > 0 && (
             <Button variant="destructive" size="sm" onClick={() => setPendingRemove('selected')} disabled={deleting}>
               <Trash2 /> {totalVictims} öğeyi sil
@@ -230,8 +240,9 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
           <Button onClick={() => void scan()} disabled={scanning || deleting}>
             <ScanSearch /> {scanning ? 'Taranıyor…' : scanned ? 'Tekrar tara' : 'Tara'}
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
       {error && <p className="text-sm text-destructive">{error}</p>}
       {!scanned && !scanning && (
         <p className="py-10 text-center text-sm text-muted-foreground">
@@ -262,7 +273,7 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
         {scanned && orphans.length === 0 ? (
           <p className="text-xs text-muted-foreground">Yetim yok.</p>
         ) : (
-          <ul className="flex flex-col gap-1 rounded-xl border border-border bg-card p-3 shadow-card">
+          <ul className="settings-card flex flex-col gap-1 p-3">
             {orphans.map((o) => (
               <li key={o.path} className="flex items-center gap-2">
                 <input
@@ -297,6 +308,6 @@ export function DuplicatesView({ onDone }: DuplicatesViewProps) {
         confirmLabel={confirmCopy.label}
         onConfirm={() => void (pendingRemove === 'orphans' ? removeOrphans() : removeSelected())}
       />
-    </div>
+    </PageSurface>
   );
 }

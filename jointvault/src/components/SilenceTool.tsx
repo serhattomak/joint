@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { FilePlus2, Play, RotateCcw, Scissors, Sparkles } from 'lucide-react';
+import { ArrowLeft, FilePlus2, Play, RotateCcw, Scissors, Sparkles } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PageSurface } from '@/components/ui/page-surface';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startSilence, useSilenceProgress, type SilencePreset } from '@/lib/silence';
@@ -27,6 +28,8 @@ interface SilenceOutput {
 interface SilenceToolProps {
   refreshKey: number;
   onDone: () => void;
+  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  onClose?: () => void;
 }
 
 const PRESETS: { id: SilencePreset; title: string; hint: string }[] = [
@@ -35,7 +38,7 @@ const PRESETS: { id: SilencePreset; title: string; hint: string }[] = [
   { id: 'loose', title: 'Gevşek', hint: 'Sadece bariz sessizlikleri kırpar — doğal akış.' },
 ];
 
-export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
+export function SilenceTool({ refreshKey, onDone, onClose }: SilenceToolProps) {
   const [sources, setSources] = useState<SilenceSource[]>([]);
   const [selected, setSelected] = useState<SilenceSource | null>(null);
   const [preset, setPreset] = useState<SilencePreset>('normal');
@@ -112,13 +115,21 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
   const output = selected ? silenceOutputPath(selected.inputPath, preset, false) : '';
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Scissors className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="text-title">Sessizlik Kırpma</h2>
-      </div>
+    <PageSurface
+      icon={<Scissors />}
+      title="Sessizlik Kırpma"
+      description="Sessiz bölümleri otomatik temizle."
+      width="5xl"
+      actions={
+        onClose ? (
+          <Button variant="outline" size="sm" onClick={onClose}>
+            <ArrowLeft /> Araç Kutusu&apos;na dön
+          </Button>
+        ) : undefined
+      }
+    >
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <section className="flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-2 p-3">
           <div className="flex items-center justify-between">
             <h3 className="text-micro font-medium text-muted-foreground">Kaynak</h3>
             <Button variant="ghost" size="sm" onClick={() => void pickExternal()}>
@@ -152,7 +163,7 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
           </ul>
         </section>
 
-        <section className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-3 p-4">
           {!selected ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Sessizlikleri temizlemek için soldan bir kaynak seç.
@@ -234,6 +245,6 @@ export function SilenceTool({ refreshKey, onDone }: SilenceToolProps) {
           )}
         </section>
       </div>
-    </div>
+    </PageSurface>
   );
 }

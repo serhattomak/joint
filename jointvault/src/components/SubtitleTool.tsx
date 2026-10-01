@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Captions, FilePlus2, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, Captions, FilePlus2, RotateCcw, Sparkles } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
+import { PageSurface } from '@/components/ui/page-surface';
 import { getItem, getTagsForItem, listItems, updateItem } from '@/lib/db/client';
 import { applyCategorization, categorizeAndTagItem, getAiStatus, indexItemChunks } from '@/lib/ai';
 import type { Item } from '@/lib/db/types';
@@ -38,6 +39,8 @@ interface SubtitleOutput {
 interface SubtitleToolProps {
   refreshKey: number;
   onDone: () => void;
+  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  onClose?: () => void;
 }
 
 type BusyKind = '' | 'transcribe' | 'embed' | 'extract';
@@ -56,7 +59,7 @@ function extractSrtPath(videoPath: string): string {
   return dir ? `${dir}${sep}${name}` : name;
 }
 
-export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
+export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps) {
   const [sources, setSources] = useState<SubtitleSource[]>([]);
   const [selected, setSelected] = useState<SubtitleSource | null>(null);
   const [lang, setLang] = useState<WhisperLang>('auto');
@@ -282,13 +285,21 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
   const expectedSrt = selected ? transcriptSrtPath(selected.inputPath) : '';
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Captions className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="text-title">Altyazı</h2>
-      </div>
+    <PageSurface
+      icon={<Captions />}
+      title="Altyazı"
+      description="Altyazı göm, çıkar veya otomatik üret."
+      width="5xl"
+      actions={
+        onClose ? (
+          <Button variant="outline" size="sm" onClick={onClose}>
+            <ArrowLeft /> Araç Kutusu&apos;na dön
+          </Button>
+        ) : undefined
+      }
+    >
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <section className="flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-2 p-3">
           <div className="flex items-center justify-between">
             <h3 className="text-micro font-medium text-muted-foreground">Kaynak</h3>
             <Button variant="ghost" size="sm" onClick={() => void pickExternal()}>
@@ -323,7 +334,7 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
         </section>
 
         <div className="flex min-h-0 flex-col gap-4">
-          <section className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
+          <section className="settings-card flex min-h-0 flex-col gap-3 p-4">
             <h3 className="text-micro font-medium text-muted-foreground">
               Otomatik transkript
             </h3>
@@ -427,7 +438,7 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
             )}
           </section>
 
-          <section className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
+          <section className="settings-card flex min-h-0 flex-col gap-3 p-4">
             <h3 className="text-micro font-medium text-muted-foreground">Göm / Çıkar</h3>
             {!selected ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
@@ -494,6 +505,6 @@ export function SubtitleTool({ refreshKey, onDone }: SubtitleToolProps) {
           </section>
         </div>
       </div>
-    </div>
+    </PageSurface>
   );
 }

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, RefreshCw, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench, Zap } from 'lucide-react';
+import { BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, RefreshCw, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench, Zap } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { Toolbar } from '@/components/Toolbar';
@@ -31,7 +31,6 @@ import { ToolboxHub } from '@/components/ToolboxHub';
 import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
 import { CrashScreen } from '@/components/CrashScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { Button } from '@/components/ui/button';
 import { NoticeProvider } from '@/components/ui/notice';
 import { ResizeHandles } from '@/components/ui/window-controls';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -630,30 +629,17 @@ function App() {
                   <StatsView refreshKey={refreshKey} />
                 </Suspense>
               ) : converterOnly ? (
-                <div className="min-w-0 flex-1 px-4 py-5">
-                  <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
-                </div>
+                <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
+              ) : toolboxTool === 'duplicates' ? (
+                <DuplicatesView onDone={refresh} onClose={() => setToolboxTool(null)} />
+              ) : toolboxTool === 'merge' ? (
+                <MergeTool refreshKey={refreshKey} onDone={refresh} onClose={() => setToolboxTool(null)} />
+              ) : toolboxTool === 'silence' ? (
+                <SilenceTool refreshKey={refreshKey} onDone={refresh} onClose={() => setToolboxTool(null)} />
+              ) : toolboxTool === 'gif' ? (
+                <GifTool refreshKey={refreshKey} onDone={refresh} onClose={() => setToolboxTool(null)} />
               ) : toolboxTool ? (
-                <div className="min-w-0 flex-1 px-4 py-5">
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <Button variant="ghost" size="sm" onClick={() => setToolboxTool(null)}>
-                        <ArrowLeft /> Araç Kutusu&apos;na dön
-                      </Button>
-                    </div>
-                    {toolboxTool === 'duplicates' ? (
-                      <DuplicatesView onDone={refresh} />
-                    ) : toolboxTool === 'merge' ? (
-                      <MergeTool refreshKey={refreshKey} onDone={refresh} />
-                    ) : toolboxTool === 'silence' ? (
-                      <SilenceTool refreshKey={refreshKey} onDone={refresh} />
-                    ) : toolboxTool === 'gif' ? (
-                      <GifTool refreshKey={refreshKey} onDone={refresh} />
-                    ) : (
-                      <SubtitleTool refreshKey={refreshKey} onDone={refresh} />
-                    )}
-                  </div>
-                </div>
+                <SubtitleTool refreshKey={refreshKey} onDone={refresh} onClose={() => setToolboxTool(null)} />
               ) : (
                 <ToolboxHub
                   onPick={(toolId) => {

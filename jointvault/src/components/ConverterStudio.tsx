@@ -4,6 +4,7 @@ import { Clapperboard, FilePlus2, RotateCcw } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PageSurface } from '@/components/ui/page-surface';
 import { TrimEditor } from '@/components/TrimEditor';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
@@ -117,13 +118,14 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
   const output = selected ? outputPathFor(selected.inputPath, op) : '';
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Clapperboard className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="text-title">Dönüştürücü</h2>
-      </div>
+    <PageSurface
+      icon={<Clapperboard />}
+      title="Dönüştürücü"
+      description="Biçim değiştir, sesi ayır veya kırp; çıktı kasaya döner."
+      width="5xl"
+    >
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <section className="flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-2 p-3">
           <div className="flex items-center justify-between">
             <h3 className="text-micro font-medium text-muted-foreground">Kaynaklar</h3>
             <Button variant="ghost" size="sm" onClick={() => void pickExternal()}>
@@ -161,7 +163,7 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
           </ul>
         </section>
 
-        <section className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-3 p-4">
           {!selected ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Dönüştürmek için soldan bir kaynak seç.
@@ -239,6 +241,6 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
           )}
         </section>
       </div>
-    </div>
+    </PageSurface>
   );
 }

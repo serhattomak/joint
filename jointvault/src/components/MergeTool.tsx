@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Combine, FilePlus2, GripVertical, Plus, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, Combine, FilePlus2, GripVertical, Plus, RotateCcw, X } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PageSurface } from '@/components/ui/page-surface';
 import { listItems, updateItem } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { startMerge, useMergeProgress } from '@/lib/merge';
@@ -26,9 +27,11 @@ interface MergeOutput {
 interface MergeToolProps {
   refreshKey: number;
   onDone: () => void;
+  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  onClose?: () => void;
 }
 
-export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
+export function MergeTool({ refreshKey, onDone, onClose }: MergeToolProps) {
   const [vaultSources, setVaultSources] = useState<MergeSource[]>([]);
   const [queue, setQueue] = useState<MergeSource[]>([]);
   const [percent, setPercent] = useState(0);
@@ -131,13 +134,21 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
   const output = queue.length > 0 ? mergeOutputPath(queue[0].inputPath) : '';
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Combine className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="text-title">Birleştir</h2>
-      </div>
+    <PageSurface
+      icon={<Combine />}
+      title="Birleştir"
+      description="Birden çok videoyu tek dosyada topla."
+      width="5xl"
+      actions={
+        onClose ? (
+          <Button variant="outline" size="sm" onClick={onClose}>
+            <ArrowLeft /> Araç Kutusu&apos;na dön
+          </Button>
+        ) : undefined
+      }
+    >
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <section className="flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-2 p-3">
           <div className="flex items-center justify-between">
             <h3 className="text-micro font-medium text-muted-foreground">Kaynaklar</h3>
             <Button variant="ghost" size="sm" onClick={() => void pickExternal()}>
@@ -173,7 +184,7 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
           </ul>
         </section>
 
-        <section className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-3 p-4">
           {queue.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Birleştirmek için soldan en az 2 kaynak ekle. Sırayı sürükleyerek değiştirebilirsin.
@@ -266,6 +277,6 @@ export function MergeTool({ refreshKey, onDone }: MergeToolProps) {
           )}
         </section>
       </div>
-    </div>
+    </PageSurface>
   );
 }

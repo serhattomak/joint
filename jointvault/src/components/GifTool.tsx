@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { FilePlus2, Film, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, FilePlus2, Film, RotateCcw, Sparkles } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Button } from '@/components/ui/button';
+import { PageSurface } from '@/components/ui/page-surface';
 import { Select } from '@/components/ui/select';
 import { TrimEditor } from '@/components/TrimEditor';
 import { listItems, updateItem } from '@/lib/db/client';
@@ -27,13 +28,15 @@ interface GifOutput {
 interface GifToolProps {
   refreshKey: number;
   onDone: () => void;
+  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  onClose?: () => void;
 }
 
 const WIDTHS = [320, 480, 640];
 const FPSES = [10, 12, 15];
 const MAX_SECS: Record<GifFormat, number> = { gif: 15, webm: 30 };
 
-export function GifTool({ refreshKey, onDone }: GifToolProps) {
+export function GifTool({ refreshKey, onDone, onClose }: GifToolProps) {
   const [sources, setSources] = useState<GifSource[]>([]);
   const [selected, setSelected] = useState<GifSource | null>(null);
   const [format, setFormat] = useState<GifFormat>('gif');
@@ -125,13 +128,21 @@ export function GifTool({ refreshKey, onDone }: GifToolProps) {
   const output = selected ? gifOutputPath(selected.inputPath, format) : '';
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Film className="size-5 text-primary" strokeWidth={2} />
-        <h2 className="text-title">GIF / WebM</h2>
-      </div>
+    <PageSurface
+      icon={<Film />}
+      title="GIF / WebM"
+      description="Kısa kliplerden paylaşımlık döngüler yap."
+      width="5xl"
+      actions={
+        onClose ? (
+          <Button variant="outline" size="sm" onClick={onClose}>
+            <ArrowLeft /> Araç Kutusu&apos;na dön
+          </Button>
+        ) : undefined
+      }
+    >
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <section className="flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-2 p-3">
           <div className="flex items-center justify-between">
             <h3 className="text-micro font-medium text-muted-foreground">Kaynak</h3>
             <Button variant="ghost" size="sm" onClick={() => void pickExternal()}>
@@ -165,7 +176,7 @@ export function GifTool({ refreshKey, onDone }: GifToolProps) {
           </ul>
         </section>
 
-        <section className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card">
+        <section className="settings-card flex min-h-0 flex-col gap-3 p-4">
           {!selected ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Döngü yapmak için soldan bir kaynak seç.
@@ -276,6 +287,6 @@ export function GifTool({ refreshKey, onDone }: GifToolProps) {
           )}
         </section>
       </div>
-    </div>
+    </PageSurface>
   );
 }
