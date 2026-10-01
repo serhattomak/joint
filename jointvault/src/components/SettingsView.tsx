@@ -937,39 +937,32 @@ export function SettingsView(props: SettingsViewProps) {
                     </div>
                   </div>
 
-                  {/* Açılışta Otomatik Isıtma / Warmup Toggle */}
-                  <div className="flex items-center justify-between border-t border-border/50 pt-3">
-                    <div>
-                      <p className="text-sm font-medium">Açılışta Otomatik Başlat (Warmup)</p>
-                      <p className="text-xs text-muted-foreground">
-                        Yerel AI açıkken uygulama başlarken modelleri arka planda {offloadTarget} yükler; ilk sorunuz
-                        anında yanıtlanır. Bu AYRI bir ön yükleme tercihidir — kapatmak Yerel AI'yı kapatmaz.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={aiStatus?.auto_warmup ?? true}
-                      onCheckedChange={(checked) => void handleToggleAutoWarmup(checked)}
-                    />
-                  </div>
-
-                  {/* Boşta Kalma Süresi */}
-                  <div className="flex items-center justify-between border-t border-border/50 pt-3">
-                    <div>
-                      <p className="text-sm font-medium">Boşta Kalma Süresi (Uyku Modu)</p>
-                      <p className="text-xs text-muted-foreground">
-                        Belirtilen süre işlem yapılmazsa {aiOffload?.mode === 'gpu' ? 'VRAM' : 'model belleği'} otomatik
-                        boşaltılır.
-                      </p>
-                    </div>
-                    <div className="w-56">
-                      <Select
-                        label="Boşta Kalma Süresi"
-                        size="sm"
-                        options={IDLE_OPTIONS}
-                        value={String(aiStatus?.idle_timeout_secs ?? 600)}
-                        onValueChange={(val) => void handleChangeIdleTimeout(Number(val))}
+                  {/* Açılışta Otomatik Isıtma / Warmup + Boşta Kalma: tek satır listesi */}
+                  <div className="flex flex-col divide-y divide-border/70">
+                    <SettingRow
+                      label="Açılışta Otomatik Başlat (Warmup)"
+                      hint={`Yerel AI açıkken uygulama başlarken modelleri arka planda ${offloadTarget} yükler; ilk sorunuz anında yanıtlanır. Bu AYRI bir ön yükleme tercihidir — kapatmak Yerel AI'yı kapatmaz.`}
+                    >
+                      <Switch
+                        checked={aiStatus?.auto_warmup ?? true}
+                        onCheckedChange={(checked) => void handleToggleAutoWarmup(checked)}
                       />
-                    </div>
+                    </SettingRow>
+
+                    <SettingRow
+                      label="Boşta Kalma Süresi (Uyku Modu)"
+                      hint={`Belirtilen süre işlem yapılmazsa ${aiOffload?.mode === 'gpu' ? 'VRAM' : 'model belleği'} otomatik boşaltılır.`}
+                    >
+                      <div className="w-56">
+                        <Select
+                          label="Boşta Kalma Süresi"
+                          size="sm"
+                          options={IDLE_OPTIONS}
+                          value={String(aiStatus?.idle_timeout_secs ?? 600)}
+                          onValueChange={(val) => void handleChangeIdleTimeout(Number(val))}
+                        />
+                      </div>
+                    </SettingRow>
                   </div>
                 </div>
 
@@ -982,42 +975,37 @@ export function SettingsView(props: SettingsViewProps) {
                     </p>
                   </div>
 
-                  {/* Önerileri Otomatik Uygula Switch */}
-                  <div className="flex items-center justify-between border-t border-border/50 pt-3">
-                    <div>
-                      <p className="text-sm font-medium">Önerileri Otomatik Uygula</p>
-                      <p className="text-xs text-muted-foreground">
-                        Yeni kayıt eklendiğinde veya altyazı çıkarıldığında AI önerilerini sormadan kasaya kaydeder.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={aiStatus?.auto_apply_tags ?? false}
-                      onCheckedChange={(checked) => void handleToggleAutoApply(checked)}
-                    />
-                  </div>
-
-                  {/* AI Yanıt Sıcaklığı (Temperature) */}
-                  <div className="flex items-center justify-between border-t border-border/50 pt-3">
-                    <div>
-                      <p className="text-sm font-medium">AI Yanıt Sıcaklığı (Temperature: {aiStatus?.temperature ?? 0.7})</p>
-                      <p className="text-xs text-muted-foreground">
-                        Düşük değerler daha kesin/tutarlı, yüksek değerler daha yaratıcı öneriler ve yanıtlar üretir.
-                      </p>
-                    </div>
-                    <div className="w-48">
-                      <Select
-                        label="AI Sıcaklığı"
-                        size="sm"
-                        options={[
-                          { value: '0.2', label: '0.2 (Kesin & Katı)' },
-                          { value: '0.5', label: '0.5 (Odaklı)' },
-                          { value: '0.7', label: '0.7 (Dengeli - Varsayılan)' },
-                          { value: '0.9', label: '0.9 (Yaratıcı & Esnek)' },
-                        ]}
-                        value={String(aiStatus?.temperature ?? 0.7)}
-                        onValueChange={(val) => void handleChangeTemperature(Number(val))}
+                  {/* Satır listesi: tek sözlük */}
+                  <div className="flex flex-col divide-y divide-border/70">
+                    <SettingRow
+                      label="Önerileri Otomatik Uygula"
+                      hint="Yeni kayıt eklendiğinde veya altyazı çıkarıldığında AI önerilerini sormadan kasaya kaydeder."
+                    >
+                      <Switch
+                        checked={aiStatus?.auto_apply_tags ?? false}
+                        onCheckedChange={(checked) => void handleToggleAutoApply(checked)}
                       />
-                    </div>
+                    </SettingRow>
+
+                    <SettingRow
+                      label={`AI Yanıt Sıcaklığı (Temperature: ${aiStatus?.temperature ?? 0.7})`}
+                      hint="Düşük değerler daha kesin/tutarlı, yüksek değerler daha yaratıcı öneriler ve yanıtlar üretir."
+                    >
+                      <div className="w-48">
+                        <Select
+                          label="AI Sıcaklığı"
+                          size="sm"
+                          options={[
+                            { value: '0.2', label: '0.2 (Kesin & Katı)' },
+                            { value: '0.5', label: '0.5 (Odaklı)' },
+                            { value: '0.7', label: '0.7 (Dengeli - Varsayılan)' },
+                            { value: '0.9', label: '0.9 (Yaratıcı & Esnek)' },
+                          ]}
+                          value={String(aiStatus?.temperature ?? 0.7)}
+                          onValueChange={(val) => void handleChangeTemperature(Number(val))}
+                        />
+                      </div>
+                    </SettingRow>
                   </div>
                 </div>
 
@@ -1030,47 +1018,48 @@ export function SettingsView(props: SettingsViewProps) {
                     </p>
                   </div>
 
-                  {/* Kategorisiz İçerikleri Düzenle */}
-                  <div className="flex items-center justify-between border-t border-border/50 pt-3">
-                    <div>
-                      <p className="text-sm font-medium">Kategorisiz İçerikleri Düzenle</p>
-                      <p className="text-xs text-muted-foreground">
-                        {organizeProgress
-                          ? `${organizeProgress.current} / ${organizeProgress.total}: ${organizeProgress.title} işleniyor…`
-                          : 'Kategorisi veya etiketi olmayan kayıtları Qwen 2.5 ile sırayla tarar ve otomatik düzenler.'}
-                      </p>
-                      {organizeResult && (
-                        <p className="mt-1 text-xs font-medium text-emerald-400">✓ {organizeResult}</p>
-                      )}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void runOrganizeUncategorized()}
-                      disabled={organizeBusy || !aiStatus?.llm_ready}
+                  {/* Satır listesi: aynı sözlük */}
+                  <div className="flex flex-col divide-y divide-border/70">
+                    <SettingRow
+                      label="Kategorisiz İçerikleri Düzenle"
+                      hint={
+                        <>
+                          {organizeProgress
+                            ? `${organizeProgress.current} / ${organizeProgress.total}: ${organizeProgress.title} işleniyor…`
+                            : 'Kategorisi veya etiketi olmayan kayıtları Qwen 2.5 ile sırayla tarar ve otomatik düzenler.'}
+                          {organizeResult && (
+                            <span className="mt-1 block font-medium text-emerald-400">✓ {organizeResult}</span>
+                          )}
+                        </>
+                      }
                     >
-                      {organizeBusy ? 'İşleniyor…' : 'Kategorisizleri Düzenle'}
-                    </Button>
-                  </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void runOrganizeUncategorized()}
+                        disabled={organizeBusy || !aiStatus?.llm_ready}
+                      >
+                        {organizeBusy ? 'İşleniyor…' : 'Kategorisizleri Düzenle'}
+                      </Button>
+                    </SettingRow>
 
-                  {/* Semantik Kasa İndeksi */}
-                  <div className="flex items-center justify-between border-t border-border/50 pt-3">
-                    <div>
-                      <p className="text-sm font-medium">Semantik Kasa İndeksi</p>
-                      <p className="text-xs text-muted-foreground">
-                        {reindexProgress
+                    <SettingRow
+                      label="Semantik Kasa İndeksi"
+                      hint={
+                        reindexProgress
                           ? `${reindexProgress.current} / ${reindexProgress.total} içerik indeksleniyor…`
-                          : 'Tüm not ve transkriptleri BGE-M3 ile baştan vektörleştir.'}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void runReindex()}
-                      disabled={reindexBusy || !aiStatus?.embed_ready}
+                          : 'Tüm not ve transkriptleri BGE-M3 ile baştan vektörleştir.'
+                      }
                     >
-                      {reindexBusy ? 'İndeksleniyor…' : 'Tümünü Yeniden İndeksle'}
-                    </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void runReindex()}
+                        disabled={reindexBusy || !aiStatus?.embed_ready}
+                      >
+                        {reindexBusy ? 'İndeksleniyor…' : 'Tümünü Yeniden İndeksle'}
+                      </Button>
+                    </SettingRow>
                   </div>
                 </div>
 
@@ -1130,8 +1119,8 @@ export function SettingsView(props: SettingsViewProps) {
                     return (
                       <div
                         key={m.id}
-                        className={`flex flex-col gap-2 rounded-xl border p-3.5 transition ${
-                          isSelected ? 'border-primary/50 bg-primary/5' : 'border-border bg-card/30'
+                        className={`flex flex-col gap-2 rounded-xl border bg-card p-3.5 transition ${
+                          isSelected ? 'border-primary/50' : 'border-border'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -1191,7 +1180,7 @@ export function SettingsView(props: SettingsViewProps) {
 
             {/* TAB: GÖRÜNÜM */}
             {tab === 'view' && (
-              <div className="flex flex-col gap-4 settings-card p-4 shadow-xs">
+              <div className="settings-card flex flex-col divide-y divide-border/70 p-4 shadow-xs">
                 <SettingRow label="Tema" htmlFor="theme-toggle">
                   <ThemeToggle />
                 </SettingRow>
@@ -1224,7 +1213,7 @@ export function SettingsView(props: SettingsViewProps) {
 
             {/* TAB: İNDİRME */}
             {tab === 'downloads' && (
-              <div className="flex flex-col gap-4 settings-card p-4 shadow-xs">
+              <div className="settings-card flex flex-col divide-y divide-border/70 p-4 shadow-xs">
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="set-dir" className="text-sm font-medium">
                     İndirme klasörü

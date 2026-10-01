@@ -55,7 +55,7 @@ export function SettingRow({
       data-slot="setting-row"
       className={cn('flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1.5 py-2', className)}
     >
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <span id={htmlFor} className="text-sm">
           {label}
         </span>
