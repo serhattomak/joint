@@ -157,7 +157,7 @@ export function Sidebar(props: SidebarProps) {
   };
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border bg-rail text-rail-foreground md:flex">
+    <aside className="material-rail sticky top-0 hidden h-screen w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border text-rail-foreground md:flex">
       <div
         data-tauri-drag-region
         className="flex h-14 shrink-0 items-center gap-2.5 border-b border-rail-border px-4"
@@ -196,7 +196,7 @@ export function SidebarStrip(props: SidebarProps) {
     <nav
       aria-label="Gezinme"
       data-tauri-drag-region
-      className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-rail px-2 py-1.5 text-rail-foreground md:hidden"
+      className="material-rail flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2 py-1.5 text-rail-foreground md:hidden"
     >
       {entries.map((e) => (
         <button

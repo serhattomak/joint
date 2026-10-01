@@ -1,20 +1,30 @@
 ---
 name: JointVault
-description: Kişisel medya arşivi — kütüphane fiş kataloğu dünyası
+description: Kişisel medya arşivi — macOS masaüstü uygulaması dilinde
 colors:
-  graphite-rail: "#0b0d0f"
-  graphite-ground: "#0f1113"
-  card-stock: "#171a1d"
-  bone-ink: "#e8e5dd"
-  faded-ink: "#8f8c83"
-  hairline-rule: "#262a2e"
-  stamp-ultramarine: "#3d5afe"
-  stamp-ultramarine-deep: "#2a3fd0"
-  archive-verdigris: "#4f9a72"
-  stamp-red: "#d9483b"
-  bone-ground: "#eceae4"
-  bone-card: "#f7f5f0"
-  ink-black: "#15171a"
+  ground-dark: "#1c1c1e"
+  ground-light: "#f2f2f7"
+  card-dark: "#2c2c2e"
+  card-light: "#ffffff"
+  label-dark: "#ffffff"
+  label-light: "#1d1d1f"
+  secondary-label-dark: "rgba(235,235,245,0.6)"
+  secondary-label-light: "#6e6e73"
+  separator-dark: "#3a3a3c"
+  separator-light: "#e0e0e5"
+  accent-dark: "#0a84ff"
+  accent-light: "#007aff"
+  system-red-dark: "#ff453a"
+  system-red-light: "#ff3b30"
+  system-green-dark: "#30d158"
+  system-green-light: "#34c759"
+  system-gray: "#8e8e93"
+  rail-dark: "rgba(38,38,41,0.72)"
+  rail-light: "rgba(232,232,237,0.72)"
+  toolbar-dark: "rgba(28,28,30,0.72)"
+  toolbar-light: "rgba(242,242,247,0.72)"
+  sheet-dark: "rgba(44,44,46,0.8)"
+  sheet-light: "rgba(255,255,255,0.78)"
   src-instagram: "#d94f8a"
   src-tiktok: "#35c4c4"
   src-x: "#8f8c83"
@@ -23,40 +33,42 @@ colors:
   src-other: "#6f6c65"
 typography:
   display:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1.625rem"
-    fontWeight: 600
-    lineHeight: 1.08
-    letterSpacing: "-0.018em"
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.75rem"
+    fontWeight: 700
+    lineHeight: 1.12
+    letterSpacing: "-0.022em"
   title:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1.3125rem"
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.375rem"
     fontWeight: 600
-    lineHeight: 1.15
-    letterSpacing: "-0.012em"
+    lineHeight: 1.18
+    letterSpacing: "-0.018em"
   body:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
-    letterSpacing: "normal"
+    letterSpacing: "-0.006em"
   micro:
-    fontFamily: "Archivo, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 400
-    lineHeight: 1.45
+    lineHeight: 1.4
+    letterSpacing: "0.006em"
   data:
-    fontFamily: "JetBrains Mono, ui-monospace, Consolas, monospace"
+    fontFamily: "JetBrains Mono, ui-monospace, monospace"
     fontSize: "0.6875rem"
     fontWeight: 400
-    lineHeight: 1.5
-    letterSpacing: "0.04em"
+    lineHeight: 1.45
+    letterSpacing: "0.02em"
 rounded:
-  xs: "2px"
-  sm: "3px"
-  md: "4px"
-  lg: "5px"
-  xl: "6px"
+  xs: "4px"
+  sm: "6px"
+  md: "8px"
+  lg: "10px"
+  xl: "12px"
+  "2xl": "16px"
 spacing:
   rail: "244px"
   capture-bar: "56px"
@@ -65,51 +77,32 @@ spacing:
   gutter: "16px"
 components:
   button-primary:
-    backgroundColor: "{colors.stamp-ultramarine}"
-    textColor: "#f2f4ff"
-    rounded: "{rounded.sm}"
-    padding: "0 10px"
-    height: "32px"
-    typography: "{typography.body}"
-  button-stamp:
-    textColor: "{colors.stamp-ultramarine}"
-    rounded: "{rounded.sm}"
-    padding: "0 10px"
-    height: "32px"
-    typography: "{typography.body}"
-  button-outline:
-    textColor: "{colors.bone-ink}"
+    backgroundColor: "{colors.accent-light}"
+    textColor: "#ffffff"
     rounded: "{rounded.sm}"
     padding: "0 10px"
     height: "32px"
     typography: "{typography.body}"
   input:
-    backgroundColor: "#0f111300"
-    textColor: "{colors.bone-ink}"
+    backgroundColor: "#ffffff00"
+    textColor: "{colors.label-light}"
     rounded: "{rounded.sm}"
     padding: "0 10px"
     height: "32px"
     typography: "{typography.body}"
-  record-card:
-    backgroundColor: "{colors.card-stock}"
-    textColor: "{colors.bone-ink}"
-    rounded: "{rounded.md}"
+  card:
+    backgroundColor: "{colors.card-light}"
+    textColor: "{colors.label-light}"
+    rounded: "{rounded.lg}"
     padding: "12px"
-  stamp-acquired:
-    textColor: "{colors.archive-verdigris}"
-    rounded: "{rounded.xs}"
-    padding: "0 6px"
-    height: "20px"
-    typography: "{typography.data}"
-  stamp-error:
-    textColor: "{colors.stamp-red}"
-    rounded: "{rounded.xs}"
-    padding: "0 6px"
-    height: "20px"
-    typography: "{typography.data}"
+  sheet:
+    backgroundColor: "{colors.sheet-light}"
+    textColor: "{colors.label-light}"
+    rounded: "{rounded.xl}"
+    padding: "16px"
   rail-item-active:
-    backgroundColor: "{colors.card-stock}"
-    textColor: "{colors.bone-ink}"
+    backgroundColor: "{colors.card-light}"
+    textColor: "{colors.label-light}"
     rounded: "{rounded.sm}"
     padding: "0 8px"
     height: "30px"
@@ -120,230 +113,269 @@ components:
 
 ## Overview
 
-**Creative North Star: "Gece Okuma Odası"**
+**Creative North Star: "Masaüstü Uygulaması"**
 
-JointVault bir kişisel medya arşividir, yani kataloğun kendisidir. Arayüz bu yüzden arşivin
-fiziksel mantığını ödünç alır: **çekmece → fiş → fişin arkası.** Sol rayda çekmeceler gruplanır
-(Kasa · Araçlar · Sistem), ortada fiş ızgarası durur, bir fişin tam kaydı ise sağda açılan
-kayıt panelinde görünür. Kayıt düzenlemek için ekranı kaplayan bir modal yoktur; ızgara hiç
-terk edilmez. Sistem, kategorinin alışkanlığı olan "koyu panel + kart ızgarası + her iş için
-modal" düzenini kasten reddeder.
+JointVault bir *arşiv* olarak doğar ama bir *macOS uygulaması* olarak davranır. Kabuk sessiz,
+malzeme gerçek, hareket fizikseldir: pencere, ray ve araç çubuğu kullanıcının arkasındaki
+içeriği bulanıklaştıran yarı saydam katmanlardır; içerik onların altından akar. Arayüz süslenmez —
+Apple'ın deyimiyle *craft* edilir: her boşluk, süre ve yarıçap savunulabilir bir karardır.
 
-Dünya koyu açılır ve bunun gerekçesi kategori değil sahne: gece, tek çalışma lambası, arka planda
-inen bir kuyruk, binlerce fiş. Zemin kâğıt değil grafittir (`#0f1113`); kâğıt yalnızca fişin
-kendisidir (`#171a1d`). Gündüz karşılığı soğuk kemik kâğıttır (`#eceae4`) — eski sıcak krem
-(`#faf7f1`) bilerek terk edildi, çünkü aynı sıcaklıkta bir zemin eski dünyayı hatırlatırdı.
+Bu yön, kayıtlı **"Gece Okuma Odası / Kartoteks"** yönünün yerini alır. Eski yön cama, gradyana,
+6px üstü yarıçapa ve ikinci bir yazı yüzüne açıkça yasak koyuyordu; o kısıtlar bu sürümde
+kaldırıldı ve `DESIGN.md` yeni sözleşme olarak yeniden yazıldı. Terk edilen dünya marka mirası
+değildir.
 
-Malzeme hiçbir yerde doku resmiyle taklit edilmez. Kâğıt **iki** yapısal araçla kurulur: fişin üstünde
-**sabit yükseklikte mono künye bandı** ve altındaki hairline cetvel, rayda **çekmece sekmesi çentiği**.
-(Üçüncü aday — "perfore delik" — bu sürümde kaldırıldı: durum taşıyan her işaret zaten damga
-sözlüğünde yaşıyor, ikinci bir işaret aynı şeyi iki kez söylemek olurdu.) Süs yok: gölge yok,
-gradyan yok, cam yok, parlama yok. Derinlik yalnızca üstte duran yapraklara (açılır panel, diyalog) aittir.
+Dünya gündüz de gece de kurulur ve ikisi de Apple'ın semantiğiyle konuşur: gece `#1c1c1e` zemin,
+gündüz `#f2f2f7`. Kâğıt/seramik taklidi yok; yüzeyler **malzeme**dir — yarı saydam taban +
+`backdrop-filter`, üstlerinde ışığı yakalayan ince bir çizgi.
 
 **Key Characteristics:**
-- Düz mürekkep disiplini: tek aksan (ultramarin damga mürekkebi), tek hata rengi (damga kırmızısı), tek arşiv yeşili.
-- Durum renkle değil **damgayla** bildirilir; her damga ikon + sözcük taşır.
-- Tek yüz (Archivo) tüm yapısal metni taşır; rütbe **boyutla** kurulur, ağırlık karıştırmayla değil.
-- Mono (JetBrains Mono) yalnızca ölçüm ve yol taşır; asla etiket süsü değildir.
-- Radius 2–6px arası: kesilmiş kâğıt köşesi. Yuvarlaklık arttıkça dünya kaybolur.
-- Kalıcı **kural şeridi**: hangi filtre yürürlükte, nasıl sıralı, kaç fiş var — gizli popover'da değil, okunur bantta.
+- Tek aksan: **systemBlue** (`#0a84ff` gece · `#007aff` gündüz). Kırmızı ve yeşil aksan değil,
+  *anlam* rengidir (`systemRed`, `systemGreen`).
+- Renk asla tek başına anlam taşımaz: her durum ikon + sözcükle birlikte yazılır.
+- Tek yüz: **Inter** (SF Pro'ya en yakın serbest yüz, yerelden gömülü). Ölçüm **JetBrains Mono**.
+- Boyuta bağlı harf aralığı: büyük metin negatif, küçük metin pozitif. Tek bir `letter-spacing` yanlıştır.
+- Sürekli köşe: radius 4–16px. Hap biçimi yalnızca durum noktası ve anahtar yuvasına ayrılmıştır.
+- Malzeme gerçek: ray, araç çubuğu ve yaprak yarı saydamdır ve arkalarını bulanıklaştırır.
+- Hareket fiziksel: basış ölçekle iner, geçişler güçlü `ease-out`, süre 150–250ms.
 
 ## Colors
 
-İki mürekkep grisi, bir ultramarin damga ve iki anlam rengi; palet ölçülü (Restrained), çünkü yüzey
-görev yapmaya gelir. Renk asla tek başına anlam taşımaz: her renkli damga yanında ikon ve sözcük taşır.
+Palet ölçülü ve **semantik**. Apple'ın `system*` renkleri anlam taşır; aksan tektir.
 
 ### Primary
-- **Damga Ultramarini** (#3d5afe koyu · #2a3fd0 açık): Birincil eylemler, aktif indirme durumu, seçili
-  öğe, odak halkası, damga bloğunun çerçevesi. Mürekkep düz dolgudur — parlama, gölge veya gradyan eklenmez.
+- **systemBlue** (`#0a84ff` gece · `#007aff` gündüz): Birincil eylemler, aktif indirme durumu,
+  seçili öğe, odak halkası, anahtar (switch) ve ilerleme. Düz dolgu; parlama veya gradyan eklenmez.
 
-### Secondary
-- **Arşiv Yeşili** (#4f9a72 koyu · #2f7d55 açık): Yalnızca "arşive girdi" anlamı — `YEREL` damgası,
-  tamamlanmış ilerleme çubuğu, başarı bildirimi. Başka hiçbir yerde kullanılmaz.
-
-### Tertiary
-- **Damga Kırmızısı** (#d9483b koyu · #b3352a açık): Yalnızca hata ve yıkıcı eylem. Uyarı için ayrı bir
-  sarı yoktur; uyarı metinle taşınır.
+### Semantic
+- **systemGreen** (`#30d158` gece · `#34c759` gündüz): Yalnızca "arşive girdi" — `YEREL` damgası,
+  tamamlanmış ilerleme, başarı bildirimi. Başka yerde kullanılmaz.
+- **systemRed** (`#ff453a` gece · `#ff3b30` gündüz): Yalnızca hata ve yıkıcı eylem. Uyarı için ayrı
+  bir sarı yoktur; uyarı metinle taşınır.
+- **systemGray** (`#8e8e93`): Kuyrukta / kayıtsız gibi nötr durumlar.
 
 ### Neutral
-- **Grafit Ray** (#0b0d0f koyu · #e4e1d9 açık): Sol çekmece rayı. İçerik zemininden bir ton daha koyu;
-  ikincil ray metni gri değil, ray mürekkebinden türetilir (`text-rail-foreground/65`).
-- **Grafit Zemin** (#0f1113 koyu · #eceae4 açık): İçerik zemini.
-- **Karton Fiş** (#171a1d koyu · #f7f5f0 açık): Kart, satır, panel yüzeyi.
-- **Kemik Mürekkep** (#e8e5dd koyu · #15171a açık): Gövde metni. Koyu zeminde 15:1'in üzerinde kontrast.
-- **Soluk Mürekkep** (#8f8c83 koyu · #63615c açık): İkincil metin; her iki temada WCAG AA üstü.
-- **Hairline Cetvel** (#262a2e koyu · #d5d2c8 açık): Tüm bölmeler. Gölge yerine çizgi.
+- **Zemin** (`#1c1c1e` gece · `#f2f2f7` gündüz): İçerik zemini.
+- **Kart** (`#2c2c2e` gece · `#ffffff` gündüz): Kart, satır, panel yüzeyi.
+- **Etiket** (`#ffffff` gece · `#1d1d1f` gündüz): Gövde metni.
+- **İkincil etiket** (`rgba(235,235,245,.6)` gece · `#6e6e73` gündüz): Yardımcı metin.
+- **Ayırıcı** (`#3a3a3c` gece · `#e0e0e5` gündüz): Bölmeler ve hairline kenarlar.
 - **Platform Mürekkebi** (instagram #d94f8a · tiktok #35c4c4 · x #8f8c83 · pinterest #b8352f ·
-  youtube #d0443a · diğer #6f6c65): Fişin üstündeki 2px sınıflandırma kuralı ve nokta işareti.
-  Kütüphane pratiğidir, süs değil; etiket metni olmadan asla kullanılmaz.
+  youtube #d0443a · diğer #6f6c65): Marka rengidir, semantik değil; etiket metni olmadan kullanılmaz.
 
 ### Named Rules
-**The Tek Damga Kuralı.** Ekranda tek bir doygun aksan vardır: ultramarin. İkinci bir doygun renk
-eklemek, dünyayı bir panoya çevirir. Yeşil ve kırmızı aksan değil, *anlam* rengidir; yalnızca
-kazanılmış durumlarda ve yalnızca ikon + sözcükle birlikte görünür.
+**The Tek Damga Kuralı.** Ekranda tek bir doygun aksan vardır: systemBlue. İkinci bir doygun renk
+eklemek dünyayı bir panoya çevirir. Kırmızı ve yeşil aksan değil, *anlam* rengidir; yalnızca
+kazanılmış veya bozuk durumlarda ve yalnızca ikon + sözcükle görünür.
 
-**The Asla-Gri-İkincil Kuralı.** Renkli bir yüzeyde (ray) ikincil metin gri tonlanmaz; o yüzeyin
-mürekkebinden saydamlıkla türetilir.
+**The Semantik Ad Kuralı.** Token adları rolü söyler (`background`, `border`, `muted`), değeri değil.
+Yeni bir yüzey eklerken ham hex yazmak yerine en yakın rol token'ı kullanılır; iki tema da tek
+yerden döner.
 
 ## Typography
 
-**Display Font:** Archivo (değişken, 100–900) · `ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif`
-**Body Font:** Archivo — aynı yüz; ayrı bir gövde yüzü yoktur.
-**Label/Mono Font:** JetBrains Mono (değişken, 100–800) · `ui-monospace, Consolas, monospace`
+**System Font:** Inter (değişken, 100–900) · `ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif`
+**Measurement Font:** JetBrains Mono (değişken, 100–800) · `ui-monospace, SF Mono, Consolas, monospace`
 
-**Character:** Mekanik, kare omuzlu, idari bir grotesk. Fiş kataloglarının daktiloyla yazılmış künye
-kartlarını hatırlatır ama daktilo taklidi yapmaz; mono yalnızca ölçüm taşır. İkisi de projeye gömülüdür
+**Character:** Nötr, açık omuzlu bir grotesk; sistem yüzünün işini yapar ve kendini hatırlatmaz.
+Inter, SF Pro'nun lisans kısıtı yüzünden **bilinçli ikame**dir. İkisi de projeye gömülüdür
 (`public/fonts`, latin + latin-ext, çevrimdışı çalışır) — çalışma anında uzak kaynak çekilmez.
+`font-optical-sizing: auto` açıktır.
 
 ### Hierarchy
-- **Display** (600, 26px/1.08, -0.018em): Görünüm başlıkları ve uygulama adı. Yalnızca bir kez, en üstte.
-- **Title** (600, 21px/1.15, -0.012em): Panel başlığı, fiş detay başlığı, boş durum başlığı, diyalog başlığı.
-- **Body** (400, 14px/1.5): Satır ve kart başlıkları 15px/1.35 medium; gövde metni 14px. Ölçü 65–75ch.
-- **Micro** (400, 12px/1.45): Alan etiketleri, yardım metni, ikincil açıklama. **Büyük harf ve harf aralığı yok.**
-- **Data · damga & künye** (400, 11px/1.5, 0.04em, büyük harf · `text-2xs`): Damga, künye bandı,
-  tarih, yüzde, hız, sayım. Künye bandı bu adımı `record-band` ile kendisi kurar.
-- **Data · yol & kimlik** (400, 12px/1.5, mono, büyük harf yok · `text-micro` + `data-num`): Dosya
-  yolu ve kimlik gibi gövde içinde okunması gereken diziler. Bir basamak yukarıda durur çünkü 11px'te
-  okunurluk düşer; büyük harf giymez çünkü başlık değil, kayıttır.
+- **Display** (700, 28px/1.12, -0.022em): Görünüm başlıkları ve uygulama adı.
+- **Title** (600, 22px/1.18, -0.018em): Panel, fiş detayı, boş durum ve diyalog başlığı.
+- **Body** (400, 14px/1.5, -0.006em): Gövde metni. Kart/satır başlıkları 15px medium.
+- **Micro** (400, 12px/1.4, +0.006em): Alan etiketleri, yardım metni. Büyük harf yok.
+- **Data · damga & künye** (400, 11px/1.45, +0.02em, büyük harf · `text-2xs`): Damga, künye bandı,
+  tarih, yüzde, hız, sayım.
+- **Data · yol & kimlik** (400, 12px/1.4, mono · `text-micro` + `data-num`): Dosya yolu ve kimlik.
 
 ### Named Rules
-**The Tek Yüz Kuralı.** Yapısal hiçbir metin ikinci bir yüz kullanmaz. Vurgu gerekiyorsa boyut
-basamağı değişir (11 → 12 → 14 → 15 → 21 → 26), ağırlık karışımı ya da ikinci bir aile eklenmez.
-Display serif yasaktır.
+**The Boyuta-Göre-Aralık Kuralı.** Harf aralığı boyutun fonksiyonudur: display negatif, gövde hafif
+negatif, mikro ve veri pozitif. Bir başlığa mikro aralığı vermek ya da tersini yapmak ölçeği bozar.
 
-**The Mono-Veridir Kuralı.** JetBrains Mono yalnızca ölçülebilir şeyler içindir: tarih, yüzde, hız, süre,
-adet, kimlik, dosya yolu. Bir bölüm başlığını mono ve büyük harfle yazmak "teknik görünsün" kostümüdür;
-bölüm başlıkları Archivo, mikro boyut, normal harf aralığıdır. Uygulamada `data-num` özniteliği bu
-yüzü ve tabular rakamları açar (`index.css`).
+**The Mono-Veridir Kuralı.** JetBrains Mono yalnızca ölçülebilir şeyler içindir: tarih, yüzde, hız,
+süre, adet, kimlik, dosya yolu. Bölüm başlığını mono ve büyük harfle yazmak "teknik görünsün"
+kostümüdür. Uygulamada `data-num` özniteliği bu yüzü ve tabular rakamları açar (`index.css`).
 
-**The Büyük-Harf-Künye Kuralı.** Büyük harf ve harf aralığı yalnızca künye bandı ve damga gibi
-*veri* yüzeylerinde görünür. Bir başlığın üstüne etiket (eyebrow/kicker) koymak yasaktır; başlık
-kendi ağırlığını taşır.
-
-**The İki-Data-Basamağı Kuralı.** Veri iki basamakta yaşar; hangisi olduğu işlevine bakar: damga,
-künye bandı ve tarih `text-2xs` (11px, büyük harf); dosya yolu ve kimlik `text-micro` + `data-num`
-(12px, mono, büyük harf yok). Bir yolu 11px'e indirmek ya da bir damgayı büyük harfsiz bırakmak
-basamağı bozar. Bu ayrım, DESIGN.md ile kurulu yüzeyler arasındaki sessiz sürüklenmeyi kapatmak
-için yazıldı.
+**The Büyük-Harf-Künye Kuralı.** Büyük harf ve geniş harf aralığı yalnızca damga ve künye gibi *veri*
+yüzeylerinde görünür. Başlığın üstüne etiket (eyebrow) koymak yasaktır; başlık ağırlığını taşır.
 
 ## Layout
 
 Spatial model: sabit çekmece rayı + akan içerik kolonu, üstte iki kalıcı bant.
 
-- **Ray:** 244px, `md` altında gizlenir ve aynı çekmeceler yatay kaydırılabilir bir şeride iner —
-  dar pencerede gezinme kaybolmaz.
-- **Yakala çubuğu:** 56px, `sticky top-0`, tüm görünümlerde kalır. Tek satır, çift kişilik: yazarsan
-  arar, link yapıştırırsan kaydeder.
-- **Kural şeridi:** 40px, `sticky top-14`, kasa görünümünde. Filtre tetikleyicileri, sıralama,
-  toplam fiş sayısı ve görünüm anahtarı.
+- **Ray:** 244px, `md` altında gizlenir ve aynı çekmeceler yatay şeride iner — dar pencerede
+  gezinme kaybolmaz.
+- **Yakala çubuğu:** 56px, `sticky top-0`, tüm görünümlerde kalır. Altından içerik akar; bu yüzden
+  ayrım sert bir çizgi değil, **kayan kenar**tır (`scroll-edge-b`: hairline yerine kısa gradyan).
+- **Kural şeridi:** 40px, `sticky top-14`, kasa görünümünde.
 - **Izgara:** 1 / 2 / 3 kolon (sm / xl). Kart yüksekliği içerikten gelir, sabitlenmez.
 - **Kayıt paneli:** 360px, `lg` ve üstünde içerik kolonunun yanında `sticky`; altında tam ekran yaprak.
-- **Yoğunluk:** satır görünümü ~52px satır, kart ~290px; 2.000 fiş taranabilir kalmalı. Kart ve satırlar
+- **Yoğunluk:** satır görünümü ~52px, kart ~290px; 2.000 fiş taranabilir kalmalı. Kart ve satırlar
   `content-visibility: auto` taşır (`cv-card`, `cv-row`), sayfalama SQL'de yapılır, arama 250ms debounce'ludur.
 - **Ritim:** gruplar sıkı, ayrım cömert; başlığın üstündeki boşluk altındakinden fazladır.
 
-## Elevation & Depth
+### Pencere çerçevesi (titlebar)
 
-Sistem **düz**: fiş, kart ve satır gölge taşımaz (`--shadow-card: 0 0 0 0 transparent`). Derinlik
-hairline cetvel ve kart kenarıyla kurulur. Gölge yalnızca gerçekten üstte duran yapraklara aittir.
+Pencere çerçevesizdir (`decorations: false`); yerel başlık çubuğu yoktur. Üstteki 56px'lik bant
+(solda marka bloğu, sağda yakala çubuğu) aynı zamanda titlebar'dır: boş alanları sürüklenebilir
+(`data-tauri-drag-region` → Windows'ta `HTCAPTION`; taşıma, yarı-ekrana yapıştırma ve çift tıkla
+büyütme yerel kalır). Çerçevesizlik Windows'ta kenardan boyutlandırmayı götürdüğü için görünmez
+kenar/köşe tutamaçları `startResizeDragging` ile bunu geri koyar — tutamaçlar bir kabuk
+ayrıntısıdır, çizilmez ve odak almaz.
 
-### Shadow Vocabulary
-- **Yaprak yükselmesi** (`box-shadow: 0 18px 40px -18px rgb(20 21 23 / 0.45), 0 3px 10px -4px rgb(20 21 23 / 0.3)`;
-  koyu temada `0 22px 48px -20px rgb(0 0 0 / 0.75), 0 4px 12px -4px rgb(0 0 0 / 0.6)`): Açılır panel,
-  menü, diyalog, bildirim. Gerçek ofset + yumuşak blur; sıfır ofsetli renkli hale yasaktır.
+Pencere kontrolleri **sağda** durur (Windows alışkanlığı korunur) ama Mac trafik ışığı biçiminde
+çizilir: 12px daireler — küçült `#febc2e`, büyüt `#28c840`, kapat `#ff5f57`; grup üzerine gelince
+glifler belirir, pencere odak dışındayken üçü de `--color-input` grisine döner. Işıklar bir
+*pencere kabuğu* işaretidir, veri değil: 11px mono künye basamağına girmez, `data-num` taşımaz.
+
+Değişen yalnızca görünümdür: native başlık çubuğunun sağ-tık sistem menüsü ve Windows 11'in
+"maximize üzerine gel → snap layouts" paneli yoktur; geri kalan davranış (taşıma, boyutlandırma,
+yarı-ekran, tepsiye kapanma) aynen sürer.
+
+## Materials
+
+Malzeme, dünyanın en belirgin Apple izidir: yüzen katman **yarı saydamdır ve arkasını
+bulanıklaştırır**, böylece altındaki içerik hem görünür hem geri iter.
+
+| Malzeme | Nerede | Gece | Gündüz | Blur |
+|---|---|---|---|---|
+| `material-rail` | Sol çekmece rayı, dar-pencere şeridi | `rgb(38 38 41 / .72)` | `rgb(232 232 237 / .72)` | 24px · saturate 180% |
+| `material-toolbar` | Yakala çubuğu | `rgb(28 28 30 / .72)` | `rgb(242 242 247 / .72)` | 24px · saturate 180% |
+| `material-sheet` | Diyalog, albüm, ayarlar | `rgb(44 44 46 / .8)` | `rgb(255 255 255 / .78)` | 40px · saturate 180% |
+
+- **Malzeme yalnızca altından bir şey geçtiğinde anlamlıdır.** Sabit bir kolonun arkasında düz zemin
+  varsa blur görünmez; bu yüzden `material-rail` çoğunlukla *ton* olarak okunur, `material-toolbar`
+  ve `material-sheet` ise gerçekten bulanıklaştırır.
+- **Üstteki ince ışık çizgisi** (`inset 0 1px 0 rgb(255 255 255 / .06)`) malzemenin ışığı yakaladığı
+  yerdir; süs değil, yön bilgisidir.
+- **Işık malzemeyi kesmez:** malzeme üstüne ikinci bir yarı saydam yüzey yığılmaz; okunabilirlik çöker.
 
 ### Named Rules
-**The Düz-Fiş Kuralı.** Dinlenme hâlinde hiçbir içerik yüzeyi gölge taşımaz. Kart hover'ı gölge değil,
-kenar rengi ve 2px'lik kalkmadır. Boşluk veya vurgu için gölge eklemek, dünyayı hazır arayüze çevirir.
+**The Azaltılmış-Saydamlık Kuralı.** `prefers-reduced-transparency: reduce` altında üç malzemenin
+tabanı opak karşılığına döner ve blur kapanır (`index.css`). Apple'ın üçüncü erişilebilirlik sinyali
+budur ve görmezden gelinmez.
+
+## Elevation & Depth
+
+Derinlik **katmanlı ve yumuşak**tır. Gölge artık yasak değil, ama sıfır-ofsetli renkli hale hâlâ
+yasaktır.
+
+### Shadow Vocabulary
+- **Kart** (`0 1px 2px rgb(0 0 0 / .05), 0 1px 1px rgb(0 0 0 / .03)` · gece `…/.4, …/.24`):
+  Dinlenme hâlindeki kart ve satır kabı. Neredeyse görünmez; kenarı besler.
+- **Kart hover** (`0 6px 20px rgb(0 0 0 / .1), 0 2px 6px rgb(0 0 0 / .05)`): Kart yalnızca fare
+  üzerindeyken yükselir; dokunmatikte tetiklenmez (Tailwind `hover:` `@media (hover: hover)` içindedir).
+- **Yaprak** (`0 12px 32px rgb(0 0 0 / .14), 0 2px 8px rgb(0 0 0 / .06)` · gece `…/.55, …/.35`):
+  Diyalog, menü, popover, bildirim. Gerçek ofset + yumuşak blur.
 
 ## Shapes
 
-Kesilmiş kâğıt: radius 2px (xs) – 6px (xl) arası; kartlar 4px, girdiler ve butonlar 3px, damgalar 2px,
-yapraklar 4–6px. Tam yuvarlak (`rounded-full`) yalnızca durum noktaları, anahtar yuvası ve avatar
-benzeri kırpımlar için ayrılmıştır — bir kart ya da buton asla hap biçiminde olmaz.
+Sürekli köşe: radius 4px (xs) – 16px (2xl). Kartlar 10px, girdi ve butonlar 6px, damgalar 4px,
+yapraklar 12–16px. Tam yuvarlak (`rounded-full`) yalnızca durum noktaları, anahtar yuvası,
+avatar kırpımı ve pencerenin trafik ışıkları için ayrılmıştır — bir kart ya da buton asla hap değildir.
 
-Kenarlar 1px hairline'dır ve rolü bölmektir, süslemek değil. Bir yüzeyin soluna/üstüne kalın renkli
-şerit koymak yasaktır (platform kuralı 2px'tir ve *veri* taşır). Sekme çentiği rayın kenarını kesen
-küçük bir taşmadır; renkli sol şerit değildir.
+Kenarlar 1px hairline'dır ve rolü bölmektir. Bir yüzeyin soluna kalın renkli şerit koymak yasaktır
+(platform kuralı 2px'tir ve *veri* taşır).
 
-Hairline çizgiler metin taşımaz; metin her zaman yüzeyin içinde nefes payıyla durur.
+## Motion
+
+Hareket bir katman değil, arayüzün kendisidir; görsellerle birlikte tasarlanır.
+
+- **Eğriler:** `--ease-out` `cubic-bezier(0.23,1,0.32,1)` (giriş ve basış) · `--ease-in-out`
+  `cubic-bezier(0.77,0,0.175,1)` (ekranda yer değiştirme) · `--ease-drawer` `cubic-bezier(0.32,0.72,0,1)`
+  (yaprak/drawer). `--ease-paper` adı korunur ama değeri `--ease-out`'tur, böylece mevcut yüzeylerin
+  tamamı tek satır değişmeden yeni eğriye geçer.
+- **Süre:** 150ms (basış/hover) · 200ms (katman girişi) · 250ms (yaprak). UI hareketi 300ms'i geçmez.
+- **Basış:** `active:scale-[0.97]`. Basış `:active`'tedir, yani parmak değer değmez geri bildirim
+  başlar; `motion-reduce` altında ölçek kapanır.
+- **Giriş:** hiçbir şey `scale(0)`'dan gelmez. Katmanlar `opacity 0` + `scale .95`'ten girer
+  (`data-[starting-style]`), `scale .97` + `opacity 0`'a çıkar (`data-[ending-style]`).
+- **Malzeme birden belirmez:** yaprak girerken ölçek ve opaklık birlikte hareket eder.
+- **Etkileşimli hiçbir şey kilitlenmez:** geçiş sürerken yeni girdi kabul edilir.
+
+### Named Rules
+**The Basış-Parmak-Altında Kuralı.** Buton yalnızca tıklanınca değil, basılı tutulduğu anda tepki
+verir. Sadece bırakışta geri bildirim veren kontrol ölü hisseder.
+
+**The Azaltılmış-Hareket Kuralı.** `prefers-reduced-motion: reduce` altında tüm süreler ve animasyonlar
+anlamlı biçimde sadeleşir (global `!important` bloğu), ama opaklık/renk geçişleri kalır — azaltmak
+yok etmek değildir.
 
 ## Components
 
-Genel duruş: **sakin kontrol, ölçülü hareket.** Geçişler 150–200ms, `cubic-bezier(0.22,1,0.36,1)`
-(`ease-paper`) ve yalnızca durum değişimini anlatır. Basış 1px aşağı iner. Tek orkestralı hareket
-"damganın basılması"dır (yeni fiş 180ms'de yerleşir) ve `prefers-reduced-motion` altında kaybolur.
+Genel duruş: **sakin kontrol, ölçülü hareket.**
 
 ### Buttons
-- **Shape:** Kesilmiş kâğıt (3px radius), 32px yükseklik (sm 28px, lg 36px), 10px yatay dolgu.
-- **Primary:** Ultramarin düz dolgu + kâğıt beyazı metin. Hover'da dolgu %85 opaklığa iner.
-- **Stamp:** Damga varyantı — şeffaf zemin, ultramarin kenar ve metin; hover'da dolgu ultramarine döner.
+- **Shape:** 6px radius, 32px yükseklik (sm 28px, lg 36px), 10px yatay dolgu.
+- **Primary:** systemBlue düz dolgu + beyaz metin. Hover'da dolgu %85 opaklığa iner.
+- **Stamp:** Çerçeveli aksan varyantı — şeffaf zemin, mavi kenar ve metin; hover'da doluya döner.
   Yakala çubuğunun birincil eylemi budur.
 - **Hover / Focus:** Odak halkası tek yerden gelir (`:focus-visible`, 2px `--color-ring`, 1px ofset);
-  hiçbir varyant kendi ring'ini yazmaz. Basış `translateY(1px)`.
-- **Secondary / Outline / Ghost / Destructive / Link:** İkincil; dışa çizgi; sessiz; kenarlıklı kırmızı
-  düz blok (dolgu değil); bağlantı. Yıkıcı eylem asla dolu kırmızı değildir.
+  hiçbir varyant kendi ring'ini yazmaz. Basış `scale(.97)`.
+- **Secondary / Outline / Ghost / Destructive:** İkincil; dışa çizgi; sessiz; kenarlıklı kırmızı
+  blok (dolgu değil). Yıkıcı eylem asla dolu kırmızı değildir.
 
 ### Stamps (imza bileşen)
 Durum sözlüğü: `kayıtsız` · `kuyrukta` · `iniyor` · `yerel` · `hata` · `yinelenen` · `favori` ·
-`dönüştürüldü`. Her damga mono 11px büyük harf, 2px radius, 20px yükseklik ve **lucide ikonu** taşır —
+`dönüştürüldü`. Her damga mono 11px büyük harf, 4px radius, 20px yükseklik ve **lucide ikonu** taşır —
 glif veya emoji asla. Renk durumun kendisidir ama tek başına yetmez: ikon ve sözcük her zaman yanındadır.
-`yinelenen` kesikli kenarla, diğerleri düz kenarla çizilir.
-
-### Chips & Badges
-- **Etiket (Badge):** Sınıflandırma ve sayım taşır, durum bildirmez (o iş damganın). Mono 11px, 2px radius,
-  20px yükseklik, kenarlıklı; `default` ultramarin tonlu, `outline` nötr, `destructive` hata tonlu.
 
 ### Cards / Containers
-- **Corner Style:** Karton fiş (4px).
-- **Background:** `#171a1d` koyu / `#f7f5f0` açık.
-- **Shadow Strategy:** Yok (bkz. Elevation).
-- **Border:** 1px `#262a2e`; hover'da girdi rengine döner ve kart 2px kalkar. Seçili kart ultramarin kenar taşır.
+- **Corner Style:** 10px sürekli köşe.
+- **Background:** `#2c2c2e` gece / `#ffffff` gündüz.
+- **Shadow Strategy:** Dinlenmede neredeyse görünmez bir kart gölgesi; hover'da yükselir. Seçili kart
+  aksan kenar taşır.
+- **Border:** 1px ayırıcı; hover'da girdi rengine döner ve kart 2px kalkar.
 - **Internal Padding:** 12px; künye bandı 28px sabit yükseklikte ve altında hairline.
 - **Künye bandı:** Platform solda, tarih sağda, mono 11px büyük harf. Kartta platform ve tarih
-  *yalnızca* burada yazılır; alt satırda tekrarlanmaz (tekrar, dünyanın en kolay bozulduğu yerdir).
+  *yalnızca* burada yazılır; alt satırda tekrarlanmaz.
 
 ### Inputs / Fields
-- **Style:** Şeffaf zemin, 1px `--color-input` kenar, 3px radius, 32px yükseklik.
-- **Focus:** Kenar `--color-ring`e döner; halka base katmandan gelir. Odak, kutuyu iki kez çizmez.
-- **Error / Disabled:** `aria-invalid` kenarı kırmızıya çevirir ve alanın altına 12px hata satırı gelir;
-  `disabled` zemini `--color-muted` yapar ve %55 opaklığa iner. Yer tutucu metin `--color-muted-foreground` %85.
+- **Style:** Şeffaf zemin, 1px `--color-input` kenar, 6px radius, 32px yükseklik.
+- **Focus:** Kenar `--color-ring`e döner; halka base katmandan gelir. Odak kutuyu iki kez çizmez.
+- **Error / Disabled:** `aria-invalid` kenarı kırmızıya çevirir ve alanın altına 12px hata satırı gelir.
+
+### Sheets & Dialogs
+Yalnızca kesinti veya korunmuş odak gerektiren işler buraya gelir; kayıt düzenleme ve araç işleri
+satır içi panelde yaşar. Yaprak `material-sheet` + 12px radius + yaprak gölgesi taşır; örtü `--color-overlay`
+ile zemini geri iter. Giriş `data-[starting-style]` ile ölçek+opaklık birlikte, çıkış daha hızlıdır.
 
 ### Navigation
-- **Rail:** 244px, grafit, bölümler (Kasa · Araçlar · Sistem) mono olmayan, büyük harf olmayan
-  11px bölüm etiketleriyle ayrılır. Öğe 30px yükseklik, 3px radius, 16px ikon.
-- **Default / Hover / Active:** İkincil ray metni ray mürekkebinden türetilir; hover'da yüzey belirir.
-  **Aktif öğe bir çekmece sekmesidir:** kart yüzeyini alır ve sağ kenara 4×16px'lik bir çentik taşarır,
-  böylece rayın hairline'ı kesilir. Renkli sol şerit kullanılmaz.
+- **Rail:** 244px, `material-rail`, bölümler (Kasa · Araçlar · Sistem) mono olmayan, büyük harf
+  olmayan 11px bölüm etiketleriyle ayrılır. Öğe 30px yükseklik, 6px radius, 16px ikon.
+- **Default / Hover / Active:** Hover'da yüzey belirir; aktif öğe bir çekmece sekmesidir (kart yüzeyi
+  + sağ kenara taşan çentik).
 - **Mobile:** `md` altında ray yatay kaydırılabilir bir şeride iner; aynı çekmeceler, aynı sıra.
 
 ### Yakala Çubuğu (imza bileşen)
 Tek satır, çift kişilik. Değer alan adı veya şema içeriyorsa çubuk **kayıt moduna** geçer: sol ikon
-bağlantıya döner, sağda platform damgası + "Ayrıntılı" + "Kaydet" (stamp varyantı) belirir; Enter kaydeder,
-Escape temizler. Aksi hâlde **arama modundadır**: ikon büyüteç, sağda `Ctrl K` palet ipucu. Mod her zaman
-görünürdür; tahmin edilmez. Kayıt anında olur, önizleme sonradan çekilir ve başarısız olursa kayıt bozulmaz.
+bağlantıya döner, sağda platform damgası + "Ayrıntılı" + "Kaydet" (stamp varyantı) belirir; Enter
+kaydeder, Escape temizler. Aksi hâlde **arama modundadır**: ikon büyüteç, sağda `Ctrl K` ipucu.
+Mod her zaman görünürdür; tahmin edilmez. Çubuğun sağ ucunda pencere kontrolleri durur.
 
 ## Do's and Don'ts
 
 ### Do:
 - **Do** her durumu damgayla ve mutlaka ikon + sözcükle bildir; rengi yalnız bırakma.
 - **Do** `data-num` kullan: tarih, yüzde, hız, süre, adet, kimlik, dosya yolu.
-- **Do** ölçülebilir alanları `tabular-nums` ile hizala.
-- **Do** yeni bir yüzey eklerken önce mevcut primitifi (Button, Input, Select, Stamp, Field, Progress, Menu,
-  Popover, Dialog, ConfirmDialog) kullan; yeni bir sözlük icat etme.
+- **Do** yüzen katmanları malzemeyle kur (`material-toolbar`, `material-sheet`); içerik altlarından aksın.
+- **Do** yeni bir yüzey eklerken önce mevcut primitifi (Button, Input, Select, Stamp, Field, Progress,
+  Menu, Popover, Dialog, ConfirmDialog) kullan; yeni bir sözlük icat etme.
 - **Do** kayıt düzenlemeyi kayıt panelinde tut; modalı yalnızca kesinti veya korunmuş odak için sakla.
-- **Do** yükleniyor durumunu iskeletle göster (`skeleton-paper`), boş durumu öğret (`kapak yok` gibi
-  açıklayıcı metinle), dönen çarkla değil.
-- **Do** dar pencereyi birinci sınıf tut: gezinme şeride iner, kart ve tablolar yeniden akar, yatay kaydırma çıkmaz.
+- **Do** yükleniyor durumunu iskeletle göster (`skeleton-paper`), boş durumu öğret, dönen çarkla değil.
+- **Do** dar pencereyi birinci sınıf tut: gezinme şeride iner, kart ve tablolar yeniden akar.
 
 ### Don't:
-- **Don't** ikinci bir doygun aksan ekleme; ultramarin tek damgadır.
-- **Don't** ikincil metni gri yapma; renkli yüzeyde o yüzeyin mürekkebinden türet.
+- **Don't** ikinci bir doygun aksan ekleme; systemBlue tek damgadır.
+- **Don't** harf aralığını tek değere sabitleme; boyutun fonksiyonudur.
 - **Don't** bir yüzeyin soluna kalın renkli şerit koyma; platform kuralı 2px'tir ve veri taşır.
-- **Don't** kart ya da butonu hap biçiminde yapma; 2–6px kesilmiş kâğıt köşesi kuraldır.
-- **Don't** gölgeyi dinlenme hâlindeki fişlere, kartlara veya satırlara ekleme.
-- **Don't** büyük harf + harf aralığını gövde metnine ya da bölüm başlığına uygulama; o yalnızca künye
-  ve damga gibi veri yüzeylerinin hakkıdır.
-- **Don't** mono yazıyı etiket süsü olarak kullanma; mono ölçüm içindir.
-- **Don't** gradyan metin, cam/blur dekoru, sert ofset gölge veya glif-ikon kullanma.
+- **Don't** kart ya da butonu hap biçiminde yapma; 4–16px sürekli köşe kuraldır.
+- **Don't** `scale(0)`'dan animasyon başlatma; hiçbir şey yoktan belirmez.
+- **Don't** `ease-in` kullanma; arayüzü yavaş hissettirir. Giriş her zaman `ease-out`.
+- **Don't** UI hareketini 300ms'in üstüne çıkarma.
+- **Don't** `prefers-reduced-motion` / `prefers-reduced-transparency` sinyallerini yok sayma.
+- **Don't** büyük harf + geniş aralığı gövde metnine uygulama; o damga ve künyenin hakkıdır.
 - **Don't** sayfaya ikinci bir "kaydet" eylemi koyma; birincil kayıt yakala çubuğunundur.

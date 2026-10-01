@@ -474,7 +474,7 @@ export const ItemCardView = memo(function ItemCardView({
 }: ItemViewProps) {
   return (
     <article
-      className={`group animate-rise cv-card relative flex flex-col overflow-hidden border bg-card text-card-foreground transition-all duration-200 ease-paper hover:-translate-y-0.5 ${
+      className={`group animate-rise cv-card relative flex flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-hover ${
         selected ? 'border-primary' : 'border-border hover:border-input'
       }`}
       style={{ animationDelay: `${Math.min(index * 30, 240)}ms` }}

@@ -3,12 +3,13 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from 'cn';
 
 /*
- * Buton — damga bloğu dünyasının kontrolü.
+ * Buton — Apple kontrolü.
  * Odak halkası tek yerden gelir (index.css `:focus-visible`), bu yüzden her varyant
- * kendi ring'ini yazmaz. Basış 1px aşağı iner: kâğıt masaya değer.
+ * kendi ring'ini yazmaz. Basış ölçekle iner: kontrol parmağın altında küçülür.
+ * Basış `:active`'tedir, yani parmak değer değmez geri bildirim başlar.
  */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center gap-1.5 rounded-sm border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,transform] duration-150 ease-paper select-none active:translate-y-px disabled:pointer-events-none disabled:opacity-45 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center gap-1.5 rounded-sm border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,transform,opacity] duration-150 ease-out select-none active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 aria-invalid:border-destructive motion-reduce:active:scale-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {

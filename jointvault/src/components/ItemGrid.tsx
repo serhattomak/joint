@@ -413,7 +413,7 @@ export function ItemGrid({
             )}
           </div>
         ) : view === 'rows' ? (
-          <div className="animate-rise divide-y divide-border overflow-hidden border border-border bg-card">
+          <div className="animate-rise divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-card">
             {rows.map((item) => (
               <ItemRowView
                 key={item.id}

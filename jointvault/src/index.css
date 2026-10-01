@@ -1,33 +1,33 @@
 @import "tailwindcss";
 
 /*
- * JointVault · Kartoteks
- * Dünya: kütüphane fiş katalogları / arşiv çekmeceleri.
- * Malzeme dokunun kendisiyle değil iki araçla kurulur: sabit künye bandı + altındaki
- * hairline, ray'de sekme çentiği. (Üçüncü aday — "perfore delik" — kaldırıldı: durum
- * taşıyan her işaret zaten damga sözlüğünde yaşıyor, ikinci bir işaret aynı şeyi iki
- * kez söylerdi.)
- * Gölge yok; bölme hairline'ı ve kart kenarı var. Kesilmiş kâğıt köşesi: 2-6px.
+ * JointVault · Kabuk
+ * Dünya: macOS masaüstü uygulaması. Malzeme, ışık ve hareket Apple'ın dilinden:
+ * katmanlı yüzeyler, yumuşak gölgeler, systemBlue tek aksan, semantik durum renkleri.
+ *
+ * Okunacaklar: DESIGN.md (sözleşme) · PRODUCT.md (dokunulmazlar: çevrimdışı font,
+ * performans bütçesi, Türkçe, WCAG AA, prefers-reduced-motion).
  */
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* --- Yazı tipleri: yerelden servis edilir, çalışma anında uzak kaynak yok --- */
-/* Google Fonts değişken (variable) font servis ediyor: tek dosya, 100-900 ağırlık aralığı. */
+/* Inter değişken (variable) font: tek dosya, 100-900 ağırlık aralığı. SF Pro'ya en yakın
+   serbest yüz; Apple'ın sistem yüzü lisans dışı kaldığı için bilinçli ikame. */
 @font-face {
-  font-family: 'Archivo';
+  font-family: 'Inter';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('/fonts/archivo-latin.woff2') format('woff2');
+  src: url('/fonts/inter-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: 'Archivo';
+  font-family: 'Inter';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('/fonts/archivo-latin-ext.woff2') format('woff2');
+  src: url('/fonts/inter-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
@@ -48,53 +48,59 @@
 }
 
 @theme {
-  /* --- Tipografi: tek yüz (Archivo) + veri yüzü (JetBrains Mono).
-     Rütbe boyutla kurulur, ağırlık karışımıyla değil. --- */
-  --font-sans: 'Archivo', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Archivo', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  /* --- Tipografi: sistem yüzü (Inter) + ölçüm yüzü (JetBrains Mono).
+     Apple izi boyuttadır: büyük metin negatif, küçük metin pozitif harf aralığı alır. --- */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
 
-  /* Tam sayı adımlı ölçek merdiveni (sabit rem, akışkan değil). */
   --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 1.5;
-  --text-2xs--letter-spacing: 0.04em;
+  --text-2xs--line-height: 1.45;
+  --text-2xs--letter-spacing: 0.02em;
   --text-micro: 0.75rem;
-  --text-micro--line-height: 1.45;
-  --text-title: 1.3125rem;
-  --text-title--line-height: 1.15;
+  --text-micro--line-height: 1.4;
+  --text-micro--letter-spacing: 0.006em;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.18;
   --text-title--font-weight: 600;
-  --text-title--letter-spacing: -0.012em;
-  --text-display: 1.625rem;
-  --text-display--line-height: 1.08;
-  --text-display--font-weight: 600;
-  --text-display--letter-spacing: -0.018em;
+  --text-title--letter-spacing: -0.018em;
+  --text-display: 1.75rem;
+  --text-display--line-height: 1.12;
+  --text-display--font-weight: 700;
+  --text-display--letter-spacing: -0.022em;
 
-  /* --- Gündüz: çekmece açıkken --- */
-  --color-background: #eceae4;
-  --color-foreground: #15171a;
-  --color-card: #f7f5f0;
-  --color-card-foreground: #15171a;
-  --color-popover: #fdfcf9;
-  --color-popover-foreground: #15171a;
-  --color-muted: #e2dfd6;
-  --color-muted-foreground: #63615c;
-  --color-border: #d5d2c8;
-  --color-input: #c9c5b9;
-  --color-primary: #2a3fd0;
+  /* --- Gündüz --- */
+  --color-background: #f2f2f7;
+  --color-foreground: #1d1d1f;
+  --color-card: #ffffff;
+  --color-card-foreground: #1d1d1f;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1d1d1f;
+  --color-muted: #e9e9ee;
+  --color-muted-foreground: #6e6e73;
+  --color-border: #e0e0e5;
+  --color-input: #d1d1d6;
+  --color-primary: #007aff;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #e2dfd6;
-  --color-secondary-foreground: #33363b;
-  --color-destructive: #b3352a;
+  --color-secondary: #e9e9ee;
+  --color-secondary-foreground: #1d1d1f;
+  --color-destructive: #ff3b30;
   --color-destructive-foreground: #ffffff;
-  --color-ring: #2a3fd0;
+  --color-ring: #007aff;
 
-  --color-rail: #e4e1d9;
-  --color-rail-foreground: #15171a;
-  --color-rail-border: #d0ccc1;
+  /* Ray ve araç çubuğu birer malzemedir: yarı saydam taban + arkası bulanıklaşır. */
+  --color-rail: rgb(232 232 237 / 0.72);
+  --color-rail-foreground: #1d1d1f;
+  --color-rail-border: #e0e0e5;
+  --color-toolbar: rgb(242 242 247 / 0.72);
+  --color-sheet: rgb(255 255 255 / 0.78);
 
-  --color-overlay: rgb(20 21 23 / 0.55);
+  --material-blur: blur(24px) saturate(180%);
+  --material-blur-strong: blur(40px) saturate(180%);
 
-  /* Platform mürekkep kodu: kütüphane sınıflandırması, süs değil. */
+  --color-overlay: rgb(0 0 0 / 0.28);
+
+  /* Platform mürekkep kodu: marka rengi, semantik değil — korunur. */
   --color-src-instagram: #c33f76;
   --color-src-tiktok: #1f9c9c;
   --color-src-x: #5c5a55;
@@ -102,56 +108,64 @@
   --color-src-youtube: #bc3a30;
   --color-src-other: #7a776f;
 
-  --color-state-queued: #8b8880;
-  --color-state-active: #2a3fd0;
-  --color-state-acquired: #2f7d55;
-  --color-state-error: #b3352a;
+  /* Apple system* renkleri: durum anlamı taşır, aksan değil. */
+  --color-state-queued: #8e8e93;
+  --color-state-active: #007aff;
+  --color-state-acquired: #34c759;
+  --color-state-error: #ff3b30;
 
-  /* --- Kesilmiş kâğıt köşesi --- */
-  --radius-xs: 0.125rem;
-  --radius-sm: 0.1875rem;
-  --radius-md: 0.25rem;
-  --radius-lg: 0.3125rem;
-  --radius-xl: 0.375rem;
-  --radius-2xl: 0.5rem;
+  /* --- Sürekli köşe (continuous corner): Apple eğrisine yakın merdiven --- */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
 
-  /* Fiş gölgesi yok — kart kenarı ve hairline taşır. Yalnızca üstte duran
-     katmanlar yükselir: gerçek ofset + yumuşak blur. */
-  --shadow-card: 0 0 0 0 transparent;
-  --shadow-lift: 0 18px 40px -18px rgb(20 21 23 / 0.45), 0 3px 10px -4px rgb(20 21 23 / 0.3);
+  /* --- Yükselme: Apple katmanlı ve yumuşak; sıfır-ofsetli hale yok --- */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.05), 0 1px 1px rgb(0 0 0 / 0.03);
+  --shadow-hover: 0 6px 20px rgb(0 0 0 / 0.1), 0 2px 6px rgb(0 0 0 / 0.05);
+  --shadow-lift: 0 12px 32px rgb(0 0 0 / 0.14), 0 2px 8px rgb(0 0 0 / 0.06);
 
-  --ease-paper: cubic-bezier(0.22, 1, 0.36, 1);
+  /* --- Hareket: Apple/Emil eğrileri. `ease-paper` adı korunur ki mevcut
+     yüzeylerin tamamı tek satır değişmeden yeni eğriye geçsin. --- */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-paper: cubic-bezier(0.23, 1, 0.32, 1);
 
-  --animate-rise: rise 0.22s var(--ease-paper) both;
-  --animate-stamp: stamp 0.18s var(--ease-paper) both;
+  --animate-rise: rise 0.24s var(--ease-out) both;
+  --animate-stamp: stamp 0.18s var(--ease-out) both;
   --animate-sweep: sweep 1.2s linear infinite;
 }
 
-/* --- Gece: okuma odası, tek çalışma lambası --- */
+/* --- Gece --- */
 .dark {
-  --color-background: #0f1113;
-  --color-foreground: #e8e5dd;
-  --color-card: #171a1d;
-  --color-card-foreground: #e8e5dd;
-  --color-popover: #1b1f23;
-  --color-popover-foreground: #e8e5dd;
-  --color-muted: #1f2428;
-  --color-muted-foreground: #8f8c83;
-  --color-border: #262a2e;
-  --color-input: #3a4045;
-  --color-primary: #3d5afe;
-  --color-primary-foreground: #f2f4ff;
-  --color-secondary: #21262b;
-  --color-secondary-foreground: #cfd3d6;
-  --color-destructive: #d9483b;
-  --color-destructive-foreground: #1a0f0d;
-  --color-ring: #6a7cff;
+  --color-background: #1c1c1e;
+  --color-foreground: #ffffff;
+  --color-card: #2c2c2e;
+  --color-card-foreground: #ffffff;
+  --color-popover: #2c2c2e;
+  --color-popover-foreground: #ffffff;
+  --color-muted: #3a3a3c;
+  --color-muted-foreground: rgb(235 235 245 / 0.6);
+  --color-border: #3a3a3c;
+  --color-input: #48484a;
+  --color-primary: #0a84ff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #3a3a3c;
+  --color-secondary-foreground: #ffffff;
+  --color-destructive: #ff453a;
+  --color-destructive-foreground: #ffffff;
+  --color-ring: #0a84ff;
 
-  --color-rail: #0b0d0f;
-  --color-rail-foreground: #e8e5dd;
-  --color-rail-border: #23272b;
+  --color-rail: rgb(38 38 41 / 0.72);
+  --color-rail-foreground: #ffffff;
+  --color-rail-border: #3a3a3c;
+  --color-toolbar: rgb(28 28 30 / 0.72);
+  --color-sheet: rgb(44 44 46 / 0.8);
 
-  --color-overlay: rgb(4 5 6 / 0.72);
+  --color-overlay: rgb(0 0 0 / 0.5);
 
   --color-src-instagram: #d94f8a;
   --color-src-tiktok: #35c4c4;
@@ -160,12 +174,14 @@
   --color-src-youtube: #d0443a;
   --color-src-other: #6f6c65;
 
-  --color-state-queued: #8f8c83;
-  --color-state-active: #3d5afe;
-  --color-state-acquired: #4f9a72;
-  --color-state-error: #d9483b;
+  --color-state-queued: #8e8e93;
+  --color-state-active: #0a84ff;
+  --color-state-acquired: #30d158;
+  --color-state-error: #ff453a;
 
-  --shadow-lift: 0 22px 48px -20px rgb(0 0 0 / 0.75), 0 4px 12px -4px rgb(0 0 0 / 0.6);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 1px rgb(0 0 0 / 0.24);
+  --shadow-hover: 0 8px 24px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
+  --shadow-lift: 0 16px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
 }
 
 @layer base {
@@ -181,6 +197,8 @@
     font-family: var(--font-sans);
     font-size: 0.875rem;
     line-height: 1.5;
+    letter-spacing: -0.006em;
+    font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overflow-wrap: break-word;
@@ -188,8 +206,8 @@
 
   /* Tarayıcının kendi yüzeyleri de bu dünyaya ait. */
   ::selection {
-    background: var(--color-primary);
-    color: var(--color-primary-foreground);
+    background: color-mix(in oklab, var(--color-primary) 28%, transparent);
+    color: var(--color-foreground);
   }
   :root {
     caret-color: var(--color-primary);
@@ -223,9 +241,10 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Apple kaplama kaydırma çubuğu: ince, zeminden kopuk durmaz. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-color: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent) transparent;
   }
   ::-webkit-scrollbar {
     width: 10px;
@@ -235,13 +254,13 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent);
     border: 3px solid transparent;
     background-clip: content-box;
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-input);
+    background: color-mix(in oklab, var(--color-muted-foreground) 65%, transparent);
     background-clip: content-box;
   }
   ::-webkit-scrollbar-corner {
@@ -252,11 +271,11 @@
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -296,6 +315,63 @@
   }
 }
 
+/* Apple üçüncü sinyali: saydamlık azaltıldığında malzeme koyulaşır, blur düşer.
+   Unlayered yazılır; katmanlı @theme değerlerini geçer. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --color-rail: #e8e8ed;
+    --color-toolbar: #f2f2f7;
+    --color-sheet: #ffffff;
+    --color-overlay: rgb(0 0 0 / 0.4);
+    --material-blur: none;
+    --material-blur-strong: none;
+  }
+  .dark {
+    --color-rail: #262629;
+    --color-toolbar: #1c1c1e;
+    --color-sheet: #2c2c2e;
+  }
+}
+
+/* --- Malzeme yardımcıları: arkası bulanıklaşan yüzeyler --- */
+/* Üstteki ince ışık çizgisi malzemenin ışığı yakaladığı yerdir. */
+@utility material-rail {
+  background-color: var(--color-rail);
+  -webkit-backdrop-filter: var(--material-blur);
+  backdrop-filter: var(--material-blur);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+@utility material-toolbar {
+  background-color: var(--color-toolbar);
+  -webkit-backdrop-filter: var(--material-blur);
+  backdrop-filter: var(--material-blur);
+}
+
+@utility material-sheet {
+  background-color: var(--color-sheet);
+  -webkit-backdrop-filter: var(--material-blur-strong);
+  backdrop-filter: var(--material-blur-strong);
+}
+
+/* Yüzen kabuk ile altından geçen içerik arasındaki yumuşak kenar.
+   NOT: Tailwind `@utility` içindeki iç içe `&::after` sessizce düşüyordu (derlenmiş
+   CSS'te doğrulandı), bu yüzden düz CSS. `position` burada YAZILMAZ: katmansız kural
+   katmanlı `sticky` utility'sini ezerdi; çağıran zaten konumlanmıştır (`sticky`). */
+.scroll-edge-b::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  height: 12px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--color-background) 55%, transparent),
+    transparent
+  );
+}
+
 /* Ekran dışı satır/kartların layout+paint maliyetini atla (1000+ öğe bütçesi). */
 @utility cv-row {
   content-visibility: auto;
@@ -307,8 +383,7 @@
   contain-intrinsic-size: auto 292px;
 }
 
-/* Künye bandı: fişin üstündeki sabit yükseklikte seri + altında hairline cetvel.
-   Doku taklidi değil; fişin kendi yapısı. */
+/* Künye bandı: fişin üstündeki sabit yükseklikte seri + altında hairline cetvel. */
 @utility record-band {
   display: flex;
   align-items: center;

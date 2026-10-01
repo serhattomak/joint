@@ -100,7 +100,7 @@ export function CaptureBar({ onQuery, onSaved, onDetailed, semantic, onSemanticT
   return (
     <div
       data-tauri-drag-region
-      className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4"
+      className="material-toolbar scroll-edge-b sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 px-4"
     >
       <div className="relative min-w-0 flex-1">
         {capture ? (
