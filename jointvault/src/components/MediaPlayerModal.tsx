@@ -39,7 +39,7 @@ export function MediaPlayerModal({
     <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         showCloseButton={false}
-        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] max-w-6xl max-h-[92vh] sm:max-w-6xl p-0 flex flex-col overflow-hidden bg-black/95 text-white border border-white/10 shadow-2xl rounded-2xl z-50 focus:outline-none backdrop-blur-md"
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] max-w-6xl max-h-[92vh] sm:max-w-6xl p-0 flex flex-col overflow-hidden bg-black/95 text-white border border-white/10 rounded-2xl z-50 focus:outline-none backdrop-blur-md"
       >
         <DialogTitle className="sr-only">{item.title || 'Medya Oynatıcı'}</DialogTitle>
         <DialogDescription className="sr-only">JointVault Sinema Modu Medya Oynatıcısı</DialogDescription>

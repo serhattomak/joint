@@ -337,13 +337,13 @@ export function ItemRecord({
     <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         showCloseButton={false}
-        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-5xl h-[88vh] max-h-[88vh] sm:max-w-5xl p-0 flex flex-col overflow-hidden bg-card text-card-foreground border border-border shadow-2xl rounded-xl z-50 focus:outline-none"
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-5xl h-[88vh] max-h-[88vh] sm:max-w-5xl p-0 flex flex-col overflow-hidden bg-card text-card-foreground border border-border rounded-xl z-50 focus:outline-none"
       >
         <DialogTitle className="sr-only">Kayıt Detayı - {item.title || item.url}</DialogTitle>
         <DialogDescription className="sr-only">Öğe fiş detayı ve okuyucu modu</DialogDescription>
 
         {/* Üst Başlık & Sekme Çubuğu */}
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/90 px-5 backdrop-blur-xs">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-5">
           {/* Sol: Platform ve Dış Bağlantı */}
           <div className="flex min-w-0 max-w-[40%] items-center gap-2.5">
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/80 bg-muted/60 px-2.5 py-0.5 text-xs font-semibold">
@@ -862,7 +862,7 @@ export function ItemRecord({
         </div>
 
         {/* Alt Çubuk */}
-        <footer className="flex h-14 shrink-0 items-center justify-between border-t border-border bg-card/80 px-6 backdrop-blur-xs">
+        <footer className="flex h-14 shrink-0 items-center justify-between border-t border-border bg-card px-6">
           <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
             <Trash2 className="size-3.5" />
             <span>Sil</span>
