@@ -4,3 +4,26 @@ dist/
 target/
 *.db
 *.local
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+.ignore
+.mcp.json
+AGENTS.md
+.gitignore
+opencode.json
+GEMINI.md
+.gitignore
+.claude/settings.json
+.gitignore
+.claude/helpers/graft-statusline.cjs
+.claude/helpers/graft-hooks.cjs
+.claude/skills/graft/SKILL.md
+.cursor/hooks.json
+.gitignore
+.cursor/mcp.json
+.cursor/hooks/graft-hooks.cjs
+.gitignore
+.cursor/rules/graft.mdc
+.gitignore
+.gemini/settings.json
