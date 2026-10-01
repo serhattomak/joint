@@ -38,6 +38,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { listCategories, listCollections, listItems, listTags, resetDb, runDailyBackup, type ItemSort } from '@/lib/db/client';
 import { getAiStatus, isAiEnabled } from '@/lib/ai';
 import { classifyDbError, type DbInitError } from '@/lib/db/db-errors';
+import { pushDest, stepDest, type NavHistory } from '@/lib/nav-history';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { startDownload, type DownloadQuality } from '@/lib/downloads';
 import { cycleTheme } from '@/lib/theme';
@@ -81,6 +82,10 @@ function App() {
   const [settingsOnly, setSettingsOnly] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai');
   const [collectionsOnly, setCollectionsOnly] = useState(false);
+  // Ray açık/kapalı — kullanıcı tercihi kalıcı (dar pencerede zaten gizli).
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => window.localStorage.getItem('jv-sidebar') !== 'closed',
+  );
   const [collections, setCollections] = useState<Collection[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -367,26 +372,69 @@ function App() {
     leaveViews();
   };
 
-  const sidebarProps = {
-    view: (settingsOnly
-      ? 'settings'
-      : collectionsOnly
+  // Görünüm = gezinmenin kimliği; geçmiş bu kimlik üzerinden yürür.
+  const currentView: SidebarView = settingsOnly
+    ? 'settings'
+    : collectionsOnly
       ? 'collections'
       : aiOnly
-      ? 'ai'
-      : syncOnly
-      ? 'sync'
-      : converterOnly
-      ? 'converter'
-      : toolboxOnly
-        ? 'toolbox'
-        : statsOnly
-          ? 'stats'
-          : favoritesOnly
-            ? 'favorites'
-            : downloadedOnly
-              ? 'downloads'
-              : 'all') as SidebarView,
+        ? 'ai'
+        : syncOnly
+          ? 'sync'
+          : converterOnly
+            ? 'converter'
+            : toolboxOnly
+              ? 'toolbox'
+              : statsOnly
+                ? 'stats'
+                : favoritesOnly
+                  ? 'favorites'
+                  : downloadedOnly
+                    ? 'downloads'
+                    : 'all';
+
+  const [hist, setHist] = useState<NavHistory<SidebarView>>(() => ({ stack: ['all'], index: 0 }));
+
+  /* Her görünüm değişimi geçmişe yazılır (yeni gezinme ileri yığınını kırpar).
+     Geri/ileri yığındaki değeri zaten geri getirdiği için effect erken döner —
+     ayrı bir bastırma bayrağı gerekmez. */
+  useEffect(() => {
+    setHist((h) => pushDest(h, currentView));
+  }, [currentView]);
+
+  const applyDest = (d: SidebarView): void => {
+    if (d === 'favorites') goFavorites();
+    else if (d === 'downloads') goDownloads();
+    else if (d === 'sync') openSync();
+    else if (d === 'collections') openCollections();
+    else if (d === 'converter') openConverter();
+    else if (d === 'toolbox') openToolbox();
+    else if (d === 'stats') openStats();
+    else if (d === 'ai') openAi();
+    else if (d === 'settings') openSettings();
+    else showAll();
+  };
+
+  const canGoBack = hist.index > 0;
+  const canGoForward = hist.index < hist.stack.length - 1;
+  const goStep = (delta: 1 | -1): void => {
+    const next = stepDest(hist, delta);
+    if (next === hist) return;
+    setHist(next);
+    applyDest(next.stack[next.index]);
+  };
+  const goBack = (): void => goStep(-1);
+  const goForward = (): void => goStep(1);
+
+  const toggleSidebar = (): void => {
+    setSidebarOpen((open) => {
+      window.localStorage.setItem('jv-sidebar', open ? 'closed' : 'open');
+      return !open;
+    });
+  };
+
+  const sidebarProps = {
+    view: currentView,
     homeActive:
       platform === 'all' &&
       collectionId === 'all' &&
@@ -454,10 +502,16 @@ function App() {
             onOpenAiSettings={() => openSettings('ai')}
             view={isVault ? view : undefined}
             onViewChange={isVault ? switchView : undefined}
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={toggleSidebar}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onBack={goBack}
+            onForward={goForward}
           />
 
           <div className="flex flex-1">
-            <Sidebar {...sidebarProps} />
+            {sidebarOpen && <Sidebar {...sidebarProps} />}
 
             <div className="flex min-w-0 flex-1 flex-col">
               <SidebarStrip {...sidebarProps} />

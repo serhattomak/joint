@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import {
   Archive,
+  ArrowLeft,
+  ArrowRight,
   CornerDownLeft,
   LayoutGrid,
   Link2,
+  PanelLeft,
   Plus,
   RefreshCw,
   Rows3,
@@ -56,6 +59,38 @@ interface ToolbarProps {
   /** Kasa görünümündeyken geçilir; görünüm segmenti yalnızca o zaman çizilir. */
   view?: 'grid' | 'rows';
   onViewChange?: (v: 'grid' | 'rows') => void;
+  /* Gezinme: ray denetimi + geri/ileri (gerçek görünüm geçmişi). */
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onBack: () => void;
+  onForward: () => void;
+}
+
+function ToolButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+    >
+      {children}
+    </button>
+  );
 }
 
 export function Toolbar({
@@ -69,6 +104,12 @@ export function Toolbar({
   onOpenAiSettings,
   view,
   onViewChange,
+  sidebarOpen,
+  onToggleSidebar,
+  canGoBack,
+  canGoForward,
+  onBack,
+  onForward,
 }: ToolbarProps) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -132,20 +173,28 @@ export function Toolbar({
       data-tauri-drag-region
       className="material-toolbar sticky top-0 z-40 flex h-[52px] shrink-0 items-center gap-3 border-b border-border px-3"
     >
-      {/* Sol: marka — rayın üstünde, ray gizlenince kalkar */}
-      <div data-tauri-drag-region className="hidden w-[228px] shrink-0 items-center gap-2.5 lg:flex">
-        <Archive
-          data-tauri-drag-region
-          className="size-[18px] text-primary"
-          strokeWidth={2.25}
-          aria-hidden
-        />
-        <span
-          data-tauri-drag-region
-          className="text-[0.9375rem] leading-none font-semibold tracking-[-0.01em]"
-        >
-          JointVault
-        </span>
+      {/* Sol: ray denetimi + gezinme + marka (rayın üstünde) */}
+      <div
+        data-tauri-drag-region
+        className={`flex shrink-0 items-center gap-0.5 ${sidebarOpen ? 'lg:w-[228px]' : ''}`}
+      >
+        <ToolButton label={sidebarOpen ? 'Rayı gizle' : 'Rayı göster'} onClick={onToggleSidebar}>
+          <PanelLeft className="size-4" strokeWidth={1.75} />
+        </ToolButton>
+        <ToolButton label="Geri" disabled={!canGoBack} onClick={onBack}>
+          <ArrowLeft className="size-4" strokeWidth={1.75} />
+        </ToolButton>
+        <ToolButton label="İleri" disabled={!canGoForward} onClick={onForward}>
+          <ArrowRight className="size-4" strokeWidth={1.75} />
+        </ToolButton>
+        {sidebarOpen && (
+          <span data-tauri-drag-region className="ml-1.5 hidden min-w-0 items-center gap-2 lg:flex">
+            <Archive className="size-[18px] shrink-0 text-primary" strokeWidth={2.25} aria-hidden />
+            <span className="truncate text-[0.9375rem] leading-none font-semibold tracking-[-0.01em]">
+              JointVault
+            </span>
+          </span>
+        )}
       </div>
 
       {/* Orta: yakala/ara alanı + mod eylemleri */}
