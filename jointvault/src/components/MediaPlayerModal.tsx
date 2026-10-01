@@ -1,4 +1,5 @@
 import { useOpenTarget } from '@/lib/open-target';
+import { useDragDismiss } from '@/lib/use-drag-dismiss';
 import {
   FileText,
   FolderOpen,
@@ -10,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MediaPlayer } from '@/components/MediaPlayer';
+import { motion } from 'motion/react';
 import type { Item } from '@/lib/db/types';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
 
@@ -31,6 +33,8 @@ export function MediaPlayerModal({
   /* Hook erken çıkıştan ÖNCE gelmeli: koşullu erken çıkışın ardından çağrılırsa
      hook sırası render'lar arasında değişir ve React hata verir. */
   const { open, reveal } = useOpenTarget();
+  /* Çekip-kapat: oynatıcı merkezî yaprak — aşağı çekince kapanır. */
+  const drag = useDragDismiss('y', onClose);
   if (!item || !item.local_path) return null;
 
   const platform = PLATFORM_META[item.platform as Platform] ?? PLATFORM_META.other;
@@ -39,6 +43,7 @@ export function MediaPlayerModal({
     <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         showCloseButton={false}
+        render={<motion.div {...drag} />}
         className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] max-w-6xl max-h-[92vh] sm:max-w-6xl p-0 flex flex-col overflow-hidden bg-black/95 text-white border border-white/10 rounded-2xl z-50 focus:outline-none backdrop-blur-md"
       >
         <DialogTitle className="sr-only">{item.title || 'Medya Oynatıcı'}</DialogTitle>
