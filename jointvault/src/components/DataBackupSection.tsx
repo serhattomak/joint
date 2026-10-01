@@ -90,7 +90,7 @@ export function DataBackupSection() {
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/30 p-4 shadow-xs">
+    <div className="settings-card flex flex-col gap-4 p-4">
       <div className="flex flex-col gap-1">
         <h3 className="flex items-center gap-1.5 text-sm font-medium">
           <Database className="size-4" /> Kasa yedekleri

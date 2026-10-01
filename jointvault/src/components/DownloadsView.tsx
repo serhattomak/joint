@@ -428,7 +428,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
           </div>
 
           {sourceTab === 'turbo' && (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3.5 py-1.5 shadow-xs">
+            <div className="settings-card flex items-center gap-2 px-3.5 py-1.5">
               <span
                 className={`size-2.5 rounded-full ${
                   activeCount > 0 ? 'animate-pulse bg-emerald-500' : 'bg-muted-foreground/30'
@@ -518,7 +518,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
               {filteredVaultItems.map((item) => (
                 <div
                   key={item.id}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs transition hover:border-primary/40 hover:shadow-md"
+                  className="settings-card group flex flex-col overflow-hidden transition hover:border-primary/40 hover:shadow-md"
                 >
                   <div className="relative aspect-video w-full overflow-hidden bg-muted/60 border-b border-border">
                     {item.thumbnail ? (
@@ -766,7 +766,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                 return (
                   <div
                     key={job.id}
-                    className="group flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xs transition hover:border-primary/40"
+                    className="settings-card group flex flex-col gap-3 p-4 transition hover:border-primary/40"
                   >
                     {/* ÜST SATIR: İKON + DOSYA ADI + METRİKLER + AKSİYONLAR */}
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

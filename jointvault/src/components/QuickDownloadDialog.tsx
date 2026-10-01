@@ -211,7 +211,7 @@ export function QuickDownloadDialog({
 
           {/* Dosya Bilgi Kartı */}
           {probeData && (
-            <div className="flex flex-col gap-2 rounded-xl border border-border bg-card/40 p-3 text-xs">
+            <div className="settings-card flex flex-col gap-2 p-3 text-xs">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   {getCategoryIcon(category)}

@@ -338,11 +338,14 @@ Durum sözlüğü: `kayıtsız` · `kuyrukta` · `iniyor` · `yerel` · `hata` �
 glif veya emoji asla. Renk durumun kendisidir ama tek başına yetmez: ikon ve sözcük her zaman yanındadır.
 
 ### Cards / Containers
-- **Corner Style:** 10px sürekli köşe.
-- **Background:** `#2c2c2e` gece / `#ffffff` gündüz.
-- **Shadow Strategy:** Dinlenmede neredeyse görünmez bir kart gölgesi; hover'da yükselir. Seçili kart
-  aksan kenar taşır.
-- **Border:** 1px ayırıcı; hover'da girdi rengine döner ve kart 2px kalkar.
+- **Tek kabuk:** Her kart `settings-card` yardımcı sınıfıdır — 1px kenar, 12px sürekli köşe, **opak**
+  `--color-card` zemin. Elle yazılmış `rounded-* border border-border bg-card` varyantları sürüklenmedir;
+  yeni kart bu yardımcıyla kurulur. Yarı saydam kart (`bg-card/30`…) yoktur — saydamlık malzemenin
+  (ray · çubuk · yaprak) işidir, kartın değil.
+- **Elevation:** Kenar yapı taşır, gölge yükseklik. Dinlenmede gölge **yok**; yalnızca etkileşimli kart
+  hover'da 2px kalkıp `shadow-hover` alır. Yüzen katmanlar (bildirim, toplu eylem çubuğu, yaprak)
+  `shadow-lift` taşır.
+- **Border:** 1px ayırıcı; hover'da girdi rengine döner.
 - **Internal Padding:** 12px; künye bandı 28px sabit yükseklikte ve altında hairline.
 - **Künye bandı:** Platform solda, tarih sağda, mono 11px büyük harf. Kartta platform ve tarih
   *yalnızca* burada yazılır; alt satırda tekrarlanmaz.

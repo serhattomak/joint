@@ -300,7 +300,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
                     type="button"
                     onClick={() => void sendQuery(p)}
                     disabled={!ready || busy}
-                    className="rounded-lg border border-border bg-card/60 p-3 text-left text-xs text-card-foreground transition hover:border-primary/40 hover:bg-card active:scale-[0.99] disabled:opacity-50"
+                    className="settings-card p-3 text-left text-xs text-card-foreground transition hover:border-primary/40 active:scale-[0.99] disabled:opacity-50"
                   >
                     {p}
                   </button>
@@ -509,7 +509,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
             e.preventDefault();
             void sendQuery(input);
           }}
-          className="mx-auto flex max-w-2xl items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-xs focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/60"
+          className="settings-card mx-auto flex max-w-2xl items-center gap-2 px-3 py-2 focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/60"
         >
           <input
             type="text"

@@ -703,7 +703,7 @@ export function SettingsView(props: SettingsViewProps) {
             {tab === 'ai' && (
               <div className="flex flex-col gap-4">
                 {/* 0. Açık rıza: Yerel AI'yı etkinleştir / kapat */}
-                <div className="flex flex-col gap-3 settings-card p-3.5 shadow-xs">
+                <div className="flex flex-col gap-3 settings-card p-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium">Yerel AI</p>
@@ -753,7 +753,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
 
                 {/* Donanım tespiti + offload kararı: sabit metin YOK, tespit ne ise o yazılır. */}
-                <div className="flex items-start justify-between gap-3 settings-card p-3 shadow-xs">
+                <div className="flex items-start justify-between gap-3 settings-card p-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">Yerel Donanım Hızlandırma</p>
                     <p className="text-xs text-muted-foreground">{gpuHardwareLine(aiGpu)}</p>
@@ -771,7 +771,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
 
                 {/* 1. AI Motoru */}
-                <div className="flex flex-col gap-2 settings-card p-3.5 shadow-xs">
+                <div className="flex flex-col gap-2 settings-card p-3.5">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="text-sm font-medium">AI Motoru (llama-server)</span>
@@ -814,7 +814,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
 
                 {/* 2. LLM Modeli */}
-                <div className="flex flex-col gap-2 settings-card p-3.5 shadow-xs">
+                <div className="flex flex-col gap-2 settings-card p-3.5">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="text-sm font-medium">Qwen 2.5 14B-Instruct</span>
@@ -859,7 +859,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
 
                 {/* 3. Embedding Modeli */}
-                <div className="flex flex-col gap-2 settings-card p-3.5 shadow-xs">
+                <div className="flex flex-col gap-2 settings-card p-3.5">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="text-sm font-medium">BGE-M3 Vektör Modeli</span>
@@ -904,7 +904,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
 
                 {/* 4. VRAM & Sunucu Durumu */}
-                <div className="flex flex-col gap-3.5 settings-card p-4 shadow-xs">
+                <div className="flex flex-col gap-3.5 settings-card p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">Çalışma Durumu & Hızlandırma</p>
@@ -967,7 +967,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
 
                 {/* 5. Akıllı Taksonomi & Otomasyon */}
-                <div className="flex flex-col gap-3.5 settings-card p-4 shadow-xs">
+                <div className="flex flex-col gap-3.5 settings-card p-4">
                   <div>
                     <p className="text-sm font-medium">Akıllı Taksonomi & Otomasyon</p>
                     <p className="text-xs text-muted-foreground">
@@ -1010,7 +1010,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
 
                 {/* 6. Kasa Bakım & Düzenleme Araçları */}
-                <div className="flex flex-col gap-3.5 settings-card p-4 shadow-xs">
+                <div className="flex flex-col gap-3.5 settings-card p-4">
                   <div>
                     <p className="text-sm font-medium">Kasa Bakım & Düzenleme Araçları</p>
                     <p className="text-xs text-muted-foreground">
@@ -1077,7 +1077,7 @@ export function SettingsView(props: SettingsViewProps) {
             {tab === 'speech' && (
               <div className="flex flex-col gap-4">
                 {/* Motor kartı */}
-                <div className="flex items-center justify-between settings-card p-3.5 shadow-xs">
+                <div className="flex items-center justify-between settings-card p-3.5">
                   <div>
                     <p className="text-sm font-medium">Whisper motoru</p>
                     <p className="text-xs text-muted-foreground">Yerel whisper.cpp CLI yürütücüsü{sizeSuffix('whisper', 4)}</p>
@@ -1180,7 +1180,7 @@ export function SettingsView(props: SettingsViewProps) {
 
             {/* TAB: GÖRÜNÜM */}
             {tab === 'view' && (
-              <div className="settings-card flex flex-col divide-y divide-border/70 p-4 shadow-xs">
+              <div className="settings-card flex flex-col divide-y divide-border/70 p-4">
                 <SettingRow label="Tema" htmlFor="theme-toggle">
                   <ThemeToggle />
                 </SettingRow>
@@ -1213,7 +1213,7 @@ export function SettingsView(props: SettingsViewProps) {
 
             {/* TAB: İNDİRME */}
             {tab === 'downloads' && (
-              <div className="settings-card flex flex-col divide-y divide-border/70 p-4 shadow-xs">
+              <div className="settings-card flex flex-col divide-y divide-border/70 p-4">
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="set-dir" className="text-sm font-medium">
                     İndirme klasörü
@@ -1279,7 +1279,7 @@ export function SettingsView(props: SettingsViewProps) {
 
             {/* TAB: EKLENTİ */}
             {tab === 'extension' && (
-              <div className="flex flex-col gap-3 settings-card p-4 shadow-xs">
+              <div className="flex flex-col gap-3 settings-card p-4">
                 <span className="text-sm font-medium">Eşleşme anahtarı</span>
                 <p className="text-xs text-muted-foreground">
                   Tarayıcı eklentisine bir kez girilir; yenilersen eklentiye yeniden girmen gerekir.
@@ -1307,7 +1307,7 @@ export function SettingsView(props: SettingsViewProps) {
             {tab === 'backup' && (
               <div className="flex flex-col gap-4">
                 <DataBackupSection />
-                <div className="flex flex-col gap-4 settings-card p-4 shadow-xs">
+                <div className="flex flex-col gap-4 settings-card p-4">
                 <h3 className="text-sm font-medium">Taşınabilir dışa aktarma (JSON)</h3>
                 <p className="text-xs text-muted-foreground">
                   Tüm kayıtlar JSON olarak dışa aktarılır; içe aktarma mevcutla birleşir, tekrarlar atlanır. Medya

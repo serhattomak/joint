@@ -283,7 +283,7 @@ export function CollectionsView({
       {activeTab === 'collections' && (
         <div className="flex flex-col gap-6">
           {/* Yeni Koleksiyon Ekleme Çubuğu */}
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-card/40 p-4 shadow-xs sm:flex-row sm:items-center">
+          <div className="settings-card flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
             <div className="flex flex-1 items-center gap-2">
               <FolderKanban className="size-4 text-primary" />
               <Input
@@ -325,7 +325,7 @@ export function CollectionsView({
                 return (
                   <div
                     key={col.id}
-                    className="group flex flex-col justify-between rounded-xl border border-border bg-card p-4 shadow-xs transition-all hover:border-primary/40 hover:shadow-md"
+                    className="settings-card group flex flex-col justify-between p-4 transition-all hover:border-primary/40 hover:shadow-md"
                   >
                     <div>
                       {/* Üst Kart Çubuğu */}
@@ -438,7 +438,7 @@ export function CollectionsView({
       {activeTab === 'categories' && (
         <div className="flex flex-col gap-6">
           {/* Yeni Kategori Ekleme Çubuğu */}
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-card/40 p-4 shadow-xs sm:flex-row sm:items-center">
+          <div className="settings-card flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
             <div className="flex flex-1 items-center gap-2">
               <Bookmark className="size-4 text-primary" />
               <Input
@@ -480,7 +480,7 @@ export function CollectionsView({
                 return (
                   <div
                     key={cat.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3.5 shadow-xs transition hover:border-primary/40"
+                    className="settings-card flex items-center justify-between gap-3 p-3.5 transition hover:border-primary/40"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -558,7 +558,7 @@ export function CollectionsView({
       {activeTab === 'tags' && (
         <div className="flex flex-col gap-6">
           {/* Yeni Etiket Ekleme Çubuğu */}
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-card/40 p-4 shadow-xs sm:flex-row sm:items-center">
+          <div className="settings-card flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
             <div className="flex flex-1 items-center gap-2">
               <TagIcon className="size-4 text-primary" />
               <Input

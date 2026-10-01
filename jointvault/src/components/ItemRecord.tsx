@@ -645,7 +645,7 @@ export function ItemRecord({
                 {/* Sol Sütun (7 col): Medya Önizleme, İndirme ve Dosya İşlemleri, Künye */}
                 <div className="flex flex-col gap-4 lg:order-1 lg:col-span-7">
                   {/* Medya Önizleme & İndirme Kartı */}
-                  <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="settings-card flex flex-col overflow-hidden">
                     <div className="relative aspect-video w-full overflow-hidden border-b border-border bg-muted/40">
                       {downloadStatus === 'done' && localPath ? (
                         <MediaPlayer
@@ -847,7 +847,7 @@ export function ItemRecord({
                   </div>
 
                   {/* Teknik Künye */}
-                  <div className="flex flex-col gap-1 rounded-lg border border-border bg-card/60 p-4 text-xs">
+                  <div className="settings-card flex flex-col gap-1 p-4 text-xs">
                     <span className="border-b border-border/50 pb-1 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Kayıt Künyesi
                     </span>

@@ -393,7 +393,7 @@ export function MediaPlayer({
           className="relative flex size-full cursor-pointer flex-col items-center justify-center gap-4 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black p-6 text-center"
         >
           {poster ? (
-            <div className="relative size-28 overflow-hidden rounded-xl border border-white/10 shadow-2xl transition-transform duration-300 group-hover/player:scale-105 sm:size-36">
+            <div className="relative size-28 overflow-hidden rounded-xl border border-white/10 shadow-lift transition-transform duration-300 group-hover/player:scale-105 sm:size-36">
               <img src={poster} alt="" className="size-full object-cover" />
               {playing && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-xs">
