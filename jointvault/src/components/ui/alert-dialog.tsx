@@ -45,14 +45,14 @@ function ConfirmDialog({
       <AlertDialogPrimitive.Portal>
         <AlertDialogPrimitive.Backdrop
           className={cn(
-            'fixed inset-0 isolate z-50 bg-overlay duration-150',
-            'data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
+            'fixed inset-0 isolate z-50 bg-overlay transition-opacity duration-200',
+            'data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
           )}
         />
         <AlertDialogPrimitive.Popup
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-md border border-border bg-popover p-4 text-sm shadow-lift',
-            'data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
+            'material-sheet fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border p-4 text-sm text-popover-foreground shadow-lift',
+            'transition-[opacity,scale] duration-200 ease-out data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:scale-[0.97] data-[ending-style]:opacity-0',
           )}
         >
           <AlertDialogPrimitive.Title className="text-title pr-6 leading-tight">

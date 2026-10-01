@@ -45,7 +45,7 @@ function PopoverContent({
           data-slot="popover-content"
           className={cn(
             'z-50 flex max-h-[min(70vh,32rem)] min-w-56 origin-(--transform-origin) flex-col overflow-y-auto rounded-md border border-border bg-popover p-1.5 text-popover-foreground shadow-lift',
-            'data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
+            'transition-[opacity,scale] duration-150 ease-out data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:scale-[0.97] data-[ending-style]:opacity-0',
             className,
           )}
           {...props}
