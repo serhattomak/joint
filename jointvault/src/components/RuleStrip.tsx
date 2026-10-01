@@ -1,4 +1,4 @@
-import { ChevronDown, LayoutGrid, ListFilter, Rows3 } from 'lucide-react';
+import { ChevronDown, ListFilter } from 'lucide-react';
 import { cn } from 'cn';
 import { Popover, PopoverContent, PopoverGroupLabel, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
@@ -34,8 +34,6 @@ interface RuleStripProps {
   onClear: () => void;
   sort: ItemSort;
   onSort: (s: ItemSort) => void;
-  view: 'grid' | 'rows';
-  onViewChange: (v: 'grid' | 'rows') => void;
   total: number;
 }
 
@@ -211,32 +209,6 @@ export function RuleStrip(props: RuleStripProps) {
         <span data-num className="text-2xs text-muted-foreground">
           {props.total.toLocaleString('tr-TR')} fiş
         </span>
-        <div className="flex items-center rounded-sm border border-border p-0.5" role="group" aria-label="Görünüm">
-          <button
-            type="button"
-            onClick={() => props.onViewChange('grid')}
-            aria-pressed={props.view === 'grid'}
-            aria-label="Kart görünümü"
-            className={cn(
-              'rounded-xs p-1 transition-colors duration-150',
-              props.view === 'grid' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <LayoutGrid className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => props.onViewChange('rows')}
-            aria-pressed={props.view === 'rows'}
-            aria-label="Satır görünümü"
-            className={cn(
-              'rounded-xs p-1 transition-colors duration-150',
-              props.view === 'rows' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Rows3 className="size-3.5" />
-          </button>
-        </div>
       </div>
     </div>
   );

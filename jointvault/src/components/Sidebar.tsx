@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  Archive,
   BarChart3,
   Clapperboard,
   Download,
@@ -157,22 +156,7 @@ export function Sidebar(props: SidebarProps) {
   };
 
   return (
-    <aside className="material-rail sticky top-0 hidden h-screen w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border text-rail-foreground md:flex">
-      <div
-        data-tauri-drag-region
-        className="flex h-14 shrink-0 items-center gap-2.5 border-b border-rail-border px-4"
-      >
-        <Archive
-          data-tauri-drag-region
-          className="size-[18px] text-primary"
-          strokeWidth={2.25}
-          aria-hidden
-        />
-        <span data-tauri-drag-region className="text-title leading-none font-semibold tracking-[-0.02em]">
-          JointVault
-        </span>
-      </div>
-
+    <aside className="material-rail sticky top-[52px] hidden h-[calc(100vh-52px)] w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border pt-2 text-rail-foreground md:flex">
       <nav className="flex flex-1 flex-col gap-0.5 px-2 pb-4">
         <GroupLabel>Kasa</GroupLabel>
         {entries.slice(0, 5).map((e) => (

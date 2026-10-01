@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, RefreshCw, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench, Zap } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
-import { CaptureBar } from '@/components/CaptureBar';
+import { Toolbar } from '@/components/Toolbar';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
 import { ComponentInstallerProvider } from '@/components/ComponentInstaller';
@@ -434,29 +434,35 @@ function App() {
         />
       ) : (
       <TooltipProvider delay={300}>
-        <div className="flex min-h-screen bg-background text-foreground">
+        <div className="flex min-h-screen flex-col bg-background text-foreground">
           {/* Pencere kenarından boyutlandırma: `decorations: false` sonrası yerel
               kenar kalktığı için tutamaçlar burada bir kez bağlanır. */}
           <ResizeHandles />
-          <Sidebar {...sidebarProps} />
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            <SidebarStrip {...sidebarProps} />
-            <CaptureBar
-              onQuery={handleQuery}
-              onSaved={refresh}
-              onDetailed={(url) => {
-                setAddUrl(url);
-                setAddOpen(true);
-              }}
-              semantic={semantic}
-              onSemanticToggle={() => setSemantic((s) => !s)}
-              onOpenSync={openSync}
-              aiEnabled={aiEnabled ?? undefined}
-              onOpenAiSettings={() => openSettings('ai')}
-            />
+          {/* Birleşik pencere araç çubuğu — tam genişlik, rayın da üstünde. */}
+          <Toolbar
+            onQuery={handleQuery}
+            onSaved={refresh}
+            onDetailed={(url) => {
+              setAddUrl(url);
+              setAddOpen(true);
+            }}
+            semantic={semantic}
+            onSemanticToggle={() => setSemantic((s) => !s)}
+            onOpenSync={openSync}
+            aiEnabled={aiEnabled ?? undefined}
+            onOpenAiSettings={() => openSettings('ai')}
+            view={isVault ? view : undefined}
+            onViewChange={isVault ? switchView : undefined}
+          />
 
-            <main className="flex min-h-0 flex-1">
+          <div className="flex flex-1">
+            <Sidebar {...sidebarProps} />
+
+            <div className="flex min-w-0 flex-1 flex-col">
+              <SidebarStrip {...sidebarProps} />
+
+              <main className="flex min-h-0 flex-1">
               {isVault ? (
                 <div className="flex min-w-0 flex-1 flex-col">
                   <ItemGrid
@@ -479,7 +485,6 @@ function App() {
                       window.localStorage.setItem('jv-page-size', String(n));
                       setPageSize(n);
                     }}
-                    onViewChange={switchView}
                     onSortChange={switchSort}
                     onPlatform={pickPlatform}
                     onCollection={pickCollection}
@@ -607,7 +612,8 @@ function App() {
                   }}
                 />
               )}
-            </main>
+              </main>
+            </div>
           </div>
 
           <AddItemDialog

@@ -40,7 +40,6 @@ interface ItemGridProps {
   categories: Category[];
   tags: Tag[];
   onPageSizeChange: (n: number) => void;
-  onViewChange: (next: 'grid' | 'rows') => void;
   onSortChange: (next: ItemSort) => void;
   onPlatform: (p: string) => void;
   onCollection: (id: string) => void;
@@ -81,7 +80,6 @@ export function ItemGrid({
   categories,
   tags,
   onPageSizeChange,
-  onViewChange,
   onSortChange,
   onPlatform,
   onCollection,
@@ -335,8 +333,6 @@ export function ItemGrid({
       onClear={onClearFilters}
       sort={sort}
       onSort={onSortChange}
-      view={view}
-      onViewChange={onViewChange}
       total={total}
     />
   );
