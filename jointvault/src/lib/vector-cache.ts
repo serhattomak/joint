@@ -14,10 +14,19 @@ export interface VectorIndex {
   dims: number;
 }
 
+/**
+ * Arama sonucu: ya bellekteki indeks (hızlı yol) ya da tavan aşıldığında
+ * ÇAĞIRANA geri verilen satırlar (akışkan yol). Satırlar burada döner, böylece
+ * çağıran ikinci bir tam tarama yapmaz.
+ */
+export type VectorLookup =
+  | { kind: 'index'; index: VectorIndex }
+  | { kind: 'stream'; rows: ItemChunkRow[] };
+
 /*
  * ponytail: bellek tavanı. Bundan fazla chunk'ta tüm vektörleri bellekte tutmak
- * yerine çağıran AKIŞKAN yola (satır satır çöz) düşer. Gerçekten gerekirse
- * yükseltme noktası: sqlite-vec ya da Rust'ta paralel tarama.
+ * yerine çağıran AKIŞKAN yola (satır satır çöz) düşer. Yükseltme noktası:
+ * sqlite-vec ya da Rust'ta paralel tarama.
  */
 export const VECTOR_CACHE_MAX = 50_000;
 
@@ -30,11 +39,11 @@ export function invalidateVectorIndex(): void {
 export async function getVectorIndex(
   loader: () => Promise<ItemChunkRow[]>,
   max: number = VECTOR_CACHE_MAX,
-): Promise<VectorIndex | null> {
-  if (cached) return cached;
+): Promise<VectorLookup> {
+  if (cached) return { kind: 'index', index: cached };
 
   const rows = (await loader()).filter((r) => r.embedding);
-  if (rows.length > max) return null; // tavan: çağıran akışkan yolu kullanır
+  if (rows.length > max) return { kind: 'stream', rows };
 
   const ids: string[] = [];
   const vectors: Float32Array[] = [];
@@ -49,5 +58,5 @@ export async function getVectorIndex(
   }
 
   cached = { ids, vectors, dims: vectors[0]?.length ?? 0 };
-  return cached;
+  return { kind: 'index', index: cached };
 }

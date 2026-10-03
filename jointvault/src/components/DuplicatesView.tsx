@@ -173,9 +173,9 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
           label: `${orphanChecked.size} dosyayı sil`,
         }
       : {
-          title: `${totalVictims} öğe silinsin mi?`,
+          title: `${totalVictims} kayıt silinsin mi?`,
           description: 'Kayıtlar ve diskteki dosyaları silinir. Geri alınamaz.',
-          label: `${totalVictims} öğeyi sil`,
+          label: `${totalVictims} kaydı sil`,
         };
 
   const groupBlock = (
@@ -200,7 +200,7 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
                       checked={(keep[`${prefix}:${g.key}`] ?? g.items[0].id) === it.id}
                       onChange={() => setKeep((k) => ({ ...k, [`${prefix}:${g.key}`]: it.id }))}
                       className="size-4 shrink-0 accent-primary"
-                      aria-label="Tutulacak öğe"
+                      aria-label="Tutulacak kayıt"
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{it.title || it.url}</p>
@@ -230,7 +230,7 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
           )}
           {totalVictims > 0 && (
             <Button variant="destructive" size="sm" onClick={() => setPendingRemove('selected')} disabled={deleting}>
-              <Trash2 /> {totalVictims} öğeyi sil
+              <Trash2 /> {totalVictims} kaydı sil
             </Button>
           )}
           <Button onClick={() => void scan()} disabled={scanning || deleting}>

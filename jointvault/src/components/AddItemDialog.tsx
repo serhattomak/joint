@@ -144,7 +144,7 @@ export function AddItemDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{editing ? 'Öğeyi düzenle' : 'Yeni öğe ekle'}</DialogTitle>
+          <DialogTitle>{editing ? 'Kaydı düzenle' : 'Yeni kayıt ekle'}</DialogTitle>
           <DialogDescription>Link yapıştır, önizlemeyi çek, koleksiyon ve etiketle kaydet.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">

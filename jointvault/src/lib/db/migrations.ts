@@ -12,7 +12,7 @@
  *
  * Eski (sürümsüz) veritabanları şemayı zaten taşır: göç 1 idempotenttir,
  * göç 2-3 ise `duplicate column name` hatasını bilerek yok sayar. Böylece
- * mevcut kasalar veri kaybetmeden sürümlenir.
+ * mevcut arşivler veri kaybetmeden sürümlenir.
  */
 import { describeError } from '../errors';
 import schemaSql from './schema.sql?raw';
@@ -23,7 +23,7 @@ export interface Migration {
   description: string;
   /** Sırayla çalıştırılacak ifadeler. */
   statements: string[];
-  /** Bu göçte yok sayılabilecek hata deseni (ör. eski kasada kolon zaten var). */
+  /** Bu göçte yok sayılabilecek hata deseni (ör. eski arşivde kolon zaten var). */
   ignore?: RegExp;
 }
 
@@ -94,7 +94,7 @@ export const MIGRATIONS: Migration[] = [
   },
 ];
 
-/** Sürümü `current` olan bir kasadan sonra uygulanacak göçleri sırayla döndürür. */
+/** Sürümü `current` olan bir arşivden sonra uygulanacak göçleri sırayla döndürür. */
 export const planMigrations = (current: number, migrations: Migration[] = MIGRATIONS): Migration[] =>
   migrations.filter((migration) => migration.version > current).sort((a, b) => a.version - b.version);
 

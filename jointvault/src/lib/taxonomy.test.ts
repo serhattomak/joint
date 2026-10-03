@@ -122,3 +122,20 @@ describe('shouldAutoApply', () => {
     expect(shouldAutoApply('llm', 0.9, false, 0.6)).toBe(false);
   });
 });
+
+describe('matchTaxonomyInText — iki tek-harfli token', () => {
+  it('boşluk hariç 3 karakterden kısa adı eşlemez', () => {
+    expect(matchTaxonomyInText('a b burada', ['a b'], []).categories).toEqual([]);
+  });
+});
+
+describe('resolveCategories — toplam tavan', () => {
+  it('mevcut eşleşmeleri en fazla maxTotal ile sınırlar', () => {
+    const r = resolveCategories(['A', 'B', 'C'], ['A', 'B', 'C'], {
+      confidence: 1,
+      minConfidence: 0.6,
+      maxTotal: 2,
+    });
+    expect(r.names).toEqual(['A', 'B']);
+  });
+});

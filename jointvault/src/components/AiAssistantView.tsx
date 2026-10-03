@@ -46,11 +46,11 @@ const SMART_PROMPT_TEMPLATES = [
   },
   {
     label: 'Kategori Analizi',
-    prompt: 'Arşivimdeki içerikleri konularına göre grupla ve eksik gördüğün alanları belirt.',
+    prompt: 'Arşivimdeki kayıtları konularına göre grupla ve eksik gördüğün alanları belirt.',
   },
   {
     label: 'Etiket Önerileri',
-    prompt: 'Arşivimdeki içerikleri incele ve düzenlenmesi gereken etiketler öner.',
+    prompt: 'Arşivimdeki kayıtları incele ve düzenlenmesi gereken etiketler öner.',
   },
 ];
 

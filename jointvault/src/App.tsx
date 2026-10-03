@@ -335,7 +335,7 @@ function App() {
 
   const paletteCommands: PaletteCommand[] = [
     { id: 'turbo-dl', label: 'Hızlı İndir (Turbo IDM)', icon: <Zap className="size-4" />, run: () => { setQuickDlUrl(''); setQuickDlOpen(true); } },
-    { id: 'add', label: 'Yeni öğe ekle', icon: <Plus className="size-4" />, run: () => { setAddUrl(''); setAddOpen(true); } },
+    { id: 'add', label: 'Yeni kayıt ekle', icon: <Plus className="size-4" />, run: () => { setAddUrl(''); setAddOpen(true); } },
     { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
     { id: 'ai', label: 'Asistan', icon: <Sparkles className="size-4" />, run: openAi },

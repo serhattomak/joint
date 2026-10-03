@@ -96,7 +96,7 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
       <DialogContent className="top-[18%] translate-y-0 sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader className="sr-only">
           <DialogTitle>Komut paleti</DialogTitle>
-          <DialogDescription>İşlem ve öğe ara</DialogDescription>
+          <DialogDescription>İşlem ve kayıt ara</DialogDescription>
         </DialogHeader>
         <Input
           value={query}
@@ -113,7 +113,7 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
               if (target) runEntry(target);
             }
           }}
-          placeholder="Komut veya öğe ara…  (↑↓ + Enter)"
+          placeholder="Komut veya kayıt ara…  (↑↓ + Enter)"
           autoFocus
         />
         {entries.length > 0 && (

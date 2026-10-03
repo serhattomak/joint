@@ -58,15 +58,7 @@ export async function scrapeAndStoreArticle(itemId: string, url: string): Promis
   // 1. Veritabanına kaydet
   await saveArticleForItem(article);
 
-  // 2. TÜM chunk türlerini (meta+not+transcript+makale) birlikte kur ve indeksle.
-  //    Ayrı yazım chunk'ları eziyordu; tek geçiş kullanılır.
-  try {
-    await refreshItemIndex(itemId);
-  } catch (err) {
-    console.warn('[scraper] indeksleme uyarısı:', err);
-  }
-
-  // 3. Öğenin eksik başlığı veya kapak görseli varsa güncelle
+  // 2. Önce eksik başlık/kapağı güncelle ki indeks bu başlıkla kurulsun.
   try {
     const currentItem = await getItem(itemId);
     if (currentItem) {
@@ -87,6 +79,15 @@ export async function scrapeAndStoreArticle(itemId: string, url: string): Promis
     }
   } catch (err) {
     console.warn('[scraper] Öğe başlık/görsel güncelleme uyarısı:', err);
+  }
+
+  // 3. TÜM chunk türlerini (meta+not+transcript+makale) birlikte kur ve indeksle.
+  //    Ayrı yazım chunk'ları eziyordu; tek geçiş kullanılır. Tek refresh yeter
+  //    (başlık artık güncel; ikinci bir tazeleme tetiklenmez).
+  try {
+    await refreshItemIndex(itemId);
+  } catch (err) {
+    console.warn('[scraper] indeksleme uyarısı:', err);
   }
 
   return article;

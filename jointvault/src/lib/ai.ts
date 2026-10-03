@@ -338,8 +338,13 @@ async function embedAndSaveChunks(itemId: string, chunks: ItemChunk[]): Promise<
     const status = await getAiStatus();
     // `ai_enabled` ŞART: AI kapalıyken vektörleme denenmez (sessiz başarısızlık).
     if (isAiEnabled(status) && status.embed_ready && status.engine_available) {
-      const embeddings = await generateEmbeddings(chunks.map((c) => c.chunkText));
-      await setChunkEmbeddingsBatch(packEmbeddingRows(chunks.map((c) => c.id), embeddings));
+      // Büyük öğede tek dev istek yerine partiler (60 sn timeout riskini böler).
+      const EMBED_BATCH = 32;
+      for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
+        const slice = chunks.slice(i, i + EMBED_BATCH);
+        const embeddings = await generateEmbeddings(slice.map((c) => c.chunkText));
+        await setChunkEmbeddingsBatch(packEmbeddingRows(slice.map((c) => c.id), embeddings));
+      }
     }
   } catch {
     // Motor hazır değilse metin indeksli kalır; embedding sonra tamamlanır.
@@ -457,7 +462,7 @@ export async function indexMissingEmbeddings(
  * Arşivdeki tüm kayıtları baştan indeksler (iki faz: içerik kurulumu + vektörleme).
  */
 export async function reindexVault(
-  onProgress?: (current: number, total: number) => void,
+  onProgress?: (current: number, total: number, phase: 'content' | 'vectors') => void,
 ): Promise<void> {
   // AI/model hazır değilse baştan dur: aksi hâlde chunk'lar embedding'siz kalır.
   const gate = await getAiStatus();
@@ -491,7 +496,7 @@ export async function reindexVault(
       article: article?.content_text ?? null,
     });
     await saveItemChunks(it.id, chunks);
-    if (onProgress) onProgress(i + 1, total);
+    if (onProgress) onProgress(i + 1, total, 'content');
   }
 
   // Silinmiş öğelerin chunk'larını temizle. Global silme YOK: her öğe kendi
@@ -505,7 +510,7 @@ export async function reindexVault(
   invalidateVectorIndex();
 
   // Faz 2: vektörleme (chunk bazlı ilerleme) — toplu.
-  await indexMissingEmbeddings(onProgress);
+  await indexMissingEmbeddings((c, t) => onProgress?.(c, t, 'vectors'));
 }
 
 // --- RAG Hattı: 'Asistan' ---
@@ -867,6 +872,7 @@ export async function batchCategorizeItems(
   lowConfidence: number;
   failed: number;
   deterministic: number;
+  skipped: number;
 }> {
   const allCats = (await listCategories()).map((c) => c.name);
   const allTags = (await listTags()).map((t) => t.name);
@@ -879,6 +885,7 @@ export async function batchCategorizeItems(
   let lowConfidence = 0;
   let failed = 0;
   let deterministic = 0;
+  let skipped = 0;
 
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -890,7 +897,8 @@ export async function batchCategorizeItems(
       const result = await categorizeAndTagItem(it, allCats, allTags);
       processed++;
 
-      if (result.source === 'deterministic' || result.source === 'both') deterministic++;
+      // Yalnız TAM deterministik eşleşme "LLM'siz" sayılır (both LLM kullandı).
+      if (result.source === 'deterministic') deterministic++;
 
       const hasSuggestions = result.categories.length > 0 || result.tags.length > 0;
       const canApply = hasSuggestions && shouldApplySuggestion(result, shouldApply);
@@ -906,8 +914,11 @@ export async function batchCategorizeItems(
         }
       } else if (result.source === 'none') {
         failed++;
-      } else {
+      } else if (shouldApply) {
         lowConfidence++;
+      } else {
+        // Otomatik uygulama kapalı: bu bir "düşük güven" değil, "öneri modu".
+        skipped++;
       }
     } catch (err) {
       failed++;
@@ -915,6 +926,6 @@ export async function batchCategorizeItems(
     }
   }
 
-  return { processed, applied, lowConfidence, failed, deterministic };
+  return { processed, applied, lowConfidence, failed, deterministic, skipped };
 }
 

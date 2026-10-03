@@ -479,7 +479,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
           )}
         </SettingRow>
 
-        <SettingRow label="Tarama parti limiti" hint="Rate-limit koruması için önerilen: 50 öğe.">
+        <SettingRow label="Tarama parti limiti" hint="Rate-limit koruması için önerilen: 50 kayıt.">
           <Input
             type="number"
             min={5}

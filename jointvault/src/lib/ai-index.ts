@@ -30,7 +30,9 @@ async function drain(): Promise<void> {
     while (queue.size > 0) {
       const [id] = queue;
       queue.delete(id);
-      await refreshItemIndex(id).catch(() => undefined);
+      await refreshItemIndex(id).catch((err) => {
+        console.warn('[ai-index] tazeleme başarısız', id, err);
+      });
     }
   } finally {
     running = false;

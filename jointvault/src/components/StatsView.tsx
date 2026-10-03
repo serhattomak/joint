@@ -113,7 +113,7 @@ export function StatsView({ refreshKey }: StatsViewProps) {
   ].filter((d) => d.value > 0);
 
   const stats: [string, number][] = [
-    ['Toplam öğe', items.length],
+    ['Toplam kayıt', items.length],
     ['Favori', fav],
     ['İndirilen', done],
     ['Etiket', Object.values(tagNames).flat().filter((v, i, a) => a.indexOf(v) === i).length],

@@ -432,13 +432,13 @@ export const ItemRowView = memo(function ItemRowView({
         checked={selected}
         onChange={() => onToggle(item.id)}
         className="size-3.5 shrink-0"
-        aria-label="Öğeyi seç"
+        aria-label="Kaydı seç"
       />
       <button
         type="button"
         onClick={() => onOpen(item, hasArticle ? 'reader' : 'detail')}
         className="cursor-pointer focus-visible:outline-none"
-        title="Öğeyi Aç"
+        title="Kaydı Aç"
       >
         <Thumb
           src={item.thumbnail}
@@ -525,7 +525,7 @@ export const ItemCardView = memo(function ItemCardView({
         type="checkbox"
         checked={selected}
         onChange={() => onToggle(item.id)}
-        aria-label="Öğeyi seç"
+        aria-label="Kaydı seç"
         className={`absolute top-8 left-2 z-10 size-3.5 transition-opacity duration-150 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100 ${
           selected ? 'lg:opacity-100' : ''
         }`}

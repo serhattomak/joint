@@ -24,8 +24,8 @@ const sqliteExecutor = (db: DatabaseSync): MigrationExecutor => ({  currentVersi
   },
 });
 
-/* Eski kasa (1): bugünkü şemayı taşır ama sürümü 0'dır — bu değişiklikten önce
-   oluşturulmuş HER kasa böyle. Göçler "duplicate column name" ile karşılaşır ve
+/* Eski arşiv (1): bugünkü şemayı taşır ama sürümü 0'dır — bu değişiklikten önce
+   oluşturulmuş HER arşiv böyle. Göçler "duplicate column name" ile karşılaşır ve
    bunu yok sayması gerekir. */
 const schemaAtVersionZero = (): DatabaseSync => {
   const db = new DatabaseSync(':memory:');
@@ -33,7 +33,7 @@ const schemaAtVersionZero = (): DatabaseSync => {
   return db;
 };
 
-/* Eski kasa (2): kolonlar eklenmeden ÖNCEKİ items tablosu. Göçlerin gerçekten
+/* Eski arşiv (2): kolonlar eklenmeden ÖNCEKİ items tablosu. Göçlerin gerçekten
    kolon eklediğini kanıtlar (yok sayılan bir hata değil, iş yapan bir göç). */
 const preAlterDb = (): DatabaseSync => {
   const db = new DatabaseSync(':memory:');
@@ -62,12 +62,12 @@ describe('planMigrations', () => {
     expect(planMigrations(2).map((m) => m.version)).toEqual(ALL_VERSIONS.filter((v) => v > 2));
   });
 
-  it('güncel kasa için boş liste döndürür', () => {
+  it('güncel arşiv için boş liste döndürür', () => {
     expect(planMigrations(LATEST)).toEqual([]);
   });
 
   it('sürümü daha yeni olsa bile boş liste döndürür', () => {
-    /* İleriye dönük: kasa daha yeni bir sürümdeyse eski uygulama geri gitmemeli. */
+    /* İleriye dönük: arşiv daha yeni bir sürümdeyse eski uygulama geri gitmemeli. */
     expect(planMigrations(99)).toEqual([]);
   });
 
@@ -84,7 +84,7 @@ describe('planMigrations', () => {
   });
 });
 
-describe('runMigrations — taze kasa', () => {
+describe('runMigrations — taze arşiv', () => {
   it('tüm göçleri uygular ve son sürüme çıkar', async () => {
     // Arrange
     const db = new DatabaseSync(':memory:');
@@ -136,8 +136,8 @@ describe('runMigrations — taze kasa', () => {
   });
 });
 
-describe('runMigrations — eski (sürümsüz) kasa', () => {
-  it('şemayı zaten taşıyan kasada hata vermez', async () => {
+describe('runMigrations — eski (sürümsüz) arşiv', () => {
+  it('şemayı zaten taşıyan arşivde hata vermez', async () => {
     // Arrange
     const db = schemaAtVersionZero();
 
@@ -221,7 +221,7 @@ describe('runMigrations — göç 5 (sohbet)', () => {
       .all()
       .map((r) => String((r as { name: unknown }).name));
 
-  it('taze kasada sohbet tablolarını kurar', async () => {
+  it('taze arşivde sohbet tablolarını kurar', async () => {
     // Arrange
     const db = new DatabaseSync(':memory:');
 
@@ -232,7 +232,7 @@ describe('runMigrations — göç 5 (sohbet)', () => {
     expect(chatTables(db)).toEqual(['ai_chat_messages', 'ai_chat_messages_fts', 'ai_chat_sessions']);
   });
 
-  it('eski kasada veriyi koruyarak sohbet tablolarını ekler', async () => {
+  it('eski arşivde veriyi koruyarak sohbet tablolarını ekler', async () => {
     // Arrange
     const db = schemaAtVersionZero();
     db.exec("INSERT INTO items (id, url, platform) VALUES ('i1', 'https://a', 'x')");

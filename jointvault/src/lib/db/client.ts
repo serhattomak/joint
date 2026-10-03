@@ -10,7 +10,7 @@ import { getVectorIndex, invalidateVectorIndex } from '../vector-cache';
 /*
  * Veritabanı yolu.
  *
- * `VITE_JV_DB` yalnızca bir TEST DİKİŞİDİR: bozuk/eksik bir kasayla açılışın
+ * `VITE_JV_DB` yalnızca bir TEST DİKİŞİDİR: bozuk/eksik bir arşivle açılışın
  * davranışını (hata ekranı + "yeniden dene") gerçek arşive DOKUNMADAN
  * sınamak için. Tanımlı değilse üretim yolu kullanılır.
  */
@@ -63,7 +63,7 @@ async function initDb(): Promise<Database> {
   const db = await Database.load(DB_PATH);
 
   await runMigrations(migrationExecutor(db), MIGRATIONS, async (pending) => {
-    /* Göç geri alınamaz: yedek ZORUNLU. Taze kasada (items tablosu yok)
+    /* Göç geri alınamaz: yedek ZORUNLU. Taze arşivde (items tablosu yok)
        kaybedilecek bir şey olmadığı için yedek atlanır. */
     if (!(await hasExistingVault(db))) return;
     await createBackupWith(db);
@@ -189,6 +189,7 @@ export async function updateItem(id: string, patch: ItemPatch): Promise<Item> {
 export async function removeItem(id: string): Promise<void> {
   const db = await getDb();
   await db.execute('DELETE FROM items WHERE id = $1', [id]);
+  invalidateVectorIndex();
 }
 
 export async function toggleFavorite(id: string): Promise<Item> {
@@ -426,7 +427,7 @@ export async function getAllTagsByItem(): Promise<Record<string, Tag[]>> {
  *
  * Kesin çözüm havuzu kapatmaktır: SQLite, bağlantı kapanırken açık transaction'ı
  * geri alır. Bedeli, hatadan sonraki ilk sorgunun bağlantıyı yeniden kurmasıdır
- * — bir hatanın ardından birkaç milisaniye, kilitli bir kasadan iyidir.
+ * — bir hatanın ardından birkaç milisaniye, kilitli bir arşivden iyidir.
  */
 async function runAtomicSafe(db: Database, body: string, values: unknown[]): Promise<void> {
   try {
@@ -612,32 +613,63 @@ export async function saveItemChunks(itemId: string, chunks: ItemChunk[]): Promi
     // FTS table might not be initialized yet in edge cases
   }
 
-  for (const chunk of chunks) {
-    const chunkId = chunk.id || crypto.randomUUID();
-    await db.execute(
-      `INSERT INTO item_chunks (id, item_id, chunk_type, chunk_text, start_seconds, end_seconds, embedding, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        chunkId,
-        itemId,
-        chunk.chunkType,
-        chunk.chunkText,
-        chunk.startSeconds ?? null,
-        chunk.endSeconds ?? null,
-        chunk.embedding ?? null,
-        chunk.createdAt ?? now(),
-      ],
-    );
-
-    try {
-      await db.execute(
-        `INSERT INTO item_chunks_fts (chunk_id, item_id, chunk_text) VALUES ($1, $2, $3)`,
-        [chunkId, itemId, chunk.chunkText],
-      );
-    } catch {
-      // ignore FTS insert errors if virtual table is unavailable
-    }
+  if (chunks.length === 0) {
+    invalidateVectorIndex();
+    return;
   }
+
+  // Id'leri BİR KEZ sabitle: item_chunks ve FTS aynı id ile eşleşmeli.
+  const rows = chunks.map((chunk) => ({ ...chunk, id: chunk.id || crypto.randomUUID() }));
+
+  // item_chunks: toplu çok-satırlı INSERT (8 kolon × 100 = 800 parametre < 999).
+  const CHUNK_BATCH = 100;
+  for (let i = 0; i < rows.length; i += CHUNK_BATCH) {
+    const values: unknown[] = [];
+    const tupleSql = rows
+      .slice(i, i + CHUNK_BATCH)
+      .map((chunk) => {
+        const base = values.length;
+        values.push(
+          chunk.id,
+          itemId,
+          chunk.chunkType,
+          chunk.chunkText,
+          chunk.startSeconds ?? null,
+          chunk.endSeconds ?? null,
+          chunk.embedding ?? null,
+          chunk.createdAt ?? now(),
+        );
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+      })
+      .join(', ');
+    await db.execute(
+      `INSERT INTO item_chunks (id, item_id, chunk_type, chunk_text, start_seconds, end_seconds, embedding, created_at) VALUES ${tupleSql}`,
+      values,
+    );
+  }
+
+  // item_chunks_fts: toplu (3 kolon × 200 = 600 parametre).
+  const FTS_BATCH = 200;
+  try {
+    for (let i = 0; i < rows.length; i += FTS_BATCH) {
+      const values: unknown[] = [];
+      const tupleSql = rows
+        .slice(i, i + FTS_BATCH)
+        .map((chunk) => {
+          const base = values.length;
+          values.push(chunk.id, itemId, chunk.chunkText);
+          return `($${base + 1}, $${base + 2}, $${base + 3})`;
+        })
+        .join(', ');
+      await db.execute(
+        `INSERT INTO item_chunks_fts (chunk_id, item_id, chunk_text) VALUES ${tupleSql}`,
+        values,
+      );
+    }
+  } catch {
+    // ignore FTS insert errors if virtual table is unavailable
+  }
+
   invalidateVectorIndex();
 }
 
@@ -749,18 +781,19 @@ export async function searchHybridChunks(
       queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding);
 
     // Önbellekten: base64'ü SORGU BAŞINA değil, bir kez çöz.
-    const index = await getVectorIndex(() => getAllChunksWithEmbeddings());
-    if (index) {
-      const scored = index.vectors.map((vec, i) => ({
-        id: index.ids[i],
+    const lookup = await getVectorIndex(() => getAllChunksWithEmbeddings());
+    if (lookup.kind === 'index') {
+      const { ids, vectors } = lookup.index;
+      const scored = vectors.map((vec, i) => ({
+        id: ids[i],
         sim: cosineSimilarity(queryVec, vec),
       }));
       scored.sort((a, b) => b.sim - a.sim);
       for (const s of scored.slice(0, 50)) vectorScores.set(s.id, { score: s.sim });
     } else {
-      // ponytail: tavan aşıldı — akışkan yola düş (eski davranış).
-      const allChunks = await getAllChunksWithEmbeddings();
-      const scored = allChunks.map((c) => {
+      // ponytail: tavan aşıldı — yükleyicinin döndürdüğü satırlarla akışkan yol
+      // (ikinci kez tarama YOK).
+      const scored = lookup.rows.map((c) => {
         let sim = 0;
         if (c.embedding) {
           try {

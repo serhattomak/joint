@@ -43,14 +43,16 @@ export function normalizeTag(raw: string): string | null {
 export function resolveCategories(
   suggested: string[],
   existing: string[],
-  opts: { confidence: number; minConfidence: number; maxNew?: number },
+  opts: { confidence: number; minConfidence: number; maxNew?: number; maxTotal?: number },
 ): { names: string[]; newNames: string[] } {
   const maxNew = opts.maxNew ?? 1;
+  const maxTotal = opts.maxTotal ?? 2;
   const names: string[] = [];
   const newNames: string[] = [];
   const seen = new Set<string>();
 
   for (const s of suggested) {
+    if (names.length >= maxTotal) break;
     const raw = String(s ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) continue;
 
@@ -107,7 +109,8 @@ export function matchTaxonomyInText(
 
   const includes = (name: string): boolean => {
     const key = normalizeKey(name);
-    if (key.length < 3) return false;
+    // Boşluk hariç en az 3 karakter: "a b" gibi tek-harfli token'lar eşleşmez.
+    if (key.replace(/ /g, '').length < 3) return false;
     const parts = key.split(' ').filter(Boolean);
     if (parts.length === 0) return false;
     if (parts.length === 1) return tokenSet.has(parts[0]);

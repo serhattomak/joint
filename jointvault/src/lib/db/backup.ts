@@ -71,7 +71,7 @@ export async function pruneBackups(keep = 5): Promise<string[]> {
 
 /**
  * Yedekten geri döner. Çağıran ÖNCE `closeDb()` çağırmış olmalıdır.
- * Mevcut kasa Rust tarafında `pre-restore-<damga>.db` olarak saklanır; dönen
+ * Mevcut arşiv Rust tarafında `pre-restore-<damga>.db` olarak saklanır; dönen
  * değer o güvenlik kopyasının adıdır, böylece yanlış yedek seçilirse geri
  * dönülebilir.
  */
@@ -80,7 +80,7 @@ export async function restoreBackup(name: string): Promise<string> {
 }
 
 /**
- * Kasayı sıfırlar. Çağıran ÖNCE `closeDb()` çağırmış olmalıdır.
+ * Arşivi sıfırlar. Çağıran ÖNCE `closeDb()` çağırmış olmalıdır.
  * Yedeği çağıran alır (zorunlu adım); burada dosya silinir ve bir sonraki
  * `getDb()` şemayı sıfırdan kurar.
  */
@@ -100,8 +100,8 @@ export const startOfToday = (now: Date = new Date()): number =>
  * Açılış yedeği: günde en fazla bir kez, son 5 kopya kalacak şekilde.
  *
  * "Bugün yedek alındı mı" sorusu bir İŞARETE değil, **mevcut yedeklere**
- * sorulur. İşaret tutmak (ör. localStorage) kasaya değil profile bağlı olurdu:
- * kasa değişince ya da geri dönüldüğünde yanlış cevap verirdi.
+ * sorulur. İşaret tutmak (ör. localStorage) arşive değil profile bağlı olurdu:
+ * arşiv değişince ya da geri dönüldüğünde yanlış cevap verirdi.
  */
 export async function runDailyBackupIfDue(db: Database): Promise<string | null> {
   const existing = await listBackups();

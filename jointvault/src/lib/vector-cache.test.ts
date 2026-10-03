@@ -18,10 +18,12 @@ describe('vector-cache', () => {
   it('embeddingleri çözer', async () => {
     invalidateVectorIndex();
     const loader = vi.fn(async () => [row('a', [1, 0]), row('b', [0, 1])]);
-    const idx = await getVectorIndex(loader);
-    expect(idx?.ids).toEqual(['a', 'b']);
-    expect(idx?.dims).toBe(2);
-    expect(Array.from(idx!.vectors[0])).toEqual([1, 0]);
+    const r = await getVectorIndex(loader);
+    expect(r.kind).toBe('index');
+    if (r.kind !== 'index') throw new Error('index bekleniyordu');
+    expect(r.index.ids).toEqual(['a', 'b']);
+    expect(r.index.dims).toBe(2);
+    expect(Array.from(r.index.vectors[0])).toEqual([1, 0]);
   });
 
   it('ikinci çağrıda yükleyici tekrar çağrılmaz', async () => {
@@ -41,15 +43,21 @@ describe('vector-cache', () => {
     expect(loader).toHaveBeenCalledTimes(2);
   });
 
-  it('tavan aşılırsa null döner', async () => {
+  it('tavan aşılırsa satırları AKIŞKAN döndürür ve TEK tarama yapar', async () => {
     invalidateVectorIndex();
     const loader = vi.fn(async () => [row('a', [1]), row('b', [1]), row('c', [1])]);
-    expect(await getVectorIndex(loader, 2)).toBeNull();
+    const r = await getVectorIndex(loader, 2);
+    expect(r.kind).toBe('stream');
+    if (r.kind !== 'stream') throw new Error('stream bekleniyordu');
+    expect(r.rows).toHaveLength(3);
+    expect(loader).toHaveBeenCalledTimes(1);
   });
 
   it('boş girdide boş indeks', async () => {
     invalidateVectorIndex();
-    const idx = await getVectorIndex(async () => []);
-    expect(idx).toEqual({ ids: [], vectors: [], dims: 0 });
+    const r = await getVectorIndex(async () => []);
+    expect(r.kind).toBe('index');
+    if (r.kind !== 'index') throw new Error('index bekleniyordu');
+    expect(r.index).toEqual({ ids: [], vectors: [], dims: 0 });
   });
 });

@@ -191,7 +191,11 @@ export function SettingsView(props: SettingsViewProps) {
   // Ana anahtar (`enabled`) yazımı ve açık rıza onayı: indirme DEĞİL, tercih.
   const [aiConfigBusy, setAiConfigBusy] = useState(false);
   const [aiConfirm, setAiConfirm] = useState<'enable' | 'disable' | null>(null);
-  const [reindexProgress, setReindexProgress] = useState<{ current: number; total: number } | null>(null);
+  const [reindexProgress, setReindexProgress] = useState<{
+    current: number;
+    total: number;
+    phase: 'content' | 'vectors';
+  } | null>(null);
   const [reindexBusy, setReindexBusy] = useState(false);
   const aiEnginePct = useAiEngineProgress(aiEngineJob);
   const aiModelPct = useAiModelProgress(aiModelJob);
@@ -472,7 +476,7 @@ export function SettingsView(props: SettingsViewProps) {
       );
 
       if (targetItems.length === 0) {
-        setOrganizeResult('Kategorisiz veya etiketsiz içerik bulunamadı (tümü düzenli).');
+        setOrganizeResult('Kategorisiz veya etiketsiz kayıt bulunamadı (tümü düzenli).');
         return;
       }
 
@@ -485,7 +489,9 @@ export function SettingsView(props: SettingsViewProps) {
 
       setOrganizeResult(
         `${res.applied} uygulandı · ${res.lowConfidence} düşük güvenle atlandı · ` +
-          `${res.deterministic} LLM'siz eşleşti${res.failed > 0 ? ` · ${res.failed} başarısız` : ''}.`,
+          `${res.deterministic} LLM'siz eşleşti` +
+          `${res.failed > 0 ? ` · ${res.failed} başarısız` : ''}` +
+          `${res.skipped > 0 ? ` · ${res.skipped} öneri (uygulama kapalı)` : ''}.`,
       );
     } catch (e) {
       setAiError(String(e));
@@ -525,10 +531,10 @@ export function SettingsView(props: SettingsViewProps) {
 
   const runReindex = async () => {
     setReindexBusy(true);
-    setReindexProgress({ current: 0, total: 100 });
+    setReindexProgress({ current: 0, total: 100, phase: 'content' });
     try {
-      await reindexVault((current, total) => {
-        setReindexProgress({ current, total });
+      await reindexVault((current, total, phase) => {
+        setReindexProgress({ current, total, phase });
       });
     } catch (e) {
       setAiError(String(e));
@@ -1036,7 +1042,7 @@ export function SettingsView(props: SettingsViewProps) {
                   <div>
                     <p className="text-sm font-medium">Arşiv Bakım & Düzenleme Araçları</p>
                     <p className="text-xs text-muted-foreground">
-                      Arşivdeki içeriklerin taksonomisini ve vektör veritabanını toplu olarak yönetin.
+                      Arşivdeki kayıtların taksonomisini ve vektör veritabanını toplu olarak yönetin.
                     </p>
                   </div>
 
@@ -1057,7 +1063,7 @@ export function SettingsView(props: SettingsViewProps) {
                     </SettingRow>
 
                     <SettingRow
-                      label="Kategorisiz İçerikleri Düzenle"
+                      label="Kategorisiz Kayıtları Düzenle"
                       hint={
                         <>
                           {organizeProgress
@@ -1083,7 +1089,11 @@ export function SettingsView(props: SettingsViewProps) {
                       label="Anlamsal Arşiv İndeksi"
                       hint={
                         reindexProgress
-                          ? `${reindexProgress.current} / ${reindexProgress.total} işleniyor…`
+                          ? `${reindexProgress.current} / ${reindexProgress.total} ${
+                              reindexProgress.phase === 'content'
+                                ? 'içerik kuruluyor…'
+                                : 'vektörleştiriliyor…'
+                            }`
                           : 'Not, transkript, makale ve künye parçalarını baştan kurup BGE-M3 ile vektörleştirir.'
                       }
                     >
@@ -1220,13 +1230,13 @@ export function SettingsView(props: SettingsViewProps) {
                 <SettingRow label="Tema" htmlFor="theme-toggle">
                   <ThemeToggle />
                 </SettingRow>
-                <SettingRow label="Sayfa başına öğe" htmlFor="set-pagesize">
+                <SettingRow label="Sayfa başına kayıt" htmlFor="set-pagesize">
                   <Select
                     label="Sayfa boyutu"
                     className="w-28"
                     value={String(pageSize)}
                     onValueChange={(v) => onPageSizeChange(Number(v))}
-                    options={pageSizes.map((n) => ({ value: String(n), label: `${n} öğe` }))}
+                    options={pageSizes.map((n) => ({ value: String(n), label: `${n} kayıt` }))}
                   />
                 </SettingRow>
                 <SettingRow

@@ -68,7 +68,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
       const allItems = await listItems();
       const targetItems = allItems.filter((it) => ids.includes(it.id));
       const res = await batchScrapeItems(targetItems, (current, total, item) => {
-        setScrapeProgress({ current, total, title: item?.title || item?.url || 'Öğe' });
+        setScrapeProgress({ current, total, title: item?.title || item?.url || 'Kayıt' });
       });
       setScrapeFinished({ success: res.successCount, errors: res.errorCount });
       onDone();
@@ -242,7 +242,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           <DialogHeader>
             <DialogTitle>Etiket ekle</DialogTitle>
             <DialogDescription>
-              {ids.length} öğeye eklenecek — mevcutlardan seç veya yenisini yaz.
+              {ids.length} kayda eklenecek — mevcutlardan seç veya yenisini yaz.
             </DialogDescription>
           </DialogHeader>
           <TagPicker selected={tagNames} onChange={setTagNames} loadNames={listTags} placeholder="Etiket seç veya yaz" />
@@ -259,7 +259,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           <DialogHeader>
             <DialogTitle>Kategori ekle</DialogTitle>
             <DialogDescription>
-              {ids.length} öğeye eklenecek — mevcutlardan seç veya yenisini yaz.
+              {ids.length} kayda eklenecek — mevcutlardan seç veya yenisini yaz.
             </DialogDescription>
           </DialogHeader>
           <TagPicker selected={catNames} onChange={setCatNames} loadNames={listCategories} placeholder="Kategori seç veya yaz" />
@@ -275,7 +275,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Koleksiyona taşı</DialogTitle>
-            <DialogDescription>{ids.length} öğe taşınacak.</DialogDescription>
+            <DialogDescription>{ids.length} kayıt taşınacak.</DialogDescription>
           </DialogHeader>
           <Select
             label="Koleksiyon"
@@ -313,9 +313,9 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title={`${ids.length} öğe silinsin mi?`}
+        title={`${ids.length} kayıt silinsin mi?`}
         description="Kayıtlar arşivden çıkar. İndirilen dosyalar diskte kalır."
-        confirmLabel={`${ids.length} öğeyi sil`}
+        confirmLabel={`${ids.length} kaydı sil`}
         onConfirm={() => void runDelete()}
       />
 
@@ -365,7 +365,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
 
           {aiFinished && (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-400">
-              ✓ {aiFinished.processed} öğe analiz edildi, {aiFinished.applied} öğeye kategoriler ve etiketler başarıyla uygulandı!
+              ✓ {aiFinished.processed} kayıt analiz edildi, {aiFinished.applied} kayda kategoriler ve etiketler başarıyla uygulandı!
             </div>
           )}
 
