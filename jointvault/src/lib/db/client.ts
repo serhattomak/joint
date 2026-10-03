@@ -404,6 +404,16 @@ export async function mergeTags(canonicalId: string, duplicateIds: string[]): Pr
   );
 }
 
+/** Bir etikete bağlı öğe id'leri (birleştirme sonrası indeks tazeleme için). */
+export async function getItemIdsForTag(tagId: string): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.select<{ item_id: string }[]>(
+    'SELECT item_id FROM item_tags WHERE tag_id = $1',
+    [tagId],
+  );
+  return rows.map((r) => r.item_id);
+}
+
 export async function getOrCreateTag(name: string, user_id: string | null = null): Promise<Tag> {
   const db = await getDb();
   const [existing] = await db.select<Tag[]>('SELECT * FROM tags WHERE name = $1', [name]);
@@ -413,8 +423,7 @@ export async function getOrCreateTag(name: string, user_id: string | null = null
 
 // --- item_tags ---
 
-export async function getTagsForItem(item_id: string): Promise<Tag[]> {
-  const db = await getDb();
+export async function getTagsForItem(item_id: string): Promise<Tag[]> {  const db = await getDb();
   return db.select<Tag[]>('SELECT t.* FROM tags t JOIN item_tags it ON it.tag_id = t.id WHERE it.item_id = $1', [item_id]);
 }
 
@@ -512,6 +521,16 @@ export async function mergeCategories(canonicalId: string, duplicateIds: string[
       `DELETE FROM categories WHERE id IN (${inClause}); `,
     [canonicalId, ...duplicateIds],
   );
+}
+
+/** Bir kategoriye bağlı öğe id'leri (birleştirme sonrası indeks tazeleme için). */
+export async function getItemIdsForCategory(categoryId: string): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.select<{ item_id: string }[]>(
+    'SELECT item_id FROM item_categories WHERE category_id = $1',
+    [categoryId],
+  );
+  return rows.map((r) => r.item_id);
 }
 
 export async function getOrCreateCategory(name: string, user_id: string | null = null): Promise<Category> {

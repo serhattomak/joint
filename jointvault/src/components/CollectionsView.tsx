@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Sparkles,
   Tag as TagIcon,
   Trash2,
   X,
@@ -15,15 +16,28 @@ import {
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { PageSurface } from '@/components/ui/page-surface';
 import {
   createCategory,
   createCollection,
   createTag,
+  getDb,
+  getItemIdsForCategory,
+  getItemIdsForTag,
   listCategoriesWithCounts,
   listCollectionsWithCounts,
   listTagsWithCounts,
+  mergeCategories,
+  mergeTags,
   removeCategory,
   removeCollection,
   removeTag,
@@ -34,6 +48,9 @@ import {
   type CollectionWithCount,
   type TagWithCount,
 } from '@/lib/db/client';
+import { createBackup } from '@/lib/db/backup';
+import { duplicateGroups } from '@/lib/taxonomy-maintenance';
+import { suggestTaxonomyMerges } from '@/lib/ai';
 
 export type CollectionsTabKey = 'collections' | 'categories' | 'tags';
 
@@ -89,6 +106,89 @@ export function CollectionsView({
 
   // Silme onayı
   const [pendingDelete, setPendingDelete] = useState<{ kind: DeleteKind; id: string } | null>(null);
+
+  // Taksonomi bakımı
+  const [maintOpen, setMaintOpen] = useState(false);
+  const [maintKind, setMaintKind] = useState<'tags' | 'categories'>('tags');
+  const [suggestions, setSuggestions] = useState<string[][]>([]);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [confirmMerge, setConfirmMerge] = useState<{
+    kind: 'tags' | 'categories';
+    canonical: string;
+    duplicates: string[];
+  } | null>(null);
+  const [confirmUnused, setConfirmUnused] = useState<{
+    kind: 'tags' | 'categories';
+    ids: string[];
+  } | null>(null);
+
+  const maintList = (kind: 'tags' | 'categories'): { name: string; count: number }[] =>
+    (kind === 'tags' ? tags : categories).map((x) => ({ name: x.name, count: x.count }));
+
+  const maintIdByName = (kind: 'tags' | 'categories', name: string): string | null =>
+    (kind === 'tags' ? tags : categories).find((x) => x.name === name)?.id ?? null;
+
+  const runMerge = async (): Promise<void> => {
+    if (!confirmMerge) return;
+    const { kind, canonical, duplicates } = confirmMerge;
+    setConfirmMerge(null);
+    try {
+      await createBackup(await getDb());
+      const canonicalId = maintIdByName(kind, canonical);
+      const dupIds = duplicates
+        .map((n) => maintIdByName(kind, n))
+        .filter((x): x is string => Boolean(x));
+      if (!canonicalId || dupIds.length === 0) return;
+
+      // Etkilenen öğeleri birleştirmeden ÖNCE topla (silinince kaybolur).
+      const affected = new Set<string>();
+      for (const id of [canonicalId, ...dupIds]) {
+        const itemIds =
+          kind === 'tags' ? await getItemIdsForTag(id) : await getItemIdsForCategory(id);
+        for (const i of itemIds) affected.add(i);
+      }
+
+      if (kind === 'tags') await mergeTags(canonicalId, dupIds);
+      else await mergeCategories(canonicalId, dupIds);
+
+      window.dispatchEvent(new CustomEvent('vault-items-updated'));
+      for (const id of affected) {
+        window.dispatchEvent(new CustomEvent('vault-item-index-dirty', { detail: { id } }));
+      }
+      await loadData();
+    } catch (e) {
+      console.error('[Taksonomi] birleştirme hatası:', e);
+    }
+  };
+
+  const runDeleteUnused = async (): Promise<void> => {
+    if (!confirmUnused) return;
+    const { kind, ids } = confirmUnused;
+    setConfirmUnused(null);
+    try {
+      await createBackup(await getDb());
+      for (const id of ids) {
+        if (kind === 'tags') await removeTag(id);
+        else await removeCategory(id);
+      }
+      window.dispatchEvent(new CustomEvent('vault-items-updated'));
+      await loadData();
+    } catch (e) {
+      console.error('[Taksonomi] kullanılmayan silme hatası:', e);
+    }
+  };
+
+  const runSuggest = async (): Promise<void> => {
+    setSuggestBusy(true);
+    setSuggestions([]);
+    try {
+      const names = maintList(maintKind).map((x) => x.name);
+      const groups = await suggestTaxonomyMerges(maintKind, names);
+      setSuggestions(groups);
+    } finally {
+      setSuggestBusy(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -193,11 +293,16 @@ export function CollectionsView({
       description="Arşivindeki tüm kayıtları koleksiyonlara ayır, kategori ve etiket ağacını düzenle."
       width="5xl"
       actions={
-        onClose ? (
-          <Button variant="outline" size="sm" onClick={onClose}>
-            <ArrowLeft /> Arşive Dön
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setMaintOpen(true)}>
+            <Sparkles /> Taksonomi Bakımı
           </Button>
-        ) : undefined
+          {onClose && (
+            <Button variant="outline" size="sm" onClick={onClose}>
+              <ArrowLeft /> Arşive Dön
+            </Button>
+          )}
+        </div>
       }
     >
       {/* SEKME DÜĞMELERİ VE ARAMA ÇUBUĞU */}
@@ -679,6 +784,157 @@ export function CollectionsView({
         confirmLabel="Sil"
         tone="destructive"
         onConfirm={() => void handleConfirmDelete()}
+      />
+
+      {/* TAKSONOMİ BAKIMI */}
+      <Dialog open={maintOpen} onOpenChange={setMaintOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Taksonomi Bakımı</DialogTitle>
+            <DialogDescription>
+              Yinelenenleri birleştir, kullanılmayanları sil ve yakın-anlam önerilerini uygula.
+              Her işlemden önce otomatik yedek alınır.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1">
+            {(['tags', 'categories'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setMaintKind(k);
+                  setSuggestions([]);
+                }}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                  maintKind === k
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {k === 'tags' ? 'Etiketler' : 'Kategoriler'}
+              </button>
+            ))}
+          </div>
+
+          {/* Denetim listesi */}
+          <div className="max-h-56 divide-y divide-border/70 overflow-y-auto rounded-lg border border-border">
+            {maintList(maintKind).map((e) => (
+              <div key={e.name} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                <span className="truncate">{e.name}</span>
+                <span className="flex items-center gap-2">
+                  {e.count === 0 && (
+                    <Badge variant="outline" className="text-3xs text-muted-foreground">
+                      kullanılmayan
+                    </Badge>
+                  )}
+                  <span className="font-mono text-2xs text-muted-foreground" data-num>
+                    {e.count}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Yinelenenler */}
+          {duplicateGroups(maintList(maintKind)).map((g) => (
+            <div
+              key={g.canonical}
+              className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+            >
+              <span className="truncate">
+                <span className="font-medium">{g.canonical}</span>
+                <span className="text-muted-foreground"> ← {g.duplicates.join(', ')}</span>
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setConfirmMerge({ kind: maintKind, canonical: g.canonical, duplicates: g.duplicates })
+                }
+              >
+                Birleştir
+              </Button>
+            </div>
+          ))}
+
+          {/* Yakın-anlam önerileri (AI) */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Yakın-anlam önerileri (AI)</span>
+              <Button variant="outline" size="sm" onClick={() => void runSuggest()} disabled={suggestBusy}>
+                {suggestBusy ? 'Öneriliyor…' : 'Öneri Al'}
+              </Button>
+            </div>
+            {suggestions.map((grp, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+              >
+                <span className="truncate">{grp.join(' · ')}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setConfirmMerge({ kind: maintKind, canonical: grp[0], duplicates: grp.slice(1) })
+                  }
+                >
+                  Birleştir
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="justify-between">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                const unused = (maintKind === 'tags' ? tags : categories)
+                  .filter((x) => x.count === 0)
+                  .map((x) => x.id);
+                if (unused.length > 0) setConfirmUnused({ kind: maintKind, ids: unused });
+              }}
+            >
+              Kullanılmayanları Sil
+            </Button>
+            <Button variant="outline" onClick={() => setMaintOpen(false)}>
+              Kapat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmMerge !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmMerge(null);
+        }}
+        title="Birleştirilsin mi?"
+        description={
+          confirmMerge
+            ? `"${confirmMerge.duplicates.join(', ')}" → "${confirmMerge.canonical}" taşınır; fazlalık silinir. Önce yedek alınır.`
+            : ''
+        }
+        confirmLabel="Birleştir"
+        tone="destructive"
+        onConfirm={() => void runMerge()}
+      />
+
+      <ConfirmDialog
+        open={confirmUnused !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmUnused(null);
+        }}
+        title="Kullanılmayanlar silinsin mi?"
+        description={
+          confirmUnused
+            ? `${confirmUnused.ids.length} kullanılmayan öğe silinecek. Önce yedek alınır.`
+            : ''
+        }
+        confirmLabel="Sil"
+        tone="destructive"
+        onConfirm={() => void runDeleteUnused()}
       />
     </PageSurface>
   );
