@@ -34,6 +34,17 @@ import {
   updateChunkEmbedding,
 } from './db/client';
 import type { HybridSearchResult, Item } from './db/types';
+import {
+  buildHistoryWindow,
+  parseAssistantMessage,
+  type HistoryMessage,
+} from './ai-chat';
+import {
+  buildVaultSummary,
+  executeVaultQuery,
+  normalizeVaultQuery,
+  type VaultQueryItem,
+} from './ai-context';
 
 /** GPU tespitinin kaynağı (`hardware.rs` → `GpuSource` serde adlarıyla birebir). */
 export type AiGpuSource = 'nvidia-smi' | 'wmi' | 'unknown';
@@ -422,9 +433,30 @@ export async function reindexVault(
 
 // --- RAG Hattı: 'Kasa Asistanı' ---
 
+const FENCE = '```';
+
+/**
+ * Modelin yapısal sorgu üretmesini sağlayan sözleşme. Örnek blok, mevcut
+ * `action:tag` deseniyle aynı ailedendir; `ai-chat.ts` ayrıştırır.
+ */
+const VAULT_QUERY_CONTRACT = [
+  'YAPISAL SORGU: Yanıtlamak için kasadan yapısal veri (filtre, liste, sayım; ör. "kaç favorim var", "Rust etiketli YouTube kayıtları", "son 30 gün") gerekiyorsa, SADECE şu bloğu yaz ve başka hiçbir şey yazma:',
+  `${FENCE}action:query`,
+  '{ "filters": { "platform": "youtube", "tag": "rust", "favorite": true, "sinceDays": 30, "query": "async", "sort": "new" }, "limit": 20, "countOnly": false }',
+  FENCE,
+  'Gerekmiyorsa normal, doğal yanıt ver. Uydurma; yalnızca verilen KAYNAKLAR ve sorgu sonuçlarına dayan.',
+].join('\n');
+
 export interface RagResult {
   answer: string;
   references: HybridSearchResult[];
+  queryItems?: VaultQueryItem[];
+}
+
+export interface AskVaultOptions {
+  history?: ChatMessage[];
+  onToken?: (token: string) => void;
+  onStatus?: (status: 'streaming' | 'querying') => void;
 }
 
 /**
@@ -432,7 +464,7 @@ export interface RagResult {
  */
 export async function askVault(
   query: string,
-  onToken?: (token: string) => void,
+  opts: AskVaultOptions = {},
 ): Promise<RagResult> {
   const status = await getAiStatus();
   // Sıra önemli: önce "AI açık mı", sonra "bileşenler hazır mı". Kapalı bir
@@ -460,6 +492,14 @@ export async function askVault(
 
   // 2. Hibrit arama yap (en alakalı 5 chunk)
   const references = await searchHybridChunks(query, queryEmbedding, 5);
+
+  // 2b. Hafif kasa özeti (yapısal gerçek; sayım/filtre soruları için)
+  let vaultSummary = '';
+  try {
+    vaultSummary = await buildVaultSummary();
+  } catch {
+    vaultSummary = '';
+  }
 
   // 3. Kontekst metnini oluştur
   let contextText = '';
@@ -496,15 +536,64 @@ KURALLAR:\n\
 \`\`\`\n\n\
 KAYNAKLAR:\n${contextText}`;
 
-  const jobId = crypto.randomUUID();
-  const answer = await streamAiChat(
-    jobId,
-    [{ role: 'user', content: query }],
-    systemPrompt,
-    onToken,
+  const fullSystemPrompt = `${systemPrompt}\n\nKASA ÖZETİ:\n${vaultSummary}\n\n${VAULT_QUERY_CONTRACT}`;
+
+  // Geçmiş, karakter bütçesiyle kırpılır (Qwen context'ini taşırmaz).
+  const history: HistoryMessage[] = buildHistoryWindow(
+    (opts.history ?? [])
+      .filter((h) => h.role !== 'system')
+      .map((h) => ({
+        role: h.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+        content: h.content,
+      })),
+    6000,
   );
 
-  return { answer, references };
+  opts.onStatus?.('streaming');
+  let answer = await streamAiChat(
+    crypto.randomUUID(),
+    [...history, { role: 'user', content: query }],
+    fullSystemPrompt,
+    opts.onToken,
+  );
+
+  // 4. Yapısal sorgu eylemi — en fazla 1 tur (ponytail: tavan; gerekirse 2'ye çıkar).
+  let queryItems: VaultQueryItem[] | undefined;
+  const parsed = parseAssistantMessage(answer);
+
+  if (parsed.actionQuery) {
+    opts.onStatus?.('querying');
+
+    const vq = normalizeVaultQuery(parsed.actionQuery.filters ?? parsed.actionQuery);
+    const result = await executeVaultQuery(vq);
+    queryItems = result.items;
+
+    const resultText = vq.countOnly
+      ? `Kasa sorgusu sonucu: ${result.count} kayıt.`
+      : `Kasa sorgusu sonucu (${result.count} kayıt):\n${result.items
+          .map(
+            (i) =>
+              `- ${i.title ?? i.url} [${i.platform}] ${i.createdAt.slice(0, 10)} (ID: ${i.id})`,
+          )
+          .join('\n')}`;
+
+    const actionBlock = answer.match(/```action:query[\s\S]*?```/)?.[0] ?? '';
+
+    opts.onStatus?.('streaming');
+    answer = await streamAiChat(
+      crypto.randomUUID(),
+      [
+        ...history,
+        { role: 'user', content: query },
+        { role: 'assistant', content: actionBlock },
+        { role: 'user', content: `${resultText}\n\nBu sonuca dayanarak soruyu Türkçe yanıtla.` },
+      ],
+      fullSystemPrompt,
+      opts.onToken,
+    );
+  }
+
+  return { answer, references, queryItems };
 }
 
 // --- Akıllı Kategorizasyon ve Etiketleme Hattı ---

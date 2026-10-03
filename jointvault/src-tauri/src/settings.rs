@@ -117,6 +117,8 @@ pub async fn export_backup(
     app: tauri::AppHandle,
     content: String,
     suggested_name: String,
+    filter_name: Option<String>,
+    extensions: Option<Vec<String>>,
 ) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
@@ -127,11 +129,16 @@ pub async fn export_backup(
         safe_name.to_string()
     };
 
+    // Filtre/uzantı verilmezse JSON varsayılır — mevcut yedek çağrıları değişmez.
+    let filter_name = filter_name.unwrap_or_else(|| "JSON".to_string());
+    let extensions = extensions.unwrap_or_else(|| vec!["json".to_string()]);
+    let ext_refs: Vec<&str> = extensions.iter().map(String::as_str).collect();
+
     let chosen = app
         .dialog()
         .file()
         .set_file_name(&file_name)
-        .add_filter("JSON", &["json"])
+        .add_filter(&filter_name, &ext_refs)
         .blocking_save_file();
 
     let Some(file_path) = chosen else {

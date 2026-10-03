@@ -483,6 +483,28 @@ hizasızlık buradan doğar. Sağdaki her şey **sabit genişlik + sağa hizalı
 satır `truncate` edilir; tarih ve çip kendi sabit sütununda durur. Ölçerek doğrula: farklı durumdaki
 satırların sağ kenarları **birebir** eşit çıkmalı.
 
+## Asistan (sohbet) yüzeyi
+
+Kasa Asistanı tam-sayfa bir sohbet yüzeyidir; `PageSurface` başlığı kullanmaz, çünkü başlığı
+oturumun kendisidir. İki bölge: solda **geçmiş paneli**, sağda mesaj akışı + giriş çubuğu.
+
+- **Geçmiş paneli:** `material-rail` dilinde kolon (`w-60`); satırlar `divide-y divide-border/70`.
+  Her satır: başlık (`text-sm`, `truncate`) + göreli tarih (`text-2xs`, mono, `data-num`). Aktif
+  satır kart yüzeyidir (`bg-card` + `font-medium`); pasif hover'da sessiz yüzey. `Sabitlenenler` /
+  `Diğer` grupları. Üstte arama alanı + `+ Yeni sohbet`.
+- **Dar pencere:** `md` altında panel kolon olmaktan çıkar, `absolute` **çekmeceye** iner; gezinme
+  kaybolmaz. Açık/kapalı tercihi `localStorage` (`jv-ai-history`).
+- **Mesaj balonu (kart DEĞİL):** kullanıcı sağda `rounded-xl bg-primary text-primary-foreground`;
+  asistan solda `rounded-xl border border-border bg-card text-card-foreground`. Balon opaktır; kart
+  içine kart koyma kuralına tabi değildir çünkü *kabuk* değil *balon*dur. Sabit sözlüktür — ikinci bir
+  balon biçimi açılmaz.
+- **Durum sözcükleri:** `Kasa taranıyor…` (yapısal sorgu sürerken, spinner + sözcük), akan imleç
+  (streaming), `⚠️ <hata>`. Renk tek başına anlam taşımaz.
+- **Bulunan Kayıtlar:** yapısal sorgu sonucu satır kartları — solda platform rozeti + `truncate`
+  başlık, sağda `data-num` tarih; tıklayınca kayıt modalı açılır. Referans (chunk) kartlarıyla aynı
+  ailedendir; ikinci bir "sonuç kartı" sözlüğü açılmaz.
+- **Dışa aktarma:** başlıkta tek eylem; oturum Markdown olarak yazılır (yol renderer'a uğramaz).
+
 ## Primitives (koddaki sözlük — yeniden icat etme)
 
 Koordinatlar `jointvault/` köküne göredir.

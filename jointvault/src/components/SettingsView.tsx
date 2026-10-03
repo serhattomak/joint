@@ -544,6 +544,8 @@ export function SettingsView(props: SettingsViewProps) {
       const written = await invoke<string | null>('export_backup', {
         content: JSON.stringify(data),
         suggestedName: `jointvault-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filterName: 'JSON',
+        extensions: ['json'],
       });
       if (!written) return;
       const count = Object.values(data.tables).reduce((n, rows) => n + rows.length, 0);
