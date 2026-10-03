@@ -861,7 +861,7 @@ export function CollectionsView({
           {/* Yakın-anlam önerileri (AI) */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Yakın-anlam önerileri (AI)</span>
+              <span className="text-xs text-muted-foreground">Yakın-anlam önerileri (Asistan)</span>
               <Button variant="outline" size="sm" onClick={() => void runSuggest()} disabled={suggestBusy}>
                 {suggestBusy ? 'Öneriliyor…' : 'Öneri Al'}
               </Button>

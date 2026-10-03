@@ -64,7 +64,11 @@ export function parseMergeSuggestions(text: string, known: string[]): string[][]
   if (!Array.isArray(parsed)) return [];
 
   const canonByKey = new Map<string, string>();
-  for (const k of known) canonByKey.set(normalizeKey(k), k);
+  for (const k of known) {
+    const key = normalizeKey(k);
+    // İlk atama korunur; matchExisting ile aynı "ilk eşleşen" semantiği.
+    if (!canonByKey.has(key)) canonByKey.set(key, k);
+  }
 
   const out: string[][] = [];
   for (const entry of parsed) {

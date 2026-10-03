@@ -191,6 +191,14 @@ function App() {
   // İçerik/taksonomi değişince ilgili öğenin indeksini arka planda tazele.
   useEffect(() => initItemIndexRefresh(), []);
 
+  // Taksonomi/öğeler toplu değiştiğinde (yeniden kategorize, birleştirme)
+  // arşiv ızgarasını ve filtreleri tazele.
+  useEffect(() => {
+    const onUpdated = (): void => refresh();
+    window.addEventListener('vault-items-updated', onUpdated);
+    return () => window.removeEventListener('vault-items-updated', onUpdated);
+  }, [refresh]);
+
   // AI etkinliğini tazele: açılışta ve Ayarlar'dan çıkışta (kullanıcı orada
   // açıp kapatmış olabilir). Ayarlar AÇIKKEN arka planda sorgu yapmayız —
   // Ayarlar kendi durumunu okur; çıkışta burada tazelenir. Yalnızca durum

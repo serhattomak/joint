@@ -52,7 +52,11 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
   const [aiProgress, setAiProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [aiAutoApply, setAiAutoApply] = useState(true);
   const [confirmReplace, setConfirmReplace] = useState(false);
-  const [aiFinished, setAiFinished] = useState<{ processed: number; applied: number } | null>(null);
+  const [aiFinished, setAiFinished] = useState<{
+    processed: number;
+    applied: number;
+    replaced?: number;
+  } | null>(null);
   const [scrapeOpen, setScrapeOpen] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [scrapeFinished, setScrapeFinished] = useState<{ success: number; errors: number } | null>(null);
@@ -234,7 +238,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           disabled={busy}
           className="gap-1 text-primary hover:text-primary"
         >
-          <Sparkles className="size-4" /> AI ile Düzenle
+          <Sparkles className="size-4" /> Asistan ile Düzenle
         </Button>
         <Button
           variant="ghost"
@@ -353,7 +357,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="size-5 text-primary" />
-              AI ile Toplu Kategorizasyon & Etiketleme
+              Asistan ile Toplu Kategorizasyon & Etiketleme
             </DialogTitle>
             <DialogDescription>
               {ids.length} seçili kayıt yerel Qwen 2.5 modeliyle taranarak başlık, not ve transkriptlerine göre otomatik sınıflandırılacaktır.
@@ -394,7 +398,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
 
           {aiFinished && (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-400">
-              ✓ {aiFinished.processed} kayıt analiz edildi, {aiFinished.applied} kayda kategoriler ve etiketler başarıyla uygulandı!
+              ✓ {aiFinished.processed} kayıt analiz edildi, {aiFinished.applied} kayda kategoriler ve etiketler uygulandı{(aiFinished.replaced ?? 0) > 0 ? ` (${aiFinished.replaced} kayıt sıfırdan yenilendi)` : ''}!
             </div>
           )}
 
