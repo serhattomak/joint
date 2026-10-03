@@ -10,11 +10,11 @@ web
 
 Tek kullanıcı: uygulamanın sahibi. Türkçe konuşan, teknik olarak yetkin bir "medya biriktiricisi" — X/Instagram/YouTube/TikTok'ta kaydettiği post, video ve fotoğrafları kaybetmeden tek yerde tutmak isteyen; yt-dlp, ffmpeg ve komut satırı araçlarının ne yaptığını bilen, ama her seferinde terminale dönmek istemeyen biri.
 
-Kullanım sahnesi: masaüstü (Windows), varsayılan 1280×800 pencere, sık sık yarı ekrana yapıştırılmış; gündüz çalışma ışığı ile akşam loş ortam arasında değişen koşullar. İş: akışta gördüğü bir şeyi anında kasaya atmak, sonra arşivde bulmak ve üzerinde işlem yapmak.
+Kullanım sahnesi: masaüstü (Windows), varsayılan 1280×800 pencere, sık sık yarı ekrana yapıştırılmış; gündüz çalışma ışığı ile akşam loş ortam arasında değişen koşullar. İş: akışta gördüğü bir şeyi anında arşive atmak, sonra arşivde bulmak ve üzerinde işlem yapmak.
 
 ## Product Purpose
 
-JointVault kişisel medya arşividir: linkleri tek tek veya toplu kaydeder, tarayıcı eklentisiyle X/Instagram/YouTube'dan içe aktarır, yt-dlp ile indirir, ffmpeg ile dönüştürür/kırpar/altyazılar, yinelenenleri bulur ve hepsini koleksiyon/kategori/etiket ile düzenler. Amaç, dağınık platform kayıtlarını kaybolmayan, aranabilir, üzerinde iş yapılabilir tek bir yerel kasaya dönüştürmek.
+JointVault kişisel medya arşividir: linkleri tek tek veya toplu kaydeder, tarayıcı eklentisiyle X/Instagram/YouTube'dan içe aktarır, yt-dlp ile indirir, ffmpeg ile dönüştürür/kırpar/altyazılar, yinelenenleri bulur ve hepsini koleksiyon/kategori/etiket ile düzenler. Amaç, dağınık platform kayıtlarını kaybolmayan, aranabilir, üzerinde iş yapılabilir tek bir yerel arşive dönüştürmek.
 
 Başarı ölçütü (kullanıcı tarafından onaylandı):
 1. Bir şeyi kaydetmek tek hareket olur — gözle aranmaz.
@@ -46,7 +46,7 @@ Rakip bir ürünün dürüstçe kopyalayamayacağı mekanizma: **kaydetme, indir
 
 ## Brand Commitments
 
-- Ad: **JointVault** (tek kelime, CamelCase). Wordmark bir "kasa/arşiv" fikrini taşımalı; mevcut lucide `Archive` ikonu tesadüfi, bağlayıcı değil.
+- Ad: **JointVault** (tek kelime, CamelCase). Wordmark bir "arşiv" fikrini taşımalı; mevcut lucide `Archive` ikonu tesadüfi, bağlayıcı değil.
 - Ses: Türkçe, "sen" hitabı, sıcak ama teknik (mevcut metinlerin tonu korunur).
 - Var olan görsel varlıklar: `public/favicon.svg`, `public/icons.svg`, `src-tauri/icons/*` paket ikonları. Korunur, gerekirse yeniden çizilir.
 - Bağlayıcı estetik kısıtı yok; yalnızca ton **teknik/profesyonel** olarak sabitlendi. Tema: koyu ve açık tam kurulur, açılış koyu.
@@ -57,6 +57,19 @@ Rakip bir ürünün dürüstçe kopyalayamayacağı mekanizma: **kaydetme, indir
 - Gerçek içerik yok: depoda örnek/seed medya, ekran görüntüsü veya demo verisi bulunmuyor. Arayüz önizlemeleri için yazılacak her örnek başlık/görsel **sentetik** olarak işaretlenir; uydurulmuş metrik, müşteri adı, referans veya kapasite iddiası yazılmaz.
 - Ekran görüntüsü/test altyapısı yok: görsel regresyon golden'ı, Storybook, test koşucusu yok. Doğrulama `npm run build` + `cargo check` + elle çalıştırma.
 - Kullanıcının kendi arşivi (gerçek başlıklar, gerçek thumbnail'lar) tasarımın gerçek malzemesidir; arayüz 0 / 1 / 50 / 2000 öğe durumlarında çalışmalıdır.
+
+## Sözlük
+
+Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük kullanılmaz.
+
+| Kavram | Terim |
+|---|---|
+| Kullanıcının tüm medya kaydı | **Arşiv** |
+| Tek bir kayıtlı öğe (post/video/makale) | **Kayıt** |
+| Yerel medyayı işleyen araçlar bölümü | **Araçlar** |
+| Yerel yapay zekâ sohbeti | **Asistan** |
+
+"Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz.
 
 ## Product Principles
 

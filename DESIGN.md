@@ -207,7 +207,7 @@ Inter, SF Pro'nun lisans kısıtı yüzünden **bilinçli ikame**dir. İkisi de 
 
 ### Hierarchy
 - **Display** (700, 28px/1.12, -0.022em): Görünüm başlıkları (`text-display`).
-- **Title** (600, 22px/1.18, -0.018em): Panel, fiş detayı, boş durum ve diyalog başlığı (`text-title`).
+- **Title** (600, 22px/1.18, -0.018em): Panel, kayıt detayı, boş durum ve diyalog başlığı (`text-title`).
 - **Body** (400, 14px/1.5, -0.006em): Gövde metni. Kart/satır başlıkları 15px medium.
 - **Micro** (400, 12px/1.4, +0.006em): Alan etiketleri, yardım metni. Büyük harf yok (`text-micro`).
 - **Data · damga & künye** (400, 11px/1.45, +0.02em, büyük harf · `text-2xs`): Damga, künye bandı,
@@ -234,11 +234,11 @@ Spatial model: **sabit çekmece rayı + akan içerik kolonu**, üstte **tek kal�
 - **Ray:** 244px, `material-rail`, `sticky top-[52px] h-[calc(100vh-52px)]` (araç çubuğunun altından
   başlar). `md` altında gizlenir; aynı çekmeceler yatay şeride iner (`SidebarStrip`) — gezinme
   kaybolmaz. Kapatılabilir: tercih `localStorage`'da (`jv-sidebar`), kapalıyken içerik genişler.
-- **Kural şeridi:** 44px (`h-11`), `sticky`, kasa görünümünde; altında içerik akar.
-- **Büyük başlık:** kasa görünümünde `text-display`; altında kapsam sekmeleri. Sayfa yüzeylerinde
+- **Kural şeridi:** 44px (`h-11`), `sticky`, arşiv görünümünde; altında içerik akar.
+- **Büyük başlık:** arşiv görünümünde `text-display`; altında kapsam sekmeleri. Sayfa yüzeylerinde
   başlık `PageSurface` başlığıdır.
 - **Izgara:** 1 / 2 / 3 kolon (sm / xl). Kart yüksekliği içerikten gelir, sabitlenmez.
-- **Yoğunluk:** satır görünümü ~52px, kart ~290px; 2.000 fiş taranabilir kalmalı. Kart ve satırlar
+- **Yoğunluk:** satır görünümü ~52px, kart ~290px; 2.000 kayıt taranabilir kalmalı. Kart ve satırlar
   `content-visibility: auto` taşır (`cv-card`, `cv-row`), sayfalama SQL'de yapılır, arama 250ms
   debounce'ludur.
 - **Ritim:** gruplar sıkı, ayrım cömert; başlığın üstündeki boşluk altındakinden fazladır.
@@ -282,15 +282,15 @@ Tek 52px bant, üç bölge (`Toolbar.tsx`):
   bağlantı (kayıt), büyüteç (arama), kıvılcım (semantik). Kayıt modunda sağda platform damgası +
   **Ayrıntılı** + **Kaydet** (stamp varyantı) belirir; Enter kaydeder, Escape temizler. Arama
   modunda yanında **Semantik** ve **Eşitle** sessiz düğmeleri durur.
-- **Sağ:** görünüm (kart/satır) segmenti (yalnızca kasada) + tema + **pencere kontrolleri**.
+- **Sağ:** görünüm (kart/satır) segmenti (yalnızca arşivde) + tema + **pencere kontrolleri**.
 
 **The Tek-Yakala Kuralı.** Kaydetme eylemi yalnızca araç çubuğundadır; sayfaya ikinci bir "kaydet"
 koymak yasaktır.
 
 ## Sayfa yüzeyi
 
-Tam-sayfa görünümler (Koleksiyonlar, İndirilenler, Eşitleme, İstatistikler, Araç Kutusu, Dönüştürücü,
-Araç Kutusu alt ekranları) tek bir `PageSurface` kabuğu kullanır — Apple'ın gruplandırılmış sayfa
+Tam-sayfa görünümler (Koleksiyonlar, İndirilenler, Eşitleme, İstatistikler, Araçlar, Dönüştürücü,
+Araçlar alt ekranları) tek bir `PageSurface` kabuğu kullanır — Apple'ın gruplandırılmış sayfa
 ritmi: solda ikon çipi (`size-8 rounded-lg bg-primary/10 text-primary`, ikon 18px), yanında **tek**
 başlık ölçeği (`text-title`), altında açıklama, sağda eylemler; tek padding
 (`px-6 pt-6 pb-12 md:px-8`) ve içeriğe göre genişlik (`3xl`–`6xl`). Görünüm kendi
@@ -299,15 +299,15 @@ başlık ölçeği (`text-title`), altında açıklama, sağda eylemler; tek pad
 **The Tek-Sayfa-Kabuğu Kuralı.** Yeni bir tam-sayfa görünüm eklerken başlık, padding ve genişlik elle
 kurulmaz; `PageSurface` kullanılır. Kaydırma yüzeye ait değildir.
 
-## Kapsam sekmeleri (kasa görünümü)
+## Kapsam sekmeleri (arşiv görünümü)
 
-Kasanın kapsamı bir segmenttir: **`Tümü · Favoriler · Yerel`** (`ItemGrid`, büyük başlığın altında).
+Arşivin kapsamı bir segmenttir: **`Tümü · Favoriler · Yerel`** (`ItemGrid`, büyük başlığın altında).
 Segment dili: `rounded-lg border border-border bg-card/60 p-0.5`; aktif öğe
 `rounded-md bg-background font-medium shadow-xs`, pasif `text-muted-foreground`.
 
 - Kapsam bir **sekmedir**, gezinme durağı değil: sidebar'da yer almaz, geri/ileri geçmişine yazılmaz.
 - Filtre uygulamak seçili sekmeyi bozmaz.
-- "Tümü" sidebar öğesi **kasa açık olduğu sürece** aktiftir; ayrımı sekmeler verir.
+- "Tümü" sidebar öğesi **arşiv açık olduğu sürece** aktiftir; ayrımı sekmeler verir.
 - Bir kayıt grubunu daraltmak (platform, koleksiyon, kategori, etiket) **filtredir**, kapsam değil.
 
 ## Filtre paneli
@@ -320,7 +320,7 @@ Seçim tek bir **`Filtrele`** düğmesinden yapılır; ama **yürürlükteki kur
   seçenekler (TR-duyarlı süzme, `Bulunamadı` durumu).
 - **Aktif filtreler şeritte çip olarak kalır** (`YouTube ✕`) ve tek tıkla kaldırılır. Seçim panele,
   durum şeride aittir.
-- Sağda sıralama + `N fiş` sayımı (`data-num`) sabittir.
+- Sağda sıralama + `N kayıt` sayımı (`data-num`) sabittir.
 
 **The Kural-Görünür-Kalır Kuralı.** Bir filtre ya da ayar yürürlükteyse, onu açan panel kapalıyken
 de görünür olmalıdır (çip, damga, etiket). Durum asla yalnızca panel içinde kalmaz.
@@ -426,7 +426,7 @@ Ayarlar dili ve tüm listelerin ortak sözlüğü:
 - Satır (`SettingRow`): solda etiket (`text-sm`) + ipucu (`text-micro text-muted-foreground`),
   sağda kontrol (`shrink-0`). Etiket bloğu `flex-1 min-w-0` — uzun ipucu kontrolü alt satıra düşürmez.
 - Kenar yastığı satırda: `px-4` (kap) ya da satır `p-3`.
-- **Liste öğesi (ör. Araç Kutusu):** tinted ikon çipi (`size-8 rounded-lg bg-primary/10 text-primary
+- **Liste öğesi (ör. Araçlar):** tinted ikon çipi (`size-8 rounded-lg bg-primary/10 text-primary
   [&_svg]:size-[18px]`) + başlık (`text-sm font-medium`) + açıklama (`text-micro`) + sağda ok
   (`ChevronRight`). Her satır aynı yükseklik ve aynı hizada.
 
@@ -446,7 +446,7 @@ reddedildi ve **merkezî modal** korundu (1024×704, medya solda büyük / küny
 yeniden gündeme getirirken dar içerik sütununun okunurluğu test edilir.
 
 ### Navigation
-- **Rail:** 244px, `material-rail`, gruplar **KASA · ARAÇLAR · SİSTEM**. Bölüm etiketi 11px, mono ya
+- **Rail:** 244px, `material-rail`, gruplar **ARŞİV · ARAÇLAR · SİSTEM**. Bölüm etiketi 11px, mono ya
   da büyük harf **değil**. Öğe 30px yükseklik, 6px radius, 16px lucide ikon.
 - **Default / Hover / Active:** Hover'da sessiz yüzey belirir; **aktif ray öğesi** kart yüzeyidir
   (`bg-card` + `font-medium`) ve sağ kenara taşan küçük bir **çentik** rayın hairline'ını keser —
@@ -485,7 +485,7 @@ satırların sağ kenarları **birebir** eşit çıkmalı.
 
 ## Asistan (sohbet) yüzeyi
 
-Kasa Asistanı tam-sayfa bir sohbet yüzeyidir; `PageSurface` başlığı kullanmaz, çünkü başlığı
+Asistan tam-sayfa bir sohbet yüzeyidir; `PageSurface` başlığı kullanmaz, çünkü başlığı
 oturumun kendisidir. İki bölge: solda **geçmiş paneli**, sağda mesaj akışı + giriş çubuğu.
 
 - **Geçmiş paneli:** `material-rail` dilinde kolon (`w-60`); satırlar `divide-y divide-border/70`.
@@ -498,12 +498,25 @@ oturumun kendisidir. İki bölge: solda **geçmiş paneli**, sağda mesaj akış
   asistan solda `rounded-xl border border-border bg-card text-card-foreground`. Balon opaktır; kart
   içine kart koyma kuralına tabi değildir çünkü *kabuk* değil *balon*dur. Sabit sözlüktür — ikinci bir
   balon biçimi açılmaz.
-- **Durum sözcükleri:** `Kasa taranıyor…` (yapısal sorgu sürerken, spinner + sözcük), akan imleç
+- **Durum sözcükleri:** `Arşiv taranıyor…` (yapısal sorgu sürerken, spinner + sözcük), akan imleç
   (streaming), `⚠️ <hata>`. Renk tek başına anlam taşımaz.
 - **Bulunan Kayıtlar:** yapısal sorgu sonucu satır kartları — solda platform rozeti + `truncate`
   başlık, sağda `data-num` tarih; tıklayınca kayıt modalı açılır. Referans (chunk) kartlarıyla aynı
   ailedendir; ikinci bir "sonuç kartı" sözlüğü açılmaz.
 - **Dışa aktarma:** başlıkta tek eylem; oturum Markdown olarak yazılır (yol renderer'a uğramaz).
+
+## Terimler
+
+Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük kullanılmaz.
+
+| Kavram | Terim |
+|---|---|
+| Kullanıcının tüm medya kaydı | **Arşiv** |
+| Tek bir kayıtlı öğe (post/video/makale) | **Kayıt** |
+| Yerel medyayı işleyen araçlar bölümü | **Araçlar** |
+| Yerel yapay zekâ sohbeti | **Asistan** |
+
+"Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz.
 
 ## Primitives (koddaki sözlük — yeniden icat etme)
 
@@ -515,7 +528,7 @@ Koordinatlar `jointvault/` köküne göredir.
 - **Controls:** `ui/button` · `ui/input` · `ui/select` · `ui/switch` · `ui/badge` · `ui/stamp` ·
   `ui/progress` · `ui/tabs` · `ui/dialog` · `ui/alert-dialog` (`ConfirmDialog`) · `ui/popover` ·
   `ui/menu` · `ui/tooltip` · `ui/notice` · `ui/field` (`Field`, `SettingRow`, `FieldGroup`).
-- **Kasa:** `src/components/ItemGrid.tsx` (ızgara, büyük başlık, sekmeler, sayfalama) ·
+- **Arşiv:** `src/components/ItemGrid.tsx` (ızgara, büyük başlık, sekmeler, sayfalama) ·
   `src/components/RuleStrip.tsx` (Filtrele paneli) · `src/components/ItemViews.tsx`
   (`ItemCardView`, `ItemRowView`, `Stamp`, `DownloadControl`, `ActionButtons`).
 - **Tam-sayfa yüzeyler:** `CollectionsView` · `DownloadsView` · `SyncView` · `StatsView` ·
