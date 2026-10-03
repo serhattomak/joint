@@ -572,7 +572,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
                 </span>
                 <div>
                   <h2 className="text-sm font-semibold">Instagram</h2>
-                  <p className="text-2xs text-muted-foreground">Kaydedilen Kayıtlar</p>
+                  <p className="text-2xs text-muted-foreground">Kayıtlar</p>
                 </div>
               </div>
               <Switch

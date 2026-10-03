@@ -213,7 +213,7 @@ const openConverter = async (page) => {
 };
 
 const openTool = async (page, title) => {
-  await page.getByRole('button', { name: 'Araç Kutusu', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Araçlar', exact: true }).first().click();
   await sleep(600);
   await page.getByText(title, { exact: true }).first().click();
   await sleep(800);
@@ -962,7 +962,7 @@ const main = async () => {
     artifact.notDriven = [
       {
         screen: 'EditorDialog (Kırp) — kart eyleminden açılan diyalog',
-        reason: 'Kasa kartındaki "Dönüştür/Kırp" eylemi sürülmez; aynı TrimEditor media_probe kod yolu Dönüştürücü "Kırp" senaryosuyla kapsanır.',
+        reason: 'Arşiv kartındaki "Dönüştür/Kırp" eylemi sürülmez; aynı TrimEditor media_probe kod yolu Dönüştürücü "Kırp" senaryosuyla kapsanır.',
       },
       {
         screen: 'GIF / WebM — kendi "Üret" (make_gif) kapısı',

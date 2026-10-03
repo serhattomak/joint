@@ -129,7 +129,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
       setVaultLoading(true);
       const items = await listDownloadedItems();
       setVaultItems(items);
-      // Eğer Arşiv'de henüz indirme yok ama turbo kuyruğunda varsa turbo sekmesine geç
+      // Eğer Arşivde henüz indirme yok ama turbo kuyruğunda varsa turbo sekmesine geç
       if (items.length === 0 && jobs.length > 0) {
         setSourceTab('turbo');
       }
@@ -387,7 +387,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
       }
       description={
         sourceTab === 'vault'
-          ? "Arşiv'deki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
+          ? "Arşivdeki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
           : 'Çok kanallı paralel parçalı indirme motoru ile dosyalarınızı en yüksek hızda indirin ve yönetin.'
       }
       width="5xl"
@@ -508,7 +508,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
               {vaultItems.length === 0 && onClose && (
                 <div className="mt-6 flex justify-center">
                   <Button onClick={onClose} className="gap-2">
-                    <ArrowLeft className="size-4" /> Arşiv'e Dön ve Medyaları İndir
+                    <ArrowLeft className="size-4" /> Arşive Dön ve Medyaları İndir
                   </Button>
                 </div>
               )}
@@ -600,7 +600,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                           size="icon-sm"
                           variant="ghost"
                           className="h-8 w-8"
-                          title="Merkezi Kaydı Aç"
+                          title="Kaydı Aç"
                           onClick={() => onOpenItem(item)}
                         >
                           <Pencil className="size-3.5 text-muted-foreground" />
@@ -1051,7 +1051,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                 </span>
                 <span className="text-2xs text-muted-foreground leading-relaxed">
                   {deleteVaultRecord
-                    ? 'Kayıt ve bağlantı arşivi arşivden tamamen silinecektir.'
+                    ? 'Kayıt ve bağlantısı arşivden tamamen silinecektir.'
                     : 'Kapalı: Kayıt arşivde kalır, yalnızca indirilmiş medya temizlenir ve listeden çıkarılır.'}
                 </span>
               </div>

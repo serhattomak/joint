@@ -74,7 +74,7 @@ function Sidebar() {
   return (
     <aside className="material-rail flex w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border px-2.5 py-2 text-rail-foreground">
       <nav className="flex flex-col gap-0.5">
-        <GroupLabel>Kasa</GroupLabel>
+        <GroupLabel>Arşiv</GroupLabel>
         <NavRow icon={<LayoutGrid strokeWidth={S} />} label="Tümü" active badge="1.204" />
         <NavRow icon={<Star strokeWidth={S} />} label="Favoriler" badge="86" />
         <NavRow icon={<Bookmark strokeWidth={S} />} label="Koleksiyonlar" />
@@ -83,7 +83,7 @@ function Sidebar() {
         <NavRow icon={<Download strokeWidth={S} />} label="İndirme Yöneticisi" badge="3" />
         <NavRow icon={<RefreshCw strokeWidth={S} />} label="Eşitleme" />
         <NavRow icon={<Film strokeWidth={S} />} label="Dönüştürücü" />
-        <NavRow icon={<Wrench strokeWidth={S} />} label="Araç Kutusu" />
+        <NavRow icon={<Wrench strokeWidth={S} />} label="Araçlar" />
         <GroupLabel>Sistem</GroupLabel>
         <NavRow icon={<Sparkles strokeWidth={S} />} label="Yapay Zekâ" />
         <NavRow icon={<Settings strokeWidth={S} />} label="Ayarlar" />

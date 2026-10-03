@@ -20,7 +20,7 @@ export function markOnboarded(): void {
 
 const STEPS: { title: string; body: string }[] = [
   {
-    title: 'Arşivin',
+    title: 'Arşiv',
     body: 'Link yapıştırarak kaydet; koleksiyon, kategori ve etiketle düzenle. Arama başlık, not ve URL’de çalışır.',
   },
   {
@@ -29,7 +29,7 @@ const STEPS: { title: string; body: string }[] = [
   },
   {
     title: 'Eklenti',
-    body: 'X yer işaretleri, Instagram kaydedilenleri ve YouTube listeleri tarayıcı eklentisiyle tek tıkla gelir. Eşleşme anahtarı Ayarlar → Eklenti sekmesinde.',
+    body: 'X kayıtları, Instagram kaydedilenleri ve YouTube listeleri tarayıcı eklentisiyle tek tıkla gelir. Eşleşme anahtarı Ayarlar → Eklenti sekmesinde.',
   },
   {
     title: 'Kısayollar',

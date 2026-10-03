@@ -181,7 +181,7 @@ await page.goto(`${URL}#crash`, { waitUntil: 'load', timeout: 30000 });
 await page.evaluate(() => document.fonts.ready);
 await page.waitForTimeout(700);
 
-check('çökme başlığı çizildi', await page.getByText('Kasa açılamadı').isVisible(), true);
+check('çökme başlığı çizildi', await page.getByText('Arşiv açılamadı').isVisible(), true);
 check('çökme mesajı çizildi', await page.getByText('kilitlenmiş görünüyor').isVisible(), true);
 check('yeniden dene düğmesi var', await page.getByRole('button', { name: 'Yeniden dene' }).isVisible(), true);
 check(

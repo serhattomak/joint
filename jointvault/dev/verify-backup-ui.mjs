@@ -1,7 +1,7 @@
 /*
  * Yedek arayüzü sondası — üretim kodu DEĞİL.
  *
- * NE KANITLAR: Ayarlar → Yedekleme sekmesindeki yeni "Kasa yedekleri" bölümünün
+ * NE KANITLAR: Ayarlar → Yedekleme sekmesindeki yeni "Arşiv yedekleri" bölümünün
  * GERÇEK uygulamada çizildiğini ve gerçek yedeği listelediğini. Birim testler
  * mantığı kanıtlar; arayüzün gerçekten orada olduğunu yalnızca uygulama söyler.
  *
@@ -44,11 +44,11 @@ const main = async () => {
   await page.getByRole('button', { name: 'Ayarlar' }).first().click();
   await sleep(800);
 
-  if (!(await page.getByText('Kasa yedekleri').isVisible().catch(() => false))) {
+  if (!(await page.getByText('Arşiv yedekleri').isVisible().catch(() => false))) {
     await page.getByRole('button', { name: 'Yedekleme' }).first().click();
     await sleep(900);
   }
-  report('Kasa yedekleri bölümü çizildi', await page.getByText('Kasa yedekleri').isVisible().catch(() => false));
+  report('Arşiv yedekleri bölümü çizildi', await page.getByText('Arşiv yedekleri').isVisible().catch(() => false));
   report(
     '"Şimdi yedekle" düğmesi var',
     await page.getByRole('button', { name: 'Şimdi yedekle' }).isVisible().catch(() => false),

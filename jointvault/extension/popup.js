@@ -41,14 +41,14 @@ async function checkServerConnection(endpoint) {
     clearTimeout(timeout);
     if (res && res.status !== 0) {
       serverDot.classList.add("online");
-      serverStatusText.textContent = "Kasa Bağlı";
+      serverStatusText.textContent = "Arşiv Bağlı";
     } else {
       serverDot.classList.remove("online");
-      serverStatusText.textContent = "Kasa Kapalı";
+      serverStatusText.textContent = "Arşiv Kapalı";
     }
   } catch {
     serverDot.classList.remove("online");
-    serverStatusText.textContent = "Kasa Kapalı";
+    serverStatusText.textContent = "Arşiv Kapalı";
   }
 }
 
@@ -140,7 +140,7 @@ async function checkServerConnection(endpoint) {
     badgeEl.style.color = "#34d399";
     badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
     btn.disabled = false;
-    hintEl.textContent = "Bu sayfadaki medya içeriği algılandı. Doğrudan Kasa'ya indirebilirsiniz.";
+    hintEl.textContent = "Bu sayfadaki medya içeriği algılandı. Doğrudan Arşive indirebilirsiniz.";
 
     try {
       const cfg = await new Promise((res) => chrome.storage.local.get({ endpoint: DEFAULT_ENDPOINT, token: "" }, res));
@@ -167,7 +167,7 @@ async function checkServerConnection(endpoint) {
     const token = tokenEl.value.trim();
     btn.disabled = true;
     statusEl.dataset.state = "busy";
-    statusEl.textContent = "İçerik Kasa'ya aktarılıyor…";
+    statusEl.textContent = "İçerik Arşive aktarılıyor…";
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const res = await fetch(endpoint, {
@@ -191,7 +191,7 @@ async function checkServerConnection(endpoint) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
       statusEl.dataset.state = "ok";
-      statusEl.textContent = "✅ Başarılı: İçerik Kasa'ya alındı ve indirme başlatıldı!";
+      statusEl.textContent = "✅ Başarılı: İçerik Arşive alındı ve indirme başlatıldı!";
     } catch (e) {
       statusEl.dataset.state = "error";
       statusEl.textContent = "Hata: " + (e && e.message ? e.message : e);

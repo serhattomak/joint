@@ -101,12 +101,12 @@ const rows = await page.locator('.cv-row').count();
 if (total === null) {
   die(
     'Kural şeridindeki fiş sayısı okunamadı.\n' +
-      '  Kasa görünümünde (Tümü) olduğundan emin ol; kanıt o ekrandan alınır.',
+      '  Arşiv görünümünde (Tümü) olduğundan emin ol; kanıt o ekrandan alınır.',
   );
 }
 if (total === 0) {
   die(
-    'Kasa boş (0 fiş). Kanıt üretilmedi.\n' +
+    'Arşiv boş (0 kayıt). Kanıt üretilmedi.\n' +
       '  Boş bir arşivin ekran görüntüsü, "gerçek veriyle çalışıyor" kanıtı değildir.\n' +
       '  Önce gerçek kayıt ekle (yakala çubuğuna link yapıştır ya da içe aktar), sonra tekrar çalıştır.',
   );

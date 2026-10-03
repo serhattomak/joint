@@ -37,7 +37,7 @@ node dev/recapture-live.mjs
 
 | Dosya | İçerik |
 |---|---|
-| `.impeccable/review/live-desktop.png` | Kasa görünümü, gerçek satırlarla, tam sayfa |
+| `.impeccable/review/live-desktop.png` | Arşiv görünümü, gerçek satırlarla, tam sayfa |
 | `.impeccable/review/live-mobile.png` | Aynı ekran, 390×844 |
 | `.impeccable/review/live-manifest.json` | Provenance: kaç gerçek fiş, kaç kart/satır, URL, UA, zaman |
 
@@ -47,7 +47,7 @@ Betik **kanıt uydurmayı reddeder**:
 
 1. **9222'ye bağlanamazsa** çıkar ve sırayı yazar. Sessizce başka bir tarayıcı açıp
    "uygulama" fotoğrafı çekmez — o, kanıt değil temsil olurdu.
-2. **Kasa boşsa (0 fiş) hiçbir dosya yazmaz.** Boş bir arşivin ekran görüntüsü
+2. **Arşiv boşsa (0 kayıt) hiçbir dosya yazmaz.** Boş bir arşivin ekran görüntüsü
    "gerçek veriyle çalışıyor" iddiasını taşıyamaz. Önce gerçek kayıt ekle.
 3. **Provenance yazar.** Sözleşmenin FINISH maddesi her rasterin kaynağını taşımasını
    istiyor; `live-manifest.json` bunu sayıyla verir.

@@ -885,7 +885,7 @@ export function SettingsView(props: SettingsViewProps) {
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <span className="text-sm font-medium">BGE-M3 Vektör Modeli</span>
-                      <p className="text-xs text-muted-foreground">Türkçe & Çok Dilli Semantik İndeksleme{sizeSuffix('ai-model-embed')}</p>
+                      <p className="text-xs text-muted-foreground">Türkçe & Çok Dilli Anlamsal İndeksleme{sizeSuffix('ai-model-embed')}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {aiStatus?.embed_ready ? (

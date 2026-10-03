@@ -604,7 +604,7 @@ const stepLaunch = async (ctx) => {
   await page.waitForLoadState('load').catch(() => {});
   await dismissOverlays(page);
   await waitUntil(
-    () => page.getByRole('button', { name: 'Kasa Asistanı' }).first().isVisible().catch(() => false),
+    () => page.getByRole('button', { name: 'Asistan' }).first().isVisible().catch(() => false),
     25_000,
   );
 
@@ -858,12 +858,12 @@ const stepDisabled = async (ctx) => {
    * Önce Ayarlar'dan ÇIK: önceki adım "Ayarlar'dan Aç" ile settingsOnly moduna
    * girdi; o modda ana gezinme çalışmaz ve sonda yanlış ekranı inceler.
    */
-  await clickButton(page, 'Kasaya Dön', { exact: false }).catch(() => {});
+  await clickButton(page, 'Arşive Dön', { exact: false }).catch(() => {});
   await waitUntil(
-    () => buttonByText(page, 'Kasa Asistanı').first().isVisible().catch(() => false),
+    () => buttonByText(page, 'Asistan').first().isVisible().catch(() => false),
     8_000,
   );
-  await clickButton(page, 'Kasa Asistanı').catch(() => {});
+  await clickButton(page, 'Asistan').catch(() => {});
   /*
    * `.first()` YETMİYOR: bu kod tabanı bazı öğeleri masaüstü/mobil için İKİ KEZ
    * çiziyor (gizli kopya). `.first()` gizli kopyaya denk gelirse `isVisible()`

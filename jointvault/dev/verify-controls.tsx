@@ -180,8 +180,8 @@ function SurfacesApp() {
 function CrashApp() {
   return (
     <CrashScreen
-      title="Kasa açılamadı"
-      message="Kasa veritabanı başka bir süreç tarafından kilitlenmiş görünüyor."
+      title="Arşiv açılamadı"
+      message="Arşiv veritabanı başka bir süreç tarafından kilitlenmiş görünüyor."
       detail="SqliteError: database is locked"
       onRetry={noop}
     />

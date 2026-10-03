@@ -46,7 +46,7 @@ const main = async () => {
     console.log(`${ok ? 'GEÇTİ' : 'KALDI'}  ${label}${detail ? ` — ${detail}` : ''}`);
   };
 
-  const crashed = await page.getByText('Kasa açılamadı').isVisible().catch(() => false);
+  const crashed = await page.getByText('Arşiv açılamadı').isVisible().catch(() => false);
   report('gerçek kasa ile açılışta çökme ekranı YOK', !crashed);
 
   const shellVisible = await page

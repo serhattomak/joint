@@ -231,7 +231,7 @@ export function Toolbar({
               capture
                 ? 'Enter ile kaydet — önizleme sonra çekilir'
                 : semantic
-                  ? 'Arşivde semantik ara: doğal dil, kavramlar, transkriptler…'
+                  ? 'Arşivde anlamsal ara: doğal dil, kavramlar, transkriptler…'
                   : 'Arşivde ara: başlık · not · URL'
             }
             className={`h-9 rounded-lg bg-card/60 pl-8 text-[0.9375rem] ${!capture ? 'pr-16' : ''} ${semantic && !capture ? 'border-primary/50' : ''}`}
@@ -263,7 +263,7 @@ export function Toolbar({
           <div className="flex shrink-0 items-center gap-1.5">
             {onSemanticToggle &&
               (aiEnabled === false ? (
-                // AI kapalıyken semantik arama ÇALIŞAMAZ: yanıltıcı bir aç/kapa
+                // AI kapalıyken anlamsal arama ÇALIŞAMAZ: yanıltıcı bir aç/kapa
                 // düğmesi yerine doğrudan Ayarlar → Yapay Zekâ'ya götüren gerçek
                 // bir düğme gösterilir. Yönlendirme yoksa düğme hiç çizilmez.
                 onOpenAiSettings ? (
@@ -273,7 +273,7 @@ export function Toolbar({
                     size="sm"
                     onClick={onOpenAiSettings}
                     className="h-7 gap-1 px-2 text-2xs text-muted-foreground"
-                    title="AI kapalı — semantik aramayı Ayarlar > Yapay Zekâ'dan etkinleştir"
+                    title="AI kapalı — anlamsal aramayı Ayarlar > Yapay Zekâ'dan etkinleştir"
                   >
                     <Sparkles className="size-3 text-muted-foreground" />
                     <span className="hidden md:inline">AI kapalı — Ayarlar'dan aç</span>
@@ -286,11 +286,11 @@ export function Toolbar({
                   size="sm"
                   onClick={onSemanticToggle}
                   className="h-7 gap-1 px-2 text-2xs"
-                  title={semantic ? 'Semantik Arama Devrede (BGE-M3 + FTS5)' : 'Semantik Arama Moduna Geç'}
+                  title={semantic ? 'Anlamsal Arama Devrede (BGE-M3 + FTS5)' : 'Anlamsal Arama Moduna Geç'}
                 >
                   <Sparkles className={`size-3 ${semantic ? 'text-primary' : 'text-muted-foreground'}`} />
                   <span className={semantic ? 'font-medium text-foreground' : 'text-muted-foreground'}>
-                    Semantik
+                    Anlamsal
                   </span>
                 </Button>
               ))}

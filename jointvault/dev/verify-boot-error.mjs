@@ -59,7 +59,7 @@ const main = async () => {
   };
 
   /* --- 1. Bozuk kasayla açılış --- */
-  const crashVisible = await page.getByText('Kasa açılamadı').isVisible().catch(() => false);
+  const crashVisible = await page.getByText('Arşiv açılamadı').isVisible().catch(() => false);
   report('bozuk kasada hata ekranı çıktı', crashVisible);
   report(
     'sonsuz iskelet yok',
@@ -75,7 +75,7 @@ const main = async () => {
   await page.getByRole('button', { name: 'Yeniden dene' }).click();
   await sleep(3000);
 
-  const recovered = !(await page.getByText('Kasa açılamadı').isVisible().catch(() => false));
+  const recovered = !(await page.getByText('Arşiv açılamadı').isVisible().catch(() => false));
   report('yeniden dene sonrası hata ekranı kapandı', recovered);
 
   const shellVisible = await page

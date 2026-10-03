@@ -52,7 +52,7 @@ interface ItemGridProps {
   onOpen: (item: Item, tab?: 'detail' | 'reader') => void;
   onClearFilters: () => void;
   onPlayMedia?: (item: Item) => void;
-  /** AI etkin mi? Yalnızca kesin `false` iken semantik arama dürüst "kapalı" durumuna düşer. */
+  /** AI etkin mi? Yalnızca kesin `false` iken anlamsal arama dürüst "kapalı" durumuna düşer. */
   aiEnabled?: boolean;
   /** AI kapalıyken Ayarlar → Yapay Zekâ'ya götürür (ölü düğme yok). */
   onOpenAiSettings?: () => void;
@@ -139,7 +139,7 @@ export function ItemGrid({
   const fetchPage = useCallback(
     async (p: number, size: number): Promise<void> => {
       const q = debouncedQuery.trim();
-      // AI kapalıyken semantik arama HİÇ denenmez (embedding/istek yok) ve
+      // AI kapalıyken anlamsal arama HİÇ denenmez (embedding/istek yok) ve
       // sessizce FTS'e düşülmez: dürüst durum ayrı bir dala çizilir (semanticOff).
       if (semantic && q && !aiEnabled) {
         setRows([]);
@@ -315,7 +315,7 @@ export function ItemGrid({
     favoritesOnly ||
     localOnly;
 
-  // AI kapalı + semantik sorgu: sessiz FTS fallback yerine dürüst durum çizilir.
+  // AI kapalı + anlamsal sorgu: sessiz FTS fallback yerine dürüst durum çizilir.
   const semanticOff = semantic === true && debouncedQuery.trim() !== '' && !aiEnabled;
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -396,14 +396,14 @@ export function ItemGrid({
       {strip}
       <div className="min-h-0 flex-1 px-4 py-4">
         {semanticOff ? (
-          // AI kapalıyken semantik arama dürüst durum + gerçek yönlendirme
-          // gösterir; sonuçları FTS ile doldurup "semantik" gibi sunmak yok.
+          // AI kapalıyken anlamsal arama dürüst durum + gerçek yönlendirme
+          // gösterir; sonuçları FTS ile doldurup "anlamsal" gibi sunmak yok.
           <div className="animate-rise flex flex-col items-center gap-3 py-20 text-center">
             <Sparkles className="size-7 text-muted-foreground" strokeWidth={1.5} />
             <div className="flex flex-col gap-1">
               <p className="text-title">AI kapalı</p>
               <p className="max-w-[46ch] text-sm text-muted-foreground">
-                Semantik arama için yerel AI'yı Ayarlar → Yapay Zekâ'dan etkinleştir.
+                Anlamsal arama için yerel AI'yı Ayarlar → Yapay Zekâ'dan etkinleştir.
               </p>
             </div>
             {onOpenAiSettings && (

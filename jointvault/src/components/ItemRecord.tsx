@@ -345,7 +345,7 @@ export function ItemRecord({
         className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-5xl h-[88vh] max-h-[88vh] sm:max-w-5xl p-0 flex flex-col overflow-hidden bg-card text-card-foreground border border-border rounded-xl z-50 focus:outline-none"
       >
         <DialogTitle className="sr-only">Kayıt Detayı - {item.title || item.url}</DialogTitle>
-        <DialogDescription className="sr-only">Öğe kayıt detayı ve okuyucu modu</DialogDescription>
+        <DialogDescription className="sr-only">Kayıt detayı ve okuyucu modu</DialogDescription>
 
         {/* Üst Başlık & Sekme Çubuğu */}
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-5">
