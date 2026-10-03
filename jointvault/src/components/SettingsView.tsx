@@ -484,9 +484,9 @@ export function SettingsView(props: SettingsViewProps) {
         onProgress: (current, total, title) => setRecatProgress({ current, total, title }),
       });
       setRecatResult(
-        `${res.applied} yeniden üretildi · ${res.replaced} değişti · ` +
-          `${res.lowConfidence} düşük güvenle atlandı` +
-          `${res.failed > 0 ? ` · ${res.failed} başarısız` : ''}.`,
+        `${res.applied} kayıt yeniden üretildi` +
+          `${res.failed > 0 ? ` · ${res.failed} başarısız` : ''}. ` +
+          'Eşik altı kalan kayıtlarda eski atamalar korundu.',
       );
     } catch (e) {
       setAiError(String(e));
