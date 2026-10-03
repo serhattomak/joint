@@ -19,6 +19,7 @@ import { batchScrapeItems } from '@/lib/scraper';
 import {
   createCollection,
   getCategoriesForItem,
+  getDb,
   getOrCreateCategory,
   getOrCreateTag,
   getTagsForItem,
@@ -32,6 +33,7 @@ import {
   updateItem,
 } from '@/lib/db/client';
 import type { Collection } from '@/lib/db/types';
+import { createBackup } from '@/lib/db/backup';
 
 interface BulkActionsProps {  ids: string[];
   total: number;
@@ -49,6 +51,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
   const [aiOpen, setAiOpen] = useState(false);
   const [aiProgress, setAiProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [aiAutoApply, setAiAutoApply] = useState(true);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const [aiFinished, setAiFinished] = useState<{ processed: number; applied: number } | null>(null);
   const [scrapeOpen, setScrapeOpen] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number; title: string } | null>(null);
@@ -173,6 +176,32 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
       onDone();
     } catch (err) {
       console.error('[BulkActions] AI Toplu İşlem hatası:', err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAiReplace = async (): Promise<void> => {
+    setConfirmReplace(false);
+    setBusy(true);
+    setAiProgress(null);
+    setAiFinished(null);
+    try {
+      // Yedek ZORUNLU: alınamazsa işlem başlamaz.
+      await createBackup(await getDb());
+      const allItems = await listItems();
+      const targetItems = allItems.filter((it) => ids.includes(it.id));
+      const res = await batchCategorizeItems(targetItems, {
+        forceAutoApply: true,
+        replaceExisting: true,
+        onProgress: (current, total, title) => {
+          setAiProgress({ current, total, title });
+        },
+      });
+      setAiFinished(res);
+      onDone();
+    } catch (err) {
+      console.error('[BulkActions] yeniden kategorize hatası:', err);
     } finally {
       setBusy(false);
     }
@@ -377,6 +406,9 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
                 <Button variant="outline" onClick={() => setAiOpen(false)} disabled={busy}>
                   Vazgeç
                 </Button>
+                <Button variant="outline" onClick={() => setConfirmReplace(true)} disabled={busy}>
+                  Sıfırdan Yeniden Kategorize Et
+                </Button>
                 <Button onClick={() => void handleAiBatch()} disabled={busy}>
                   {busy ? 'İşleniyor…' : 'Analizi Başlat'}
                 </Button>
@@ -385,6 +417,15 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmReplace}
+        onOpenChange={setConfirmReplace}
+        title="Seçili kayıtlar yeniden kategorize edilsin mi?"
+        description="Seçili kayıtların mevcut kategori ve etiketleri, yeni üretilenlerle DEĞİŞTİRİLİR. İşlemden önce otomatik yedek alınır."
+        confirmLabel="Yeniden Kategorize Et"
+        onConfirm={() => void handleAiReplace()}
+      />
 
       {/* Toplu İçerik Kazıma (Scraping) Dialogu */}
       <Dialog open={scrapeOpen} onOpenChange={setScrapeOpen}>
