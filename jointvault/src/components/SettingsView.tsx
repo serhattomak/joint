@@ -31,9 +31,11 @@ import {
   exportVault,
   getAllCategoriesByItem,
   getAllTagsByItem,
+  getDb,
   importVault,
   listItems,
 } from '@/lib/db/client';
+import { createBackup } from '@/lib/db/backup';
 import { QUALITY_OPTIONS, getDefaultQuality, setDefaultQuality, type DownloadQuality } from '@/lib/downloads';
 import {
   WHISPER_MODELS,
@@ -459,6 +461,38 @@ export function SettingsView(props: SettingsViewProps) {
       localStorage.setItem(TAG_THRESHOLD_KEY, v);
     } catch {
       // localStorage erişilemezse sessizce geç
+    }
+  };
+
+  const [recatBusy, setRecatBusy] = useState(false);
+  const [recatProgress, setRecatProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+  const [recatResult, setRecatResult] = useState<string | null>(null);
+  const [confirmRecatOpen, setConfirmRecatOpen] = useState(false);
+
+  const runRecategorizeAll = async () => {
+    setConfirmRecatOpen(false);
+    setRecatBusy(true);
+    setRecatResult(null);
+    setRecatProgress(null);
+    try {
+      // Yedek ZORUNLU: alınamazsa işlem başlamaz.
+      await createBackup(await getDb());
+      const allItems = await listItems();
+      const res = await batchCategorizeItems(allItems, {
+        forceAutoApply: true,
+        replaceExisting: true,
+        onProgress: (current, total, title) => setRecatProgress({ current, total, title }),
+      });
+      setRecatResult(
+        `${res.applied} yeniden üretildi · ${res.replaced} değişti · ` +
+          `${res.lowConfidence} düşük güvenle atlandı` +
+          `${res.failed > 0 ? ` · ${res.failed} başarısız` : ''}.`,
+      );
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setRecatBusy(false);
+      setRecatProgress(null);
     }
   };
 
@@ -1084,6 +1118,38 @@ export function SettingsView(props: SettingsViewProps) {
                         {organizeBusy ? 'İşleniyor…' : 'Kategorisizleri Düzenle'}
                       </Button>
                     </SettingRow>
+
+                    <SettingRow
+                      label="Tüm Kayıtları Yeniden Kategorize Et"
+                      hint={
+                        <>
+                          {recatProgress
+                            ? `${recatProgress.current} / ${recatProgress.total}: ${recatProgress.title} işleniyor…`
+                            : 'Her kaydın kategori/etiketi baştan üretilir. Önce otomatik yedek alınır; eşik altı kayıtlarda eski atamalar korunur.'}
+                          {recatResult && (
+                            <span className="mt-1 block font-medium text-emerald-400">✓ {recatResult}</span>
+                          )}
+                        </>
+                      }
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setConfirmRecatOpen(true)}
+                        disabled={recatBusy || !aiEnabled || !aiStatus?.llm_ready}
+                      >
+                        {recatBusy ? 'Yeniden üretiliyor…' : 'Tümünü Yeniden Kategorize Et'}
+                      </Button>
+                    </SettingRow>
+
+                    <ConfirmDialog
+                      open={confirmRecatOpen}
+                      onOpenChange={setConfirmRecatOpen}
+                      title="Tüm kayıtlar yeniden kategorize edilsin mi?"
+                      description="Her kaydın mevcut kategori ve etiketleri, yeni üretilenlerle DEĞİŞTİRİLİR. İşlemden önce otomatik yedek alınır; geri dönmek istersen Yedekleme bölümünü kullanabilirsin."
+                      confirmLabel="Yeniden Kategorize Et"
+                      onConfirm={() => void runRecategorizeAll()}
+                    />
 
                     <SettingRow
                       label="Anlamsal Arşiv İndeksi"
