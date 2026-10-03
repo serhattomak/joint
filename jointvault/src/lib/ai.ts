@@ -37,6 +37,7 @@ import {
 } from './db/client';
 import type { HybridSearchResult, Item } from './db/types';
 import { invalidateVectorIndex } from './vector-cache';
+import { matchTaxonomyInText, resolveCategories, resolveTags } from './taxonomy';
 import {
   buildHistoryWindow,
   mergeQueryPayload,
@@ -143,6 +144,17 @@ export interface CategorizeAndTagResult {
   tags: string[];
   summary: string;
   confidence: number;
+  /** Önerinin kaynağı: deterministik eşleşme / LLM / ikisi / hiçbiri. */
+  source: 'deterministic' | 'llm' | 'both' | 'none';
+}
+
+export const TAG_THRESHOLD_KEY = 'jv-ai-tag-threshold';
+
+/** Ayarlardan güven eşiği (yoksa 0.6). */
+export function readTagThreshold(): number {
+  const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(TAG_THRESHOLD_KEY) : null;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.6;
 }
 
 export interface AiWarmupStatus {
@@ -722,25 +734,70 @@ export async function categorizeAndTagItem(
     tags = dbTags.map((t) => t.name);
   }
 
-  // Transkripti kontrol et
   const transcriptText = await getItemTranscriptText(item);
-  const combinedText = [
-    item.note ? `Not: ${item.note}` : '',
-    transcriptText ? `Transkript: ${transcriptText}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const text = [item.title, item.note, transcriptText].filter(Boolean).join('\n');
 
-  return invoke<CategorizeAndTagResult>('ai_categorize_and_tag', {
-    payload: {
-      title: item.title || '',
-      text: combinedText,
-      platform: item.platform || '',
-      url: item.url || '',
-      existing_categories: cats,
-      existing_tags: tags,
-    },
+  // 1. Deterministik ön geçiş: mevcut taksonomi metinde geçiyor mu? (LLM'siz)
+  const det = matchTaxonomyInText(text, cats, tags);
+
+  // 2. Boşluk varsa LLM devreye girer.
+  const needLlm = det.categories.length === 0 || det.tags.length < 2;
+  let llm: CategorizeAndTagResult | null = null;
+  if (needLlm) {
+    try {
+      llm = await invoke<CategorizeAndTagResult>('ai_categorize_and_tag', {
+        payload: {
+          title: item.title || '',
+          text: [
+            item.note ? `Not: ${item.note}` : '',
+            transcriptText ? `Transkript: ${transcriptText}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+          platform: item.platform || '',
+          url: item.url || '',
+          existing_categories: cats,
+          existing_tags: tags,
+        },
+      });
+    } catch {
+      llm = null;
+    }
+  }
+
+  // Geçersiz JSON tespiti: boş + 0 güven → başarısız say.
+  const llmValid =
+    !!llm &&
+    (llm.confidence > 0 || llm.categories.length > 0 || llm.tags.length > 0 || !!llm.summary);
+
+  const suggestedCats = [...det.categories, ...(llmValid ? llm!.categories : [])];
+  const suggestedTags = [...det.tags, ...(llmValid ? llm!.tags : [])];
+
+  const llmConfidence = llmValid ? llm!.confidence : 0;
+  const resolvedCats = resolveCategories(suggestedCats, cats, {
+    confidence: llmConfidence,
+    minConfidence: readTagThreshold(),
+    maxNew: 1,
   });
+  const resolvedTags = resolveTags(suggestedTags, tags, { max: 5 });
+
+  const detHasAny = det.categories.length > 0 || det.tags.length > 0;
+  const confidence = detHasAny ? 1 : llmValid ? llm!.confidence : 0;
+  const source: CategorizeAndTagResult['source'] = detHasAny
+    ? llmValid
+      ? 'both'
+      : 'deterministic'
+    : llmValid
+      ? 'llm'
+      : 'none';
+
+  return {
+    categories: resolvedCats.names,
+    tags: resolvedTags,
+    summary: llmValid ? llm!.summary : '',
+    confidence,
+    source,
+  };
 }
 
 /**
@@ -793,15 +850,25 @@ export async function batchCategorizeItems(
     forceAutoApply?: boolean;
     onProgress?: (current: number, total: number, itemTitle: string) => void;
   },
-): Promise<{ processed: number; applied: number }> {
+): Promise<{
+  processed: number;
+  applied: number;
+  lowConfidence: number;
+  failed: number;
+  deterministic: number;
+}> {
   const allCats = (await listCategories()).map((c) => c.name);
   const allTags = (await listTags()).map((t) => t.name);
 
   const cfg = await getAiStatus();
   const shouldApply = options?.forceAutoApply ?? cfg.auto_apply_tags ?? false;
+  const threshold = readTagThreshold();
 
   let processed = 0;
   let applied = 0;
+  let lowConfidence = 0;
+  let failed = 0;
+  let deterministic = 0;
 
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -813,7 +880,17 @@ export async function batchCategorizeItems(
       const result = await categorizeAndTagItem(it, allCats, allTags);
       processed++;
 
-      if (shouldApply && (result.categories.length > 0 || result.tags.length > 0)) {
+      if (result.source === 'deterministic' || result.source === 'both') deterministic++;
+
+      const hasSuggestions = result.categories.length > 0 || result.tags.length > 0;
+      const canApply =
+        shouldApply &&
+        hasSuggestions &&
+        (result.source === 'deterministic' ||
+          result.source === 'both' ||
+          result.confidence >= threshold);
+
+      if (canApply) {
         await applyCategorization(it.id, result.categories, result.tags);
         applied++;
         for (const c of result.categories) {
@@ -822,12 +899,17 @@ export async function batchCategorizeItems(
         for (const t of result.tags) {
           if (!allTags.includes(t)) allTags.push(t);
         }
+      } else if (result.source === 'none') {
+        failed++;
+      } else {
+        lowConfidence++;
       }
     } catch (err) {
+      failed++;
       console.error(`Öğe kategorize edilirken hata (ID: ${it.id}):`, err);
     }
   }
 
-  return { processed, applied };
+  return { processed, applied, lowConfidence, failed, deterministic };
 }
 
