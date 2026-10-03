@@ -66,6 +66,32 @@ export const MIGRATIONS: Migration[] = [
       'CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(favorite)',
     ],
   },
+  {
+    version: 5,
+    description: 'sohbet oturumları ve mesajları',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_updated ON ai_chat_sessions(pinned DESC, updated_at DESC)',
+      `CREATE TABLE IF NOT EXISTS ai_chat_messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES ai_chat_sessions(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        references_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_session ON ai_chat_messages(session_id, created_at)',
+      `CREATE VIRTUAL TABLE IF NOT EXISTS ai_chat_messages_fts USING fts5(
+        message_id UNINDEXED, session_id UNINDEXED, content, tokenize = 'unicode61'
+      )`,
+    ],
+  },
 ];
 
 /** Sürümü `current` olan bir kasadan sonra uygulanacak göçleri sırayla döndürür. */

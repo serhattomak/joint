@@ -211,3 +211,55 @@ describe('runMigrations — yedek kancası', () => {
     expect(called).toBe(false);
   });
 });
+
+describe('runMigrations — göç 5 (sohbet)', () => {
+  const chatTables = (db: DatabaseSync): string[] =>
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('ai_chat_sessions','ai_chat_messages','ai_chat_messages_fts') ORDER BY name",
+      )
+      .all()
+      .map((r) => String((r as { name: unknown }).name));
+
+  it('taze kasada sohbet tablolarını kurar', async () => {
+    // Arrange
+    const db = new DatabaseSync(':memory:');
+
+    // Act
+    await runMigrations(sqliteExecutor(db));
+
+    // Assert
+    expect(chatTables(db)).toEqual(['ai_chat_messages', 'ai_chat_messages_fts', 'ai_chat_sessions']);
+  });
+
+  it('eski kasada veriyi koruyarak sohbet tablolarını ekler', async () => {
+    // Arrange
+    const db = schemaAtVersionZero();
+    db.exec("INSERT INTO items (id, url, platform) VALUES ('i1', 'https://a', 'x')");
+
+    // Act
+    const result = await runMigrations(sqliteExecutor(db));
+
+    // Assert
+    expect(result.to).toBe(LATEST);
+    expect(chatTables(db)).toContain('ai_chat_sessions');
+    expect(db.prepare('SELECT COUNT(*) AS n FROM items').get()).toEqual({ n: 1 });
+  });
+
+  it('mesaj FTS tablosu MATCH ile aranabilir', async () => {
+    // Arrange
+    const db = new DatabaseSync(':memory:');
+    await runMigrations(sqliteExecutor(db));
+
+    // Act
+    db.exec("INSERT INTO ai_chat_sessions (id, title) VALUES ('s1', 'Rust')");
+    db.exec("INSERT INTO ai_chat_messages (id, session_id, role, content) VALUES ('m1','s1','user','async rust notlari')");
+    db.exec("INSERT INTO ai_chat_messages_fts (message_id, session_id, content) VALUES ('m1','s1','async rust notlari')");
+    const hits = db
+      .prepare("SELECT message_id FROM ai_chat_messages_fts WHERE ai_chat_messages_fts MATCH 'rust'")
+      .all();
+
+    // Assert
+    expect(hits.map((r) => String((r as { message_id: unknown }).message_id))).toEqual(['m1']);
+  });
+});
