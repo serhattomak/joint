@@ -31,14 +31,14 @@ interface NavEntry {
   group: NavGroup;
 }
 
-type NavGroup = 'kasa' | 'araclar' | 'sistem';
+type NavGroup = 'arşiv' | 'araclar' | 'sistem';
 
 /*
- * Çekmece rayı — kataloğun omurgası. Bölümler gerçek gruplardır (KASA · ARAÇLAR · SİSTEM);
+ * Çekmece rayı — kataloğun omurgası. Bölümler gerçek gruplardır (ARŞİV · ARAÇLAR · SİSTEM);
  * aktif öğe bir çekmece sekmesidir: yüzeyi içerikle birleşir, sağ kenara taşan çentik
  * rayın hairline'ını keser. Renkli sol şerit yok — sekme fiziksel olarak taşar.
  *
- * Gruplama işin doğasına göre: KASA = kendi arşivin (tümü/favori/koleksiyon),
+ * Gruplama işin doğasına göre: ARŞİV = kendi arşivin (tümü/favori/koleksiyon),
  * ARAÇLAR = kazı besleyen ve işleyen araçlar, SİSTEM = durum ve ayar.
  */
 function useNavEntries(props: SidebarProps): NavEntry[] {
@@ -58,14 +58,14 @@ function useNavEntries(props: SidebarProps): NavEntry[] {
   });
 
   return [
-    { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome, group: 'kasa' },
-    viewBtn('collections', <FolderKanban />, 'Koleksiyonlar', 'kasa'),
+    { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome, group: 'arşiv' },
+    viewBtn('collections', <FolderKanban />, 'Koleksiyonlar', 'arşiv'),
     viewBtn('downloads', <Download />, 'İndirme Yöneticisi', 'araclar'),
     viewBtn('sync', <RefreshCw />, 'Eşitleme', 'araclar'),
     viewBtn('converter', <Clapperboard />, 'Dönüştürücü', 'araclar'),
-    viewBtn('toolbox', <Wrench />, 'Araç Kutusu', 'araclar'),
+    viewBtn('toolbox', <Wrench />, 'Araçlar', 'araclar'),
     viewBtn('stats', <BarChart3 />, 'İstatistikler', 'sistem'),
-    viewBtn('ai', <Sparkles />, 'Kasa Asistanı', 'sistem'),
+    viewBtn('ai', <Sparkles />, 'Asistan', 'sistem'),
     viewBtn('settings', <Settings />, 'Ayarlar', 'sistem'),
   ];
 }
@@ -161,9 +161,9 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside className="material-rail sticky top-[52px] hidden h-[calc(100vh-52px)] w-[244px] shrink-0 flex-col overflow-y-auto border-r border-rail-border pt-2 text-rail-foreground md:flex">
       <nav className="flex flex-1 flex-col gap-0.5 px-2 pb-4">
-        <GroupLabel>Kasa</GroupLabel>
+        <GroupLabel>Arşiv</GroupLabel>
         {entries
-          .filter((e) => e.group === 'kasa')
+          .filter((e) => e.group === 'arşiv')
           .map((e) => (
             <NavButton key={e.key} entry={e} aiStatus={aiStatusInfo} />
           ))}

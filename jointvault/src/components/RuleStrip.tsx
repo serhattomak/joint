@@ -274,7 +274,7 @@ export function RuleStrip(props: RuleStripProps) {
           options={SORT_OPTIONS}
         />
         <span data-num className="text-2xs text-muted-foreground">
-          {props.total.toLocaleString('tr-TR')} fiş
+          {props.total.toLocaleString('tr-TR')} kayıt
         </span>
       </div>
     </div>

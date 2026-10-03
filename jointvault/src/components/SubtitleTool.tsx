@@ -39,7 +39,7 @@ interface SubtitleOutput {
 interface SubtitleToolProps {
   refreshKey: number;
   onDone: () => void;
-  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  /** Verilirse başlıkta "Araçlar'a dön" eylemi çizilir. */
   onClose?: () => void;
 }
 
@@ -181,7 +181,7 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
     setTranscript(res.data);
     setBusy('');
 
-    // Whisper bittiğinde: Kayıtlı kasa öğesi ise arka planda chunk indeksleme ve akıllı analiz tetikle
+    // Whisper bittiğinde: Kayıtlı arşiv öğesi ise arka planda chunk indeksleme ve akıllı analiz tetikle
     if (selected.itemId) {
       const itemId = selected.itemId;
       const srtData = res.data;
@@ -294,7 +294,7 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
       actions={
         onClose ? (
           <Button variant="outline" size="sm" onClick={onClose}>
-            <ArrowLeft /> Araç Kutusu&apos;na dön
+            <ArrowLeft /> Araçlar&apos;a dön
           </Button>
         ) : undefined
       }
@@ -423,7 +423,7 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
                               if (!itemId || !categories) return;
                               await applyCategorization(itemId, categories, tags || []);
                               setAiNotice({
-                                message: 'Kategoriler ve etiketler kasaya başarıyla uygulandı.',
+                                message: 'Kategoriler ve etiketler arşive başarıyla uygulandı.',
                                 status: 'applied',
                               });
                             }}

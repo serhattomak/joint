@@ -28,7 +28,7 @@ interface GifOutput {
 interface GifToolProps {
   refreshKey: number;
   onDone: () => void;
-  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  /** Verilirse başlıkta "Araçlar'a dön" eylemi çizilir. */
   onClose?: () => void;
 }
 
@@ -136,7 +136,7 @@ export function GifTool({ refreshKey, onDone, onClose }: GifToolProps) {
       actions={
         onClose ? (
           <Button variant="outline" size="sm" onClick={onClose}>
-            <ArrowLeft /> Araç Kutusu&apos;na dön
+            <ArrowLeft /> Araçlar&apos;a dön
           </Button>
         ) : undefined
       }

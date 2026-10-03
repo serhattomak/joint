@@ -4,7 +4,7 @@ import { cn } from 'cn';
 
 /*
  * Damga — durum renkle değil mühürle bildirilir.
- * Kataloğun kendi sözlüğü: arşive girmiş fiş damgalanır, eksik olan işaretlenir.
+ * Kataloğun kendi sözlüğü: arşive girmiş kayıt damgalanır, eksik olan işaretlenir.
  * İşaretler tek ikon ailesinden (lucide) ve tek kalınlıktan gelir; glif/emoji yok,
  * çünkü durum okunur olmalı, süslenmiş değil.
  * Sözlük sekiz durumdur ve tamamı burada yaşar: bir durumu başka bir durumun rengiyle

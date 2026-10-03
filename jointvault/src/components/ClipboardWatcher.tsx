@@ -118,7 +118,7 @@ export function ClipboardWatcher({
         </Button>
       )}
       <Button size="sm" onClick={() => void save()} disabled={saving}>
-        {saving ? '…' : 'Kasaya Ekle'}
+        {saving ? '…' : 'Arşive Ekle'}
       </Button>
       <Button variant="ghost" size="icon-sm" onClick={dismiss} aria-label="Yoksay">
         <X />

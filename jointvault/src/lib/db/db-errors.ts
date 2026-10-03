@@ -19,11 +19,11 @@ export interface DbInitError {
 }
 
 const MESSAGES: Record<DbInitErrorKind, string> = {
-  locked: 'Kasa veritabanı başka bir süreç tarafından kilitlenmiş görünüyor.',
-  corrupt: 'Kasa veritabanı dosyası okunamıyor (bozulmuş olabilir).',
-  unwritable: 'Kasa veritabanına yazılamıyor — klasör izinlerini kontrol et.',
-  schema: 'Kasa veritabanının yapısı beklenenden farklı.',
-  unknown: 'Kasa veritabanı açılamadı.',
+  locked: 'Arşiv veritabanı başka bir süreç tarafından kilitlenmiş görünüyor.',
+  corrupt: 'Arşiv veritabanı dosyası okunamıyor (bozulmuş olabilir).',
+  unwritable: 'Arşiv veritabanına yazılamıyor — klasör izinlerini kontrol et.',
+  schema: 'Arşiv veritabanının yapısı beklenenden farklı.',
+  unknown: 'Arşiv veritabanı açılamadı.',
 };
 
 const PATTERNS: { kind: DbInitErrorKind; test: RegExp }[] = [

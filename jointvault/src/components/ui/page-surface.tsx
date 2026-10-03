@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 /*
  * Sayfa yüzeyi — tam-sayfa görünümlerin tek kabuğu.
  *
- * Koleksiyonlar, indirmeler, eşitleme, istatistikler ve araç kutusu aynı sayfa
+ * Koleksiyonlar, indirmeler, eşitleme, istatistikler ve araçlar aynı sayfa
  * ritmine oturur: solda ikon çipi, tek başlık ölçeği (`text-title`), isteğe bağlı
  * açıklama ve sağda eylemler. Padding tektir; genişlik içeriğe göre seçilir —
  * böylece her görünümün kendi `min-h-screen` / `max-w-*` / `px-*` kabuğunu

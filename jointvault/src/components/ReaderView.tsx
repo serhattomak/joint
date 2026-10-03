@@ -97,7 +97,7 @@ export function ReaderView({ item, article, loading = false, onScrape }: ReaderV
         <div className="flex max-w-sm flex-col gap-1">
           <h3 className="text-sm font-semibold text-foreground">İçerik Henüz Çekilmedi</h3>
           <p className="text-2xs leading-relaxed text-muted-foreground">
-            Bu yer iminin gerçek web sayfasına gidip makale metnini, başlıklarını, görsellerini ve videolarını okuyucu modunda saklayabilirsiniz.
+            Bu kaydın gerçek web sayfasına gidip makale metnini, başlıklarını, görsellerini ve videolarını okuyucu modunda saklayabilirsiniz.
           </p>
         </div>
         <Button onClick={() => void onScrape()} size="sm" className="gap-2 font-medium">

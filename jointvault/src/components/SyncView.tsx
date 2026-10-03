@@ -187,7 +187,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       const url = config.instagram_url || 'https://www.instagram.com/saved/all-posts/';
       await openExternal(url);
       alert(
-        "Instagram Kaydedilenler sayfası tarayıcınızda açıldı.\n\nLütfen açılan sekmede JointVault Collector eklentisini açıp 'Topla' butonuna tıklayın. Gönderileriniz otomatik olarak buraya aktarılacaktır."
+        "Instagram Kaydedilenler sayfası tarayıcınızda açıldı.\n\nLütfen açılan sekmede JointVault Collector eklentisini açıp 'Topla' butonuna tıklayın. Kayıtlarınız otomatik olarak buraya aktarılacaktır."
       );
       return;
     }
@@ -572,7 +572,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
                 </span>
                 <div>
                   <h2 className="text-sm font-semibold">Instagram</h2>
-                  <p className="text-2xs text-muted-foreground">Kaydedilen Gönderiler</p>
+                  <p className="text-2xs text-muted-foreground">Kaydedilen Kayıtlar</p>
                 </div>
               </div>
               <Switch
@@ -586,7 +586,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
               <p className="leading-relaxed">
                 <span className="font-semibold text-foreground">Eklenti ile toplama: </span>
                 Instagram kaydedilenler tarayıcı korumalıdır; sayfayı açıp eklentideki <b>Topla</b> ile
-                gönderileri tek tıkla buraya aktarabilirsin.
+                kayıtları tek tıkla buraya aktarabilirsin.
               </p>
             </div>
 

@@ -139,13 +139,13 @@ export function MediaPlayerModal({
                         onOpenItem(item);
                       }}
                       className="text-white/80 hover:bg-white/15 hover:text-white"
-                      aria-label="Fiş detaylarını incele"
+                      aria-label="Kayıt detaylarını incele"
                     />
                   }
                 >
                   <FileText className="size-4" />
                 </TooltipTrigger>
-                <TooltipContent>Fiş Detayları</TooltipContent>
+                <TooltipContent>Kayıt Detayları</TooltipContent>
               </Tooltip>
             )}
 

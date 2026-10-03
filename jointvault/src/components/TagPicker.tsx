@@ -16,7 +16,7 @@ interface TagPickerProps {
  *
  * Görüntüleme (varsayılan): yalnızca bu kayda ait olanlar; veritabanındaki tüm
  * liste ekrana dökülmez. Ekleme/çıkarma "Düzenle" ile açılan ayrı bir alanda
- * yapılır. Böylece fiş okunur kalır, taksonomi duvarı görünmez.
+ * yapılır. Böylece kayıt okunur kalır, taksonomi duvarı görünmez.
  *
  * Düzenleme: mevcutların tamamı (seçilebilir) + yeni yazma alanı.
  * `loadNames` ile veri kaynağı değişir (etiket veya kategori).

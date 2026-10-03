@@ -465,7 +465,7 @@ export function SettingsView(props: SettingsViewProps) {
     try {
       const allItems = await listItems();
       /* N+1 YOK: öğe başına 2 sorgu yerine toplam 2 sorgu. Ölçek farkı burada
-         büyük — 2000 fişlik kasada 4000 çağrı yerine 2. */
+         büyük — 2000 kayıtlık arşivde 4000 çağrı yerine 2. */
       const [tagsByItem, catsByItem] = await Promise.all([getAllTagsByItem(), getAllCategoriesByItem()]);
       const targetItems = allItems.filter(
         (item) => (catsByItem[item.id]?.length ?? 0) === 0 || (tagsByItem[item.id]?.length ?? 0) === 0,
@@ -546,7 +546,7 @@ export function SettingsView(props: SettingsViewProps) {
     { id: 'components', label: 'Bileşenler', icon: <PackageCheck className="size-4" />, desc: 'ffmpeg, ffprobe, yt-dlp ve whisper motorunun kurulum durumu' },
     { id: 'diagnostics', label: 'Tanılama', icon: <Activity className="size-4" />, desc: 'Sistem donanımı, CUDA, ffmpeg ve yt-dlp sağlık kontrolleri' },
     { id: 'extension', label: 'Eklenti', icon: <Plug className="size-4" />, desc: 'Tarayıcı uzantısı ile güvenli bağlantı eşleşme anahtarı' },
-    { id: 'backup', label: 'Yedekleme', icon: <Database className="size-4" />, desc: 'Kasa veritabanını JSON olarak dışa aktar veya geri yükle' },
+    { id: 'backup', label: 'Yedekleme', icon: <Database className="size-4" />, desc: 'Arşiv veritabanını JSON olarak dışa aktar veya geri yükle' },
   ];
 
   const currentTab = tabs.find((t) => t.id === tab) ?? tabs[0];
@@ -650,7 +650,7 @@ export function SettingsView(props: SettingsViewProps) {
           <div>
             <h1 className="text-sm font-semibold tracking-tight">Ayarlar</h1>
             <p className="text-2xs text-muted-foreground">
-              Sistem tercihleri, modeller, donanım hızlandırma ve kasa yönetimi
+              Sistem tercihleri, modeller, donanım hızlandırma ve arşiv yönetimi
             </p>
           </div>
         </div>
@@ -662,7 +662,7 @@ export function SettingsView(props: SettingsViewProps) {
             onClick={onClose}
             className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
-            <ArrowLeft className="size-3.5" /> Kasaya Dön
+            <ArrowLeft className="size-3.5" /> Arşive Dön
           </Button>
         )}
       </header>
@@ -731,8 +731,8 @@ export function SettingsView(props: SettingsViewProps) {
                       <p className="text-sm font-medium">Yerel AI</p>
                       <p className="text-xs text-muted-foreground">
                         {aiEnabled
-                          ? 'Etkin. Kasa Asistanı ve anlamsal arama kullanılabilir.'
-                          : 'Kapalı. Kasa Asistanı ve anlamsal arama bu anahtar açılmadan çalışmaz.'}
+                          ? 'Etkin. Asistan ve anlamsal arama kullanılabilir.'
+                          : 'Kapalı. Asistan ve anlamsal arama bu anahtar açılmadan çalışmaz.'}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -1001,7 +1001,7 @@ export function SettingsView(props: SettingsViewProps) {
                   <div className="flex flex-col divide-y divide-border/70">
                     <SettingRow
                       label="Önerileri Otomatik Uygula"
-                      hint="Yeni kayıt eklendiğinde veya altyazı çıkarıldığında AI önerilerini sormadan kasaya kaydeder."
+                      hint="Yeni kayıt eklendiğinde veya altyazı çıkarıldığında AI önerilerini sormadan arşive kaydeder."
                     >
                       <Switch
                         checked={aiStatus?.auto_apply_tags ?? false}
@@ -1031,12 +1031,12 @@ export function SettingsView(props: SettingsViewProps) {
                   </div>
                 </div>
 
-                {/* 6. Kasa Bakım & Düzenleme Araçları */}
+                {/* 6. Arşiv Bakım & Düzenleme Araçları */}
                 <div className="flex flex-col gap-3.5 settings-card p-4">
                   <div>
-                    <p className="text-sm font-medium">Kasa Bakım & Düzenleme Araçları</p>
+                    <p className="text-sm font-medium">Arşiv Bakım & Düzenleme Araçları</p>
                     <p className="text-xs text-muted-foreground">
-                      Kasadaki içeriklerin taksonomisini ve vektör veritabanını toplu olarak yönetin.
+                      Arşivdeki içeriklerin taksonomisini ve vektör veritabanını toplu olarak yönetin.
                     </p>
                   </div>
 
@@ -1080,7 +1080,7 @@ export function SettingsView(props: SettingsViewProps) {
                     </SettingRow>
 
                     <SettingRow
-                      label="Semantik Kasa İndeksi"
+                      label="Anlamsal Arşiv İndeksi"
                       hint={
                         reindexProgress
                           ? `${reindexProgress.current} / ${reindexProgress.total} işleniyor…`
@@ -1276,7 +1276,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </div>
                 <SettingRow
                   label="Varsayılan kalite"
-                  hint="Fişten veya toplu indirmede hedef seçilmediğinde kullanılır."
+                  hint="Kayıttan veya toplu indirmede hedef seçilmediğinde kullanılır."
                   htmlFor="set-quality"
                 >
                   <Select
@@ -1404,7 +1404,7 @@ export function SettingsView(props: SettingsViewProps) {
         title={aiConfirm === 'disable' ? 'Yerel AI kapatılsın mı?' : "Yerel AI'yı etkinleştir"}
         description={
           aiConfirm === 'disable' ? (
-            'Kasa Asistanı ve anlamsal arama çalışmayı durdurur. İndirilmiş modeller diskte kalır; dilediğinde yeniden açabilirsin.'
+            'Asistan ve anlamsal arama çalışmayı durdurur. İndirilmiş modeller diskte kalır; dilediğinde yeniden açabilirsin.'
           ) : (
             <>
               Yalnızca özellik açılır; <span className="font-medium text-foreground">hiçbir indirme başlamaz</span>.

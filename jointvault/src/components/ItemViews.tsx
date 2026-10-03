@@ -49,7 +49,7 @@ export interface ItemViewProps {
   onToggle: (id: string) => void;
   onFavorite: (id: string) => void;
   onDelete: (id: string) => void;
-  /** Fişi/merkeziyetçi görünümü aç: kaydın tamamı geniş modal pencerede açılır. */
+  /** Kaydı/merkeziyetçi görünümü aç: kaydın tamamı geniş modal pencerede açılır. */
   onOpen: (item: Item, tab?: 'detail' | 'reader') => void;
   progress: number | undefined;
   meta?: { speed?: string | null; eta?: string | null };
@@ -135,13 +135,13 @@ function ActionButtons({
               variant="ghost"
               size="icon-sm"
               onClick={() => onOpen(item, 'detail')}
-              aria-label="Detayları ve Fişi İncele"
+              aria-label="Detayları ve Kaydı İncele"
             />
           }
         >
           <Pencil className="size-3.5" />
         </TooltipTrigger>
-        <TooltipContent>Detayları ve Fişi İncele</TooltipContent>
+        <TooltipContent>Detayları ve Kaydı İncele</TooltipContent>
       </Tooltip>
 
       <Tooltip>

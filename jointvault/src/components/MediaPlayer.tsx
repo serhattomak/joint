@@ -109,7 +109,7 @@ export function MediaPlayer({
     }
   }, [paused]);
 
-  // Başlangıç zamanı desteği (örn. fişten sinema moduna geçişte kalınan saniyeden devam et)
+  // Başlangıç zamanı desteği (örn. kayıttan sinema moduna geçişte kalınan saniyeden devam et)
   useEffect(() => {
     if (initialTime > 0 && videoRef.current) {
       videoRef.current.currentTime = initialTime;

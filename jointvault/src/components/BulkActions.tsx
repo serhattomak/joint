@@ -327,7 +327,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
               AI ile Toplu Kategorizasyon & Etiketleme
             </DialogTitle>
             <DialogDescription>
-              {ids.length} seçili gönderi yerel Qwen 2.5 modeliyle taranarak başlık, not ve transkriptlerine göre otomatik sınıflandırılacaktır.
+              {ids.length} seçili kayıt yerel Qwen 2.5 modeliyle taranarak başlık, not ve transkriptlerine göre otomatik sınıflandırılacaktır.
             </DialogDescription>
           </DialogHeader>
 
@@ -392,7 +392,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
           <DialogHeader>
             <DialogTitle>Web İçeriklerini Toplu Kazı</DialogTitle>
             <DialogDescription>
-              Seçili {ids.length} yer iminin web sayfalarına gidilerek makale metinleri, başlıklar, görseller ve videolar kazınacak ve tam metin aramaya indekslenecek.
+              Seçili {ids.length} kaydın web sayfalarına gidilerek makale metinleri, başlıklar, görseller ve videolar kazınacak ve tam metin aramaya indekslenecek.
             </DialogDescription>
           </DialogHeader>
 

@@ -82,7 +82,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Kasa İndirmeleri
+  // Arşiv İndirmeleri
   const [sourceTab, setSourceTab] = useState<'vault' | 'turbo'>('vault');
   const [vaultItems, setVaultItems] = useState<Item[]>([]);
   const [vaultLoading, setVaultLoading] = useState(true);
@@ -103,7 +103,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
   const [batchUrls, setBatchUrls] = useState('');
   const [batchBusy, setBatchBusy] = useState(false);
 
-  // Kasa Medyası Silme Durumu (Diskten ve/veya Kasadan)
+  // Arşiv Medyası Silme Durumu (Diskten ve/veya Arşivden)
   const [vaultItemToDelete, setVaultItemToDelete] = useState<Item | null>(null);
   const [deleteVaultDiskFile, setDeleteVaultDiskFile] = useState(true);
   const [deleteVaultRecord, setDeleteVaultRecord] = useState(false);
@@ -129,7 +129,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
       setVaultLoading(true);
       const items = await listDownloadedItems();
       setVaultItems(items);
-      // Eğer Kasa'da henüz indirme yok ama turbo kuyruğunda varsa turbo sekmesine geç
+      // Eğer Arşiv'de henüz indirme yok ama turbo kuyruğunda varsa turbo sekmesine geç
       if (items.length === 0 && jobs.length > 0) {
         setSourceTab('turbo');
       }
@@ -205,7 +205,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
     });
   };
 
-  // Kasa Medyası Silme İşlemi (Diskten ve/veya Kasadan)
+  // Arşiv Medyası Silme İşlemi (Diskten ve/veya Arşivden)
   const handleConfirmDeleteVaultItem = async () => {
     if (!vaultItemToDelete) return;
     setVaultDeleteBusy(true);
@@ -224,7 +224,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
         }
       }
 
-      // 2. Kasa kaydını tamamen sil veya indirme durumunu sıfırla
+      // 2. Arşiv kaydını tamamen sil veya indirme durumunu sıfırla
       if (deleteVaultRecord) {
         await removeItem(vaultItemToDelete.id);
       } else {
@@ -381,19 +381,19 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
         <span className="inline-flex items-center gap-2">
           İndirme Yöneticisi
           <Badge variant="outline" className="font-mono text-xs font-normal">
-            {sourceTab === 'vault' ? 'Kasa Medyaları' : 'Turbo Engine'}
+            {sourceTab === 'vault' ? 'Arşiv Medyaları' : 'Turbo Engine'}
           </Badge>
         </span>
       }
       description={
         sourceTab === 'vault'
-          ? "Kasa'daki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
+          ? "Arşiv'deki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
           : 'Çok kanallı paralel parçalı indirme motoru ile dosyalarınızı en yüksek hızda indirin ve yönetin.'
       }
       width="5xl"
       actions={
         <>
-          {/* Ana Kaynak Seçici: Kasa Medyaları vs Turbo İndirmeler */}
+          {/* Ana Kaynak Seçici: Arşiv Medyaları vs Turbo İndirmeler */}
           <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 shadow-2xs">
             <button
               type="button"
@@ -405,7 +405,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
               }`}
             >
               <Film className="size-3.5 text-primary" />
-              <span>Kasa Medyaları</span>
+              <span>Arşiv Medyaları</span>
               <span className="rounded-full bg-primary/15 px-1.5 py-0.2 font-mono text-2xs text-primary font-semibold">
                 {vaultItems.length}
               </span>
@@ -445,7 +445,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
 
           {onClose && (
             <Button variant="outline" size="sm" onClick={onClose}>
-              <ArrowLeft /> Kasaya Dön
+              <ArrowLeft /> Arşive Dön
             </Button>
           )}
         </>
@@ -461,7 +461,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
               <Input
                 value={vaultSearch}
                 onChange={(e) => setVaultSearch(e.target.value)}
-                placeholder="Kasa indirmelerinde ara (başlık, URL, dosya)…"
+                placeholder="Arşiv indirmelerinde ara (başlık, URL, dosya)…"
                 className="pl-9 text-sm"
               />
             </div>
@@ -491,7 +491,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
 
           {/* İndirme Listesi / Kartları */}
           {vaultLoading ? (
-            <p className="py-16 text-center text-sm text-muted-foreground">Kasa indirmeleri yükleniyor…</p>
+            <p className="py-16 text-center text-sm text-muted-foreground">Arşiv indirmeleri yükleniyor…</p>
           ) : filteredVaultItems.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-14 text-center bg-card/30">
               <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -502,13 +502,13 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
               </h3>
               <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
                 {vaultItems.length === 0
-                  ? "Kasa (Tümü) ekranındaki herhangi bir YouTube, X veya video kartının sağ altındaki İndir butonuna tıklayarak medyayı bilgisayarınıza indirebilirsiniz. İndirilen tüm video ve ses dosyaları burada listelenir."
+                  ? "Arşiv (Tümü) ekranındaki herhangi bir YouTube, X veya video kartının sağ altındaki İndir butonuna tıklayarak medyayı bilgisayarınıza indirebilirsiniz. İndirilen tüm video ve ses dosyaları burada listelenir."
                   : 'Farklı bir arama terimi veya platform filtresi deneyebilirsiniz.'}
               </p>
               {vaultItems.length === 0 && onClose && (
                 <div className="mt-6 flex justify-center">
                   <Button onClick={onClose} className="gap-2">
-                    <ArrowLeft className="size-4" /> Kasa'ya Dön ve Medyaları İndir
+                    <ArrowLeft className="size-4" /> Arşiv'e Dön ve Medyaları İndir
                   </Button>
                 </div>
               )}
@@ -600,7 +600,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                           size="icon-sm"
                           variant="ghost"
                           className="h-8 w-8"
-                          title="Merkezi Fişi Aç"
+                          title="Merkezi Kaydı Aç"
                           onClick={() => onOpenItem(item)}
                         >
                           <Pencil className="size-3.5 text-muted-foreground" />
@@ -975,7 +975,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
         </DialogContent>
       </Dialog>
 
-      {/* KASA MEDYASI SİLME DİYALOĞU */}
+      {/* ARŞİV MEDYASI SİLME DİYALOĞU */}
       <Dialog
         open={vaultItemToDelete !== null}
         onOpenChange={(open) => {
@@ -1035,7 +1035,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
               </div>
             </div>
 
-            {/* Seçenek 2: Kasa Kaydını da Kaldır */}
+            {/* Seçenek 2: Arşiv Kaydını da Kaldır */}
             <div
               onClick={() => setDeleteVaultRecord((v) => !v)}
               className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 cursor-pointer hover:bg-muted/30 transition select-none"
@@ -1047,12 +1047,12 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
               />
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs font-semibold text-foreground">
-                  Kaydı Kasadan tamamen kaldır
+                  Kaydı Arşivden tamamen kaldır
                 </span>
                 <span className="text-2xs text-muted-foreground leading-relaxed">
                   {deleteVaultRecord
-                    ? 'Fiş ve bağlantı arşivi kasadan tamamen silinecektir.'
-                    : 'Kapalı: Fiş kasada kalır, yalnızca indirilmiş medya temizlenir ve listeden çıkarılır.'}
+                    ? 'Kayıt ve bağlantı arşivi arşivden tamamen silinecektir.'
+                    : 'Kapalı: Kayıt arşivde kalır, yalnızca indirilmiş medya temizlenir ve listeden çıkarılır.'}
                 </span>
               </div>
             </div>

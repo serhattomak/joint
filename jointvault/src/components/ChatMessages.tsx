@@ -20,7 +20,7 @@ export interface ChatMessage {
 interface ChatMessagesProps {
   messages: ChatMessage[];
   onOpenItem?: (itemId: string) => void;
-  /** Yapısal sorgu sürüyorsa akan mesajda "Kasa taranıyor…" gösterilir. */
+  /** Yapısal sorgu sürüyorsa akan mesajda "Arşiv taranıyor…" gösterilir. */
   querying: boolean;
 }
 
@@ -105,7 +105,7 @@ export function ChatMessages({ messages, onOpenItem, querying }: ChatMessagesPro
                 {querying && m.isStreaming && !cleanContent ? (
                   <span className="flex items-center gap-2 text-muted-foreground">
                     <Loader2 className="size-3.5 animate-spin" />
-                    Kasa taranıyor…
+                    Arşiv taranıyor…
                   </span>
                 ) : (
                   <>
@@ -123,7 +123,7 @@ export function ChatMessages({ messages, onOpenItem, querying }: ChatMessagesPro
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
                       <Sparkles className="size-3.5 shrink-0" />
-                      <span className="truncate">Eylem Önerisi: {actionTag.itemTitle || 'Kasaya Ekle'}</span>
+                      <span className="truncate">Eylem Önerisi: {actionTag.itemTitle || 'Arşive Ekle'}</span>
                     </div>
                     <Button
                       variant={appliedActionIds.has(m.id) ? 'outline' : 'default'}
@@ -139,7 +139,7 @@ export function ChatMessages({ messages, onOpenItem, querying }: ChatMessagesPro
                         setAppliedActionIds((prev) => new Set(prev).add(m.id));
                       }}
                     >
-                      {appliedActionIds.has(m.id) ? '✓ Kasaya Uygulandı' : 'Kasaya Uygula'}
+                      {appliedActionIds.has(m.id) ? '✓ Arşive Uygulandı' : 'Arşive Uygula'}
                     </Button>
                   </div>
 

@@ -108,7 +108,7 @@ export function ItemRecord({
 }: ItemRecordProps) {
   const { open, reveal } = useOpenTarget();
   const installer = useComponentInstaller();
-  /* Çekip-kapat: fiş yaprağı merkezîdir — aşağı çekince kapanır. */
+  /* Çekip-kapat: kayıt yaprağı merkezîdir — aşağı çekince kapanır. */
   const drag = useDragDismiss('y', onClose);
   const [title, setTitle] = useState(item.title ?? '');
   const [note, setNote] = useState(item.note ?? '');
@@ -162,7 +162,7 @@ export function ItemRecord({
     void getArticleForItem(item.id).then(setArticle);
   }, [item, initialTab]);
 
-  // Arka planda indirme olaylarını dinle — fişi kapatmadan video anında hazır olsun
+  // Arka planda indirme olaylarını dinle — kaydı kapatmadan video anında hazır olsun
   useDownloadProgress(
     useCallback(
       (e) => {
@@ -345,7 +345,7 @@ export function ItemRecord({
         className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-w-5xl h-[88vh] max-h-[88vh] sm:max-w-5xl p-0 flex flex-col overflow-hidden bg-card text-card-foreground border border-border rounded-xl z-50 focus:outline-none"
       >
         <DialogTitle className="sr-only">Kayıt Detayı - {item.title || item.url}</DialogTitle>
-        <DialogDescription className="sr-only">Öğe fiş detayı ve okuyucu modu</DialogDescription>
+        <DialogDescription className="sr-only">Öğe kayıt detayı ve okuyucu modu</DialogDescription>
 
         {/* Üst Başlık & Sekme Çubuğu */}
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-5">
@@ -366,7 +366,7 @@ export function ItemRecord({
             </button>
           </div>
 
-          {/* Orta: Okuyucu & Fiş Sekme Seçicisi */}
+          {/* Orta: Okuyucu & Kayıt Sekme Seçicisi */}
           <div className="flex items-center rounded-lg border border-border/60 bg-muted/60 p-1">
             <button
               type="button"
@@ -396,7 +396,7 @@ export function ItemRecord({
               }`}
             >
               <FileText className="size-3.5" />
-              <span>Fiş ve Medya</span>
+              <span>Kayıt ve Medya</span>
             </button>
           </div>
 
@@ -470,7 +470,7 @@ export function ItemRecord({
                       rows={4}
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      placeholder="Bu fişle ilgili kişisel notlarınız veya alıntılar…"
+                      placeholder="Bu kayıtla ilgili kişisel notlarınız veya alıntılar…"
                       className="text-sm"
                     />
                   </div>
@@ -772,7 +772,7 @@ export function ItemRecord({
                           </div>
                           <Progress value={downloadProgress} className="h-2" />
                           <p className="text-3xs leading-relaxed text-muted-foreground">
-                            İndirme bittiğinde video otomatik olarak burada hazır olacak ve hemen oynatılabilecektir. Fişi kapatmanıza gerek yoktur.
+                            İndirme bittiğinde video otomatik olarak burada hazır olacak ve hemen oynatılabilecektir. Kaydı kapatmanıza gerek yoktur.
                           </p>
                         </div>
                       ) : downloadStatus === 'error' ? (
@@ -932,7 +932,7 @@ export function ItemRecord({
                     <span className="text-2xs text-muted-foreground leading-relaxed">
                       {deleteDiskFile
                         ? 'Video/ses dosyası kalıcı olarak diskten silinecektir.'
-                        : 'Dosya bilgisayarınızda saklanır, yalnızca kasa kaydı silinir.'}
+                        : 'Dosya bilgisayarınızda saklanır, yalnızca arşiv kaydı silinir.'}
                     </span>
                   </div>
                 </div>

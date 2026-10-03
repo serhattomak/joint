@@ -113,7 +113,7 @@ function App() {
 
   const refresh = useCallback((): void => setRefreshKey((k) => k + 1), []);
 
-  /* Kasa açılamazsa boş kabuk göstermek yerine ne olduğunu söyleriz. */
+  /* Arşiv açılamazsa boş kabuk göstermek yerine ne olduğunu söyleriz. */
   const [bootError, setBootError] = useState<DbInitError | null>(null);
 
   const retryBoot = useCallback((): void => {
@@ -155,7 +155,7 @@ function App() {
 
   useEffect(() => {
     let live = true;
-    /* Hatayı yutmak yok: kasa açılamadıysa kullanıcı bunu görmeli. */
+    /* Hatayı yutmak yok: arşiv açılamadıysa kullanıcı bunu görmeli. */
     void Promise.all([listCollections(), listCategories(), listTags()])
       .then(([nextCollections, nextCategories, nextTags]) => {
         if (!live) return;
@@ -164,7 +164,7 @@ function App() {
         setTags(nextTags);
         setBootError(null);
         /* Açılış yedeği (günde bir). Başarısız olsa bile uygulama çalışmaya
-           devam eder — yedek alamamak, kasayı açamamaktan iyidir. */
+           devam eder — yedek alamamak, arşivi açamamaktan iyidir. */
         void runDailyBackup().catch((error: unknown) => {
           console.warn('[backup:günlük]', error);
         });
@@ -327,7 +327,7 @@ function App() {
   };
 
   // Yakala çubuğu her ekranda durur. Bir araç yüzeyindeyken yazmaya başlamak
-  // kasayı açar; aksi hâlde yazılan şeyin karşılığı görünmez olurdu.
+  // arşivi açar; aksi hâlde yazılan şeyin karşılığı görünmez olurdu.
   const handleQuery = (next: string): void => {
     setQuery(next);
     if (next.trim() !== '' && !isVault) showAll();
@@ -338,9 +338,9 @@ function App() {
     { id: 'add', label: 'Yeni öğe ekle', icon: <Plus className="size-4" />, run: () => { setAddUrl(''); setAddOpen(true); } },
     { id: 'bulk', label: 'Toplu aktar', icon: <Upload className="size-4" />, run: () => setBulkOpen(true) },
     { id: 'url', label: "URL'den indir", icon: <Download className="size-4" />, run: () => setUrlDlOpen(true) },
-    { id: 'ai', label: 'Kasa Asistanı (AI)', icon: <Sparkles className="size-4" />, run: openAi },
+    { id: 'ai', label: 'Asistan (AI)', icon: <Sparkles className="size-4" />, run: openAi },
     { id: 'converter', label: 'Dönüştürücü', icon: <Clapperboard className="size-4" />, run: openConverter },
-    { id: 'toolbox', label: 'Araç Kutusu', icon: <Wrench className="size-4" />, run: openToolbox },
+    { id: 'toolbox', label: 'Araçlar', icon: <Wrench className="size-4" />, run: openToolbox },
     { id: 'tool-merge', label: 'Araç: Birleştir', icon: <Combine className="size-4" />, run: openMerge },
     { id: 'tool-silence', label: 'Araç: Sessizlik Kırpma', icon: <Scissors className="size-4" />, run: openSilence },
     { id: 'tool-gif', label: 'Araç: GIF/WebM', icon: <Film className="size-4" />, run: openGif },
@@ -450,7 +450,7 @@ function App() {
 
   const sidebarProps = {
     view: currentView,
-    /* Kapsam sekmeleri (Favoriler/Yerel) kasada kaldığı için "Tümü" öğesi kasa
+    /* Kapsam sekmeleri (Favoriler/Yerel) arşivde kaldığı için "Tümü" öğesi arşiv
        açık olduğu sürece aktiftir; ayrım başlık altındaki sekmelerdedir. */
     homeActive: isVault,
     onHome: showAll,
@@ -471,14 +471,14 @@ function App() {
     <NoticeProvider>
       {/* Kurulum akışı NoticeProvider'ın İÇİNDE olmak zorunda: ComponentInstallerProvider
           useNotice() çağırır ve bildirim bağlamı olmadan throw eder. ErrorBoundary'nin
-          DIŞINDA ama CrashScreen dalını da sarmalayacak konumda bağlanır: kasa
+          DIŞINDA ama CrashScreen dalını da sarmalayacak konumda bağlanır: arşiv
           açılamadığında da kurulum ve bildirim aynı yolda çalışsın. Tam olarak BİR kez. */}
       <ComponentInstallerProvider>
       <ErrorBoundary>
-      {/* Kasa açılamadıysa kabuğu çizmek yerine nedeni söylenir. */}
+      {/* Arşiv açılamadıysa kabuğu çizmek yerine nedeni söylenir. */}
       {bootError ? (
         <CrashScreen
-          title="Kasa açılamadı"
+          title="Arşiv açılamadı"
           message={bootError.message}
           detail={bootError.detail}
           onRetry={retryBoot}

@@ -1,7 +1,7 @@
 /*
  * Sıfırlama onayı — YAZILI onay ister.
  *
- * "Emin misin?" düğmesi bu işlem için çok zayıf: kasanın tamamı siliniyor.
+ * "Emin misin?" düğmesi bu işlem için çok zayıf: arşivin tamamı siliniyor.
  * Kullanıcı `SIFIRLA` yazana kadar onay düğmesi kapalı kalır.
  */
 import { useState } from 'react';
@@ -36,7 +36,7 @@ export function ResetDatabaseDialog({ open, onOpenChange, onConfirm, busy = fals
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Kasadaki tüm kayıtlar silinir. Devam etmek için{' '}
+            Arşivdeki tüm kayıtlar silinir. Devam etmek için{' '}
             <span className="font-mono">{RESET_PHRASE}</span> yaz.
           </p>
           <Input

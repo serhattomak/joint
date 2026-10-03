@@ -62,7 +62,7 @@ interface ItemGridProps {
 // content-visibility granted, ama 1000+ düğümün tek commit'te kurulması dev build'de pahalı.
 export const PAGE_SIZES = [24, 48, 96] as const;
 
-/* Kapsam sekmeleri: kasanın üç görünümü. Favoriler/Yerel birer gözetim değil,
+/* Kapsam sekmeleri: arşivin üç görünümü. Favoriler/Yerel birer gözetim değil,
    aynı ızgaranın kapsamıdır — bu yüzden sidebar'da değil başlığın altındadır. */
 const SCOPES = [
   { id: 'all', label: 'Tümü' },
@@ -449,7 +449,7 @@ export function ItemGrid({
           <div className="animate-rise flex flex-col items-center gap-3 py-20 text-center">
             <PackageOpen className="size-7 text-muted-foreground" strokeWidth={1.5} />
             <div className="flex flex-col gap-1">
-              <p className="text-title">{isFiltering ? 'Bu kurallara uyan fiş yok' : 'Kasa boş'}</p>
+              <p className="text-title">{isFiltering ? 'Bu kurallara uyan kayıt yok' : 'Arşiv boş'}</p>
               <p className="max-w-[46ch] text-sm text-muted-foreground">
                 {isFiltering
                   ? 'Kural şeridinden bir filtreyi gevşet ya da temizle.'
@@ -593,7 +593,7 @@ export function ItemGrid({
         onOpenChange={(o) => {
           if (!o) setPendingDelete(null);
         }}
-        title="Bu fiş silinsin mi?"
+        title="Bu kayıt silinsin mi?"
         description={pendingDelete?.title ?? pendingDelete?.url ?? undefined}
         confirmLabel="Sil"
         onConfirm={() => void confirmDelete()}

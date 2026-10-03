@@ -1,7 +1,7 @@
 /**
- * Asistanın kasaya "hâkimiyet" katmanı.
+ * Asistanın arşive "hâkimiyet" katmanı.
  *
- * İki parça: (1) her prompt'a eklenen hafif kasa özeti, (2) modelin ürettiği
+ * İki parça: (1) her prompt'a eklenen hafif arşiv özeti, (2) modelin ürettiği
  * `action:query` yapısal sorgusunu güvenli biçimde SQLite'a çevirip çalıştırma.
  * Uydurma yok: filtre eşleşmezse dürüstçe 0 sonuç döner.
  */
@@ -90,7 +90,7 @@ export function normalizeVaultQuery(raw: unknown): VaultQuery {
   return out;
 }
 
-/** Her prompt'a eklenen kompakt kasa özeti (~1200 karakter tavanı). */
+/** Her prompt'a eklenen kompakt arşiv özeti (~1200 karakter tavanı). */
 export async function buildVaultSummary(): Promise<string> {
   const db = await getDb();
 
@@ -118,7 +118,7 @@ export async function buildVaultSummary(): Promise<string> {
 
   const lines: string[] = [];
   lines.push(
-    `Kasa: ${total} kayıt · ${favRow?.n ?? 0} favori · ${localRow?.n ?? 0} yerel indirilmiş.`,
+    `Arşiv: ${total} kayıt · ${favRow?.n ?? 0} favori · ${localRow?.n ?? 0} yerel indirilmiş.`,
   );
   if (platformRows.length > 0) {
     lines.push(`Platformlar: ${platformRows.map((p) => `${p.platform} (${p.n})`).join(', ')}.`);
@@ -209,7 +209,7 @@ export interface VaultTaxonomy {
   platforms: string[];
 }
 
-/** Kasadaki taksonomi adları + platform slug'ları (niyet tespiti için). */
+/** Arşivdeki taksonomi adları + platform slug'ları (niyet tespiti için). */
 export async function loadTaxonomy(): Promise<VaultTaxonomy> {
   const db = await getDb();
   const [cats, tags, platRows] = await Promise.all([
@@ -279,8 +279,8 @@ export function detectStructuralIntent(query: string, tax: VaultTaxonomy): Vault
   );
 
   // "kategori"/"etiket" KELİMESİ geçiyor ama ad eşleşmiyorsa yapısal sorgu
-  // çalıştırma: aksi hâlde "tüm kasa" sayısı o kategoriye aitmiş gibi sunulur.
-  // Bu durumda model, kasa özetindeki gerçek kategori listesinden yanıtlar.
+  // çalıştırma: aksi hâlde "tüm arşiv" sayısı o kategoriye aitmiş gibi sunulur.
+  // Bu durumda model, arşiv özetindeki gerçek kategori listesinden yanıtlar.
   if (/kategori/.test(q) && !category) return null;
   if (/etiket/.test(q) && !tag) return null;
 

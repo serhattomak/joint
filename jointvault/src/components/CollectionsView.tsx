@@ -50,7 +50,7 @@ type DeleteKind = 'collection' | 'category' | 'tag';
 const DELETE_CONFIRM_TEXT: Record<DeleteKind, { title: string; description: string }> = {
   collection: {
     title: 'Koleksiyon silinsin mi?',
-    description: 'Koleksiyon içindeki gönderiler silinmez, yalnızca koleksiyonsuz kalır.',
+    description: 'Koleksiyon içindeki kayıtlar silinmez, yalnızca koleksiyonsuz kalır.',
   },
   category: {
     title: 'Kategori silinsin mi?',
@@ -58,7 +58,7 @@ const DELETE_CONFIRM_TEXT: Record<DeleteKind, { title: string; description: stri
   },
   tag: {
     title: 'Etiket silinsin mi?',
-    description: 'Etiket tüm fişlerden temizlenir; gönderileriniz silinmez.',
+    description: 'Etiket tüm kayıtlardan temizlenir; kayıtlarınız silinmez.',
   },
 };
 
@@ -190,12 +190,12 @@ export function CollectionsView({
     <PageSurface
       icon={<FolderKanban />}
       title="Koleksiyonlar & Düzenleme"
-      description="Kasandaki tüm kayıtları koleksiyonlara ayır, kategori ve etiket ağacını düzenle."
+      description="Arşivindeki tüm kayıtları koleksiyonlara ayır, kategori ve etiket ağacını düzenle."
       width="5xl"
       actions={
         onClose ? (
           <Button variant="outline" size="sm" onClick={onClose}>
-            <ArrowLeft /> Kasaya Dön
+            <ArrowLeft /> Arşive Dön
           </Button>
         ) : undefined
       }
@@ -634,7 +634,7 @@ export function CollectionsView({
                         if (onSelectTag) onSelectTag(t.id);
                       }}
                       className="font-medium text-foreground hover:text-primary transition-colors"
-                      title="Kasada bu etiketi filtrele"
+                      title="Arşivde bu etiketi filtrele"
                     >
                       {t.name}
                     </button>

@@ -27,7 +27,7 @@ interface MergeOutput {
 interface MergeToolProps {
   refreshKey: number;
   onDone: () => void;
-  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  /** Verilirse başlıkta "Araçlar'a dön" eylemi çizilir. */
   onClose?: () => void;
 }
 
@@ -142,7 +142,7 @@ export function MergeTool({ refreshKey, onDone, onClose }: MergeToolProps) {
       actions={
         onClose ? (
           <Button variant="outline" size="sm" onClick={onClose}>
-            <ArrowLeft /> Araç Kutusu&apos;na dön
+            <ArrowLeft /> Araçlar&apos;a dön
           </Button>
         ) : undefined
       }

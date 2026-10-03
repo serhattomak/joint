@@ -41,7 +41,7 @@ const TOOLS: { id: ToolboxToolId; icon: React.ReactNode; title: string; desc: st
 ];
 
 /*
- * Araç Kutusu — Ayarlar'ın gruplandırılmış liste dili: tek opak kart, hairline
+ * Araçlar — Ayarlar'ın gruplandırılmış liste dili: tek opak kart, hairline
  * satırlar, solda tinted ikon çipi, sağda açılış oku. Araç seçilince doğrudan
  * açılır; arada ikinci bir "aç" adımı yok.
  */
@@ -49,8 +49,8 @@ export function ToolboxHub({ onPick }: ToolboxHubProps) {
   return (
     <PageSurface
       icon={<Wrench strokeWidth={2} />}
-      title="Araç Kutusu"
-      description="Kasadaki medyayı yerelde işleyen araçlar."
+      title="Araçlar"
+      description="Arşivdeki medyayı yerelde işleyen araçlar."
       width="3xl"
     >
       <div className="settings-card flex flex-col divide-y divide-border/70 overflow-hidden">

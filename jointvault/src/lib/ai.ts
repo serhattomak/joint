@@ -454,7 +454,7 @@ export async function indexMissingEmbeddings(
 }
 
 /**
- * Kasadaki tüm kayıtları baştan indeksler (iki faz: içerik kurulumu + vektörleme).
+ * Arşivdeki tüm kayıtları baştan indeksler (iki faz: içerik kurulumu + vektörleme).
  */
 export async function reindexVault(
   onProgress?: (current: number, total: number) => void,
@@ -508,7 +508,7 @@ export async function reindexVault(
   await indexMissingEmbeddings(onProgress);
 }
 
-// --- RAG Hattı: 'Kasa Asistanı' ---
+// --- RAG Hattı: 'Asistan' ---
 
 const FENCE = '```';
 
@@ -517,7 +517,7 @@ const FENCE = '```';
  * `action:tag` deseniyle aynı ailedendir; `ai-chat.ts` ayrıştırır.
  */
 const VAULT_QUERY_CONTRACT = [
-  'YAPISAL SORGU: Yanıtlamak için kasadan yapısal veri (filtre, liste, sayım; ör. "kaç favorim var", "Rust etiketli YouTube kayıtları", "son 30 gün") gerekiyorsa, SADECE şu bloğu yaz ve başka hiçbir şey yazma:',
+  'YAPISAL SORGU: Yanıtlamak için arşivden yapısal veri (filtre, liste, sayım; ör. "kaç favorim var", "Rust etiketli YouTube kayıtları", "son 30 gün") gerekiyorsa, SADECE şu bloğu yaz ve başka hiçbir şey yazma:',
   `${FENCE}action:query`,
   '{ "filters": { "platform": "youtube", "tag": "rust", "favorite": true, "sinceDays": 30, "query": "async", "sort": "new" }, "limit": 20, "countOnly": false }',
   FENCE,
@@ -527,7 +527,7 @@ const VAULT_QUERY_CONTRACT = [
 /** "Yalnızca kaynaklar" kuralını sayı/liste sorularında ezen açık uyarı. */
 const PRIORITY_RULES = [
   'ÖNCELİK (aşağıdaki tüm kuralların üstünde):',
-  '1. KASA ÖZETİ ve YAPISAL SONUÇ KESİN veridir; sayı/adet/liste/filtre sorularında tek doğru kaynak bunlardır.',
+  '1. ARŞİV ÖZETİ ve YAPISAL SONUÇ KESİN veridir; sayı/adet/liste/filtre sorularında tek doğru kaynak bunlardır.',
   '2. "Kesin sayı veremem", "filtreleme yapılmadı", "kaynaklarda yok" gibi kaçamak yanıt YASAK; sayı varsa doğrudan söyle.',
   '3. KAYNAKLAR içerik parçalarıdır; içindeki parça sayısı (ör. 5) KAYIT SAYISI DEĞİLDİR.',
 ].join('\n');
@@ -545,7 +545,7 @@ export interface AskVaultOptions {
 }
 
 /**
- * Kasada soru aratıp transkript/not bağlamıyla Qwen 2.5'ten kaynaklı yanıt üretir.
+ * Arşivde soru aratıp transkript/not bağlamıyla Qwen 2.5'ten kaynaklı yanıt üretir.
  */
 export async function askVault(
   query: string,
@@ -578,7 +578,7 @@ export async function askVault(
   // 2. Hibrit arama yap (en alakalı 5 chunk)
   const references = await searchHybridChunks(query, queryEmbedding, 5);
 
-  // 2b. Hafif kasa özeti (yapısal gerçek; sayım/filtre soruları için)
+  // 2b. Hafif arşiv özeti (yapısal gerçek; sayım/filtre soruları için)
   let vaultSummary = '';
   try {
     vaultSummary = await buildVaultSummary();
@@ -615,13 +615,13 @@ export async function askVault(
       })
       .join('\n\n---\n\n');
   } else {
-    contextText = 'Kasada bu soruyla doğrudan eşleşen bir transkript veya not bulunamadı.';
+    contextText = 'Arşivde bu soruyla doğrudan eşleşen bir transkript veya not bulunamadı.';
   }
 
-  const systemPrompt = `Sen JointVault kişisel medya kasasının zeki Türkçe asistanısın.\n\
-Kullanıcının sorularına, aşağıda kasadan çekilen transkript ve not parçalarını (KAYNAKLAR) kullanarak yanıt ver.\n\
+  const systemPrompt = `Sen JointVault kişisel medya arşivinin zeki Türkçe asistanısın.\n\
+Kullanıcının sorularına, aşağıda arşivden çekilen transkript ve not parçalarını (KAYNAKLAR) kullanarak yanıt ver.\n\
 KURALLAR:\n\
-1. SADECE verilen KAYNAKLAR ile üstteki KASA ÖZETİ/YAPISAL SONUÇ bloklarına dayan; bunların dışında hiçbir şey uydurma. Sayı, adet ve liste sorularında KASA ÖZETİ ve YAPISAL SONUÇ KESİNDİR; "kesin sayı veremem" deme.\n\
+1. SADECE verilen KAYNAKLAR ile üstteki ARŞİV ÖZETİ/YAPISAL SONUÇ bloklarına dayan; bunların dışında hiçbir şey uydurma. Sayı, adet ve liste sorularında ARŞİV ÖZETİ ve YAPISAL SONUÇ KESİNDİR; "kesin sayı veremem" deme.\n\
 2. Bilgi aldığın kaynakları parantez içinde belirt (örn: "[Kaynak 1]").\n\
 3. Eğer transkriptte geçen bir zamandan bahsediyorsan saniyesini de yaz (örn: "01:25 saniyesinde...").\n\
 4. Samimi, teknik ve doğrudan bir dille yanıt ver.\n\
@@ -637,7 +637,7 @@ KURALLAR:\n\
 KAYNAKLAR:\n${contextText}`;
 
   const structuredSection = structuredBlock ? `\n\nYAPISAL SONUÇ:\n${structuredBlock}` : '';
-  const fullSystemPrompt = `${PRIORITY_RULES}\n\n${systemPrompt}\n\nKASA ÖZETİ:\n${vaultSummary}${structuredSection}\n\n${VAULT_QUERY_CONTRACT}`;
+  const fullSystemPrompt = `${PRIORITY_RULES}\n\n${systemPrompt}\n\nARŞİV ÖZETİ:\n${vaultSummary}${structuredSection}\n\n${VAULT_QUERY_CONTRACT}`;
 
   // Geçmiş, karakter bütçesiyle kırpılır (Qwen context'ini taşırmaz).
   const history: HistoryMessage[] = buildHistoryWindow(
@@ -669,8 +669,8 @@ KAYNAKLAR:\n${contextText}`;
     queryItems = result.items;
 
     const resultText = vq.countOnly
-      ? `Kasa sorgusu sonucu: ${result.count} kayıt.`
-      : `Kasa sorgusu sonucu (${result.count} kayıt):\n${result.items
+      ? `Arşiv sorgusu sonucu: ${result.count} kayıt.`
+      : `Arşiv sorgusu sonucu (${result.count} kayıt):\n${result.items
           .map(
             (i) =>
               `- ${i.title ?? i.url} [${i.platform}] ${i.createdAt.slice(0, 10)} (ID: ${i.id})`,

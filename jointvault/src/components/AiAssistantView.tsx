@@ -33,12 +33,12 @@ import { Button } from '@/components/ui/button';
 
 const SMART_PROMPT_TEMPLATES = [
   {
-    label: 'Haftalık Kasa Özeti',
+    label: 'Haftalık Arşiv Özeti',
     prompt: 'Son kaydettiğim içeriklerin ana temalarını ve önemli noktalarını özetle.',
   },
   {
     label: 'Video Zaman Çizelgesi',
-    prompt: 'Kasamdaki videolardan önemli zaman damgalarını ve konu başlıklarını listele.',
+    prompt: 'Arşivimdeki videolardan önemli zaman damgalarını ve konu başlıklarını listele.',
   },
   {
     label: 'Pratik İpuçları',
@@ -46,16 +46,16 @@ const SMART_PROMPT_TEMPLATES = [
   },
   {
     label: 'Kategori Analizi',
-    prompt: 'Kasamdaki içerikleri konularına göre grupla ve eksik gördüğün alanları belirt.',
+    prompt: 'Arşivimdeki içerikleri konularına göre grupla ve eksik gördüğün alanları belirt.',
   },
   {
     label: 'Etiket Önerileri',
-    prompt: 'Kasamdaki içerikleri incele ve düzenlenmesi gereken etiketler öner.',
+    prompt: 'Arşivimdeki içerikleri incele ve düzenlenmesi gereken etiketler öner.',
   },
 ];
 
 const SAMPLE_PROMPTS = [
-  'Kasamda yapay zekâ ve makine öğrenimiyle ilgili hangi videolar var?',
+  'Arşivimde yapay zekâ ve makine öğrenimiyle ilgili hangi videolar var?',
   'Kaç favori kaydım var?',
   'Rust etiketli YouTube kayıtlarını listele',
   'Son kaydettiğim eğitim ve yazılım içeriklerini özetle',
@@ -368,7 +368,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
             </div>
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold tracking-tight">
-                {activeSession?.title || 'Kasa Asistanı'}
+                {activeSession?.title || 'Asistan'}
               </h1>
               <p className="truncate text-2xs text-muted-foreground">{headerDetail}</p>
             </div>
@@ -461,7 +461,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
               </div>
               <h2 className="text-base font-medium">AI kapalı</h2>
               <p className="mt-1.5 max-w-sm text-xs text-muted-foreground">
-                Kasa Asistanı ve semantik arama devre dışı. Yerel AI yalnızca sen açtığında çalışır;
+                Asistan ve semantik arama devre dışı. Yerel AI yalnızca sen açtığında çalışır;
                 bu bir hata değil, beklenen bir ayar durumudur.
               </p>
               {onOpenSettings && (
@@ -476,10 +476,10 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
               <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-secondary text-primary">
                 <Bot className="size-6" />
               </div>
-              <h2 className="text-base font-medium">Kasanla Doğal Dille Konuş</h2>
+              <h2 className="text-base font-medium">Arşivinle Doğal Dille Konuş</h2>
               <p className="mt-1.5 max-w-md text-xs text-muted-foreground">
                 Kaydettiğin tüm linkler, kişisel notların ve Whisper ile üretilen video transkriptleri
-                üzerinde anlamsal arama yapar; kaynak göstererek sorularını yanıtlar. Kasanın
+                üzerinde anlamsal arama yapar; kaynak göstererek sorularını yanıtlar. Arşivin
                 etiketleri, kategorileri ve sayımları hakkında da yapısal soru sorabilirsin.
               </p>
 
@@ -547,7 +547,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={
                   ready
-                    ? 'Kasan hakkında bir soru sor… (örn: "Rust async videoları")'
+                    ? 'Arşivin hakkında bir soru sor… (örn: "Rust async videoları")'
                     : 'AI motoru hazır değil. Ayarlar sekmesinden modeli kur.'
                 }
                 disabled={!ready || busy}

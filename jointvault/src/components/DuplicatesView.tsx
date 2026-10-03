@@ -22,7 +22,7 @@ interface FileGroup {
 
 interface DuplicatesViewProps {
   onDone: () => void;
-  /** Verilirse başlıkta "Araç Kutusu'na dön" eylemi çizilir. */
+  /** Verilirse başlıkta "Araçlar'a dön" eylemi çizilir. */
   onClose?: () => void;
 }
 
@@ -225,7 +225,7 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
         <>
           {onClose && (
             <Button variant="outline" size="sm" onClick={onClose}>
-              <ArrowLeft /> Araç Kutusu&apos;na dön
+              <ArrowLeft /> Araçlar&apos;a dön
             </Button>
           )}
           {totalVictims > 0 && (
@@ -249,13 +249,13 @@ export function DuplicatesView({ onDone, onClose }: DuplicatesViewProps) {
               <>
                 <Loader2 className="size-7 animate-spin text-muted-foreground" />
                 <p className="text-sm font-medium">Taranıyor…</p>
-                <p className="max-w-[44ch] text-sm text-muted-foreground">Kasa ve indirme klasörü taranıyor.</p>
+                <p className="max-w-[44ch] text-sm text-muted-foreground">Arşiv ve indirme klasörü taranıyor.</p>
               </>
             ) : (
               <>
                 <ScanSearch className="size-7 text-muted-foreground" strokeWidth={1.5} />
                 <div className="flex flex-col gap-1">
-                  <p className="text-title">Kasa taranmadı</p>
+                  <p className="text-title">Arşiv taranmadı</p>
                   <p className="max-w-[46ch] text-sm text-muted-foreground">
                     Aynı URL'li kayıtlar ve birebir aynı dosyalar bulunur; tutulacak seçilir, gerisi silinir.
                   </p>

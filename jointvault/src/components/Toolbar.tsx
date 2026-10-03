@@ -56,7 +56,7 @@ interface ToolbarProps {
   aiEnabled?: boolean;
   /** AI kapalıyken Ayarlar → Yapay Zekâ'ya götürür (ölü düğme yok). */
   onOpenAiSettings?: () => void;
-  /** Kasa görünümündeyken geçilir; görünüm segmenti yalnızca o zaman çizilir. */
+  /** Arşiv görünümündeyken geçilir; görünüm segmenti yalnızca o zaman çizilir. */
   view?: 'grid' | 'rows';
   onViewChange?: (v: 'grid' | 'rows') => void;
   /* Gezinme: ray denetimi + geri/ileri (gerçek görünüm geçmişi). */
@@ -137,7 +137,7 @@ export function Toolbar({
       reset();
       onSaved();
       notice.push({
-        text: 'Fişe geçti.',
+        text: 'Kayda geçti.',
         tone: 'ok',
         action: {
           label: 'Geri al',

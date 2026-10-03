@@ -121,7 +121,7 @@ export function ConverterStudio({ refreshKey, onDone }: ConverterStudioProps) {
     <PageSurface
       icon={<Clapperboard />}
       title="Dönüştürücü"
-      description="Biçim değiştir, sesi ayır veya kırp; çıktı kasaya döner."
+      description="Biçim değiştir, sesi ayır veya kırp; çıktı arşive döner."
       width="5xl"
     >
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">

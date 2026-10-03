@@ -1,7 +1,7 @@
 /*
- * Kasa yedekleri (veritabanı düzeyi).
+ * Arşiv yedekleri (veritabanı düzeyi).
  *
- * JSON dışa aktarmadan farkı: bu bölüm kasanın TAMAMINI (şema + tüm tablolar)
+ * JSON dışa aktarmadan farkı: bu bölüm arşivin TAMAMINI (şema + tüm tablolar)
  * kapsar ve OTOMATİK çalışır — açılışta günde bir, her göçten önce zorunlu.
  *
  * Geri dönme ve sıfırlama uygulamayı YENİDEN BAŞLATIR: geri yükleme sonrası
@@ -93,7 +93,7 @@ export function DataBackupSection() {
     <div className="settings-card flex flex-col gap-4 p-4">
       <div className="flex flex-col gap-1">
         <h3 className="flex items-center gap-1.5 text-sm font-medium">
-          <Database className="size-4" /> Kasa yedekleri
+          <Database className="size-4" /> Arşiv yedekleri
         </h3>
         <p className="text-xs text-muted-foreground">
           Şema ve tüm tablolar dahil tam kopya. Açılışta günde bir, her şema güncellemesinden önce bir kez ve
@@ -120,7 +120,7 @@ export function DataBackupSection() {
       <div className="flex flex-col gap-2 border-t border-border pt-3">
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-          Sıfırlama kasayı boşaltır. Önce otomatik yedek alınır, ama geri dönmek yine de elle bir adımdır.
+          Sıfırlama arşivi boşaltır. Önce otomatik yedek alınır, ama geri dönmek yine de elle bir adımdır.
         </p>
         <Button
           variant="outline"
@@ -139,7 +139,7 @@ export function DataBackupSection() {
           if (!open) setRestoreTarget(null);
         }}
         title="Bu yedekten geri dönülsün mü?"
-        description={`${restoreTarget ?? ''} kasanın yerine geçecek. Mevcut kasa önce otomatik olarak saklanır.`}
+        description={`${restoreTarget ?? ''} arşivin yerine geçecek. Mevcut arşiv önce otomatik olarak saklanır.`}
         confirmLabel="Geri dön"
         onConfirm={() => void handleRestore()}
       />
