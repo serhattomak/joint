@@ -97,6 +97,9 @@ export async function setChatSessionPinned(id: string, pinned: boolean): Promise
 export async function deleteChatSession(id: string): Promise<void> {
   const db = await getDb();
   await db.execute('DELETE FROM ai_chat_messages_fts WHERE session_id = $1', [id]);
+  // FK CASCADE'a güvenilmez: mevcut kasada `PRAGMA foreign_keys` bağlantıda
+  // yeniden çalışmamış olabilir; mesajları AÇIKÇA sil (yetim kayıt olmasın).
+  await db.execute('DELETE FROM ai_chat_messages WHERE session_id = $1', [id]);
   await db.execute('DELETE FROM ai_chat_sessions WHERE id = $1', [id]);
 }
 

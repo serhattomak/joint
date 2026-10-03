@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildHistoryWindow,
   formatChatMarkdown,
+  mergeQueryPayload,
   parseAssistantMessage,
   sanitizeFtsQuery,
   sessionTitleFromFirstMessage,
+  type ActionQueryPayload,
 } from './ai-chat';
 
 describe('parseAssistantMessage', () => {
@@ -82,6 +84,24 @@ describe('sanitizeFtsQuery', () => {
 
   it('boş/yalnızca boşluk girdide boş döner', () => {
     expect(sanitizeFtsQuery('   ')).toBe('');
+  });
+});
+
+describe('mergeQueryPayload', () => {
+  it('filters varsa üst düzey limit/countOnly korunur', () => {
+    expect(mergeQueryPayload({ filters: { favorite: true }, limit: 20, countOnly: true })).toEqual({
+      favorite: true,
+      limit: 20,
+      countOnly: true,
+    });
+  });
+
+  it('filters yoksa düz alanlar korunur', () => {
+    const flat = { platform: 'youtube', countOnly: true } as unknown as ActionQueryPayload;
+    expect(mergeQueryPayload(flat)).toEqual({
+      platform: 'youtube',
+      countOnly: true,
+    });
   });
 });
 

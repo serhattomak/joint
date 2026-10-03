@@ -98,6 +98,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
   const [searchResults, setSearchResults] = useState<ChatSearchHit[]>([]);
   const [historyOpen, setHistoryOpen] = useState(() => localStorage.getItem(HISTORY_KEY) !== '0');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
   const warmup = useAiWarmupStatus();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -108,6 +109,15 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Arama sonucundan gelindiğinde ilgili mesaja kaydır (mesajlar yüklenince dener).
+  useEffect(() => {
+    if (!scrollTargetId) return;
+    const el = document.getElementById(`msg-${scrollTargetId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setScrollTargetId(null);
+  }, [scrollTargetId, messages]);
 
   const refreshSessions = useCallback(async () => {
     setSessions(await listChatSessions());
@@ -317,6 +327,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
             onSearch={doSearch}
             onOpenResult={(hit) => {
               selectSession(hit.sessionId);
+              setScrollTargetId(hit.messageId);
               setHistoryOpen(false);
             }}
           />

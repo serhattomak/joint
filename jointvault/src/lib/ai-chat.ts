@@ -107,6 +107,23 @@ export function sessionTitleFromFirstMessage(text: string): string {
 }
 
 /**
+ * Modelin sorgu gövdesini tek bir düz nesneye indirger.
+ *
+ * `filters` altındaki alanlar korunur; üst düzey `limit`/`countOnly` EZİLMEZ.
+ * Aksiyel hâlde sözleşmenin en kritik iki alanı (`filters` varken) sessizce
+ * düşerdi — model örneği birebir izlediğinde bile.
+ */
+export function mergeQueryPayload(payload: ActionQueryPayload): Record<string, unknown> {
+  const base =
+    (payload.filters as Record<string, unknown> | undefined) ??
+    (payload as unknown as Record<string, unknown>);
+  const merged: Record<string, unknown> = { ...base };
+  if (payload.limit !== undefined) merged.limit = payload.limit;
+  if (payload.countOnly !== undefined) merged.countOnly = payload.countOnly;
+  return merged;
+}
+
+/**
  * Kullanıcı metnini FTS5 MATCH için güvenli tümce sorgusuna çevirir.
  *
  * Tırnak ve operatör karakterleri tümce içinde düz metin olur; boş sorgu ''

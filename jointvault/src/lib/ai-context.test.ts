@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeVaultQuery } from './ai-context';
+import { normalizeVaultQuery, vaultQueryToFilters } from './ai-context';
 
 describe('normalizeVaultQuery', () => {
   it('boş girdide boş nesne döner', () => {
@@ -31,5 +31,24 @@ describe('normalizeVaultQuery', () => {
   it('metin alanlarını kırpar, boşu atar', () => {
     expect(normalizeVaultQuery({ platform: '  youtube ' }).platform).toBe('youtube');
     expect(normalizeVaultQuery({ tag: '   ' }).tag).toBeUndefined();
+  });
+});
+
+describe('vaultQueryToFilters', () => {
+  it('favorite=false korunur (favori olmayanlar)', () => {
+    expect(vaultQueryToFilters({ favorite: false })).toMatchObject({ favorite: false });
+  });
+
+  it('downloaded true/false hasLocal olarak eşlenir', () => {
+    expect(vaultQueryToFilters({ downloaded: true })).toMatchObject({ hasLocal: true });
+    expect(vaultQueryToFilters({ downloaded: false })).toMatchObject({ hasLocal: false });
+  });
+
+  it('query/sinceDays/sort taşınır', () => {
+    expect(vaultQueryToFilters({ query: 'rust', sinceDays: 30, sort: 'old' })).toMatchObject({
+      query: 'rust',
+      sinceDays: 30,
+      sort: 'old',
+    });
   });
 });

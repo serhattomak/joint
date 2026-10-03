@@ -36,6 +36,7 @@ import {
 import type { HybridSearchResult, Item } from './db/types';
 import {
   buildHistoryWindow,
+  mergeQueryPayload,
   parseAssistantMessage,
   type HistoryMessage,
 } from './ai-chat';
@@ -564,7 +565,7 @@ KAYNAKLAR:\n${contextText}`;
   if (parsed.actionQuery) {
     opts.onStatus?.('querying');
 
-    const vq = normalizeVaultQuery(parsed.actionQuery.filters ?? parsed.actionQuery);
+    const vq = normalizeVaultQuery(mergeQueryPayload(parsed.actionQuery));
     const result = await executeVaultQuery(vq);
     queryItems = result.items;
 

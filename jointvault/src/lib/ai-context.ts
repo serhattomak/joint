@@ -144,17 +144,22 @@ async function resolveName(
   return rows.find((r) => r.name.toLowerCase() === target)?.id ?? null;
 }
 
-export async function executeVaultQuery(
-  q: VaultQuery,
-): Promise<{ count: number; items: VaultQueryItem[] }> {
-  const filters: ItemFilters = {
+/** `VaultQuery`'yi sorgu filtresine çevirir; üç durumlu `favorite`/`hasLocal` korunur. */
+export function vaultQueryToFilters(q: VaultQuery): ItemFilters {
+  return {
     query: q.query,
     platform: q.platform,
-    favoritesOnly: q.favorite,
-    localOnly: q.downloaded,
+    favorite: q.favorite,
+    hasLocal: q.downloaded,
     sinceDays: q.sinceDays,
     sort: q.sort,
   };
+}
+
+export async function executeVaultQuery(
+  q: VaultQuery,
+): Promise<{ count: number; items: VaultQueryItem[] }> {
+  const filters = vaultQueryToFilters(q);
 
   if (q.tag) {
     const tagId = await resolveName(q.tag, listTags);

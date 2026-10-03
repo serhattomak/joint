@@ -83,7 +83,11 @@ export function ChatMessages({ messages, onOpenItem, querying }: ChatMessagesPro
             : { cleanContent: m.content, actionTag: null };
 
         return (
-          <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div
+            key={m.id}
+            id={`msg-${m.id}`}
+            className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
             {m.role === 'assistant' && (
               <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Sparkles className="size-3.5" />

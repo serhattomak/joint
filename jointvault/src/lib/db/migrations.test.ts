@@ -262,4 +262,42 @@ describe('runMigrations — göç 5 (sohbet)', () => {
     // Assert
     expect(hits.map((r) => String((r as { message_id: unknown }).message_id))).toEqual(['m1']);
   });
+
+  it('arama sorgusu (alias + snippet) çalışır; silme FK olmadan da mesajları temizler', async () => {
+    // Arrange
+    const db = new DatabaseSync(':memory:');
+    await runMigrations(sqliteExecutor(db));
+    db.exec('PRAGMA foreign_keys = OFF'); // FK CASCADE\'a güvenmediğimizi kanıtla
+    db.exec("INSERT INTO ai_chat_sessions (id, title) VALUES ('s1', 'Rust')");
+    db.exec(
+      "INSERT INTO ai_chat_messages (id, session_id, role, content, created_at) VALUES ('m1','s1','user','async rust notlari','2026-10-03T10:00:00Z')",
+    );
+    db.exec(
+      "INSERT INTO ai_chat_messages_fts (message_id, session_id, content) VALUES ('m1','s1','async rust notlari')",
+    );
+
+    // Act — searchChatMessages ile BİREBİR aynı sorgu şekli
+    const searchSql = `SELECT m.id AS messageId, s.title AS sessionTitle,
+        snippet(ai_chat_messages_fts, 2, '', '', '…', 12) AS snippet
+      FROM ai_chat_messages_fts f
+      JOIN ai_chat_messages m ON m.id = f.message_id
+      JOIN ai_chat_sessions s ON s.id = m.session_id
+      WHERE ai_chat_messages_fts MATCH '"rust"' ORDER BY m.created_at DESC LIMIT 50`;
+    const hits = db.prepare(searchSql).all();
+
+    // Assert
+    expect(hits.map((r) => String((r as { messageId: unknown }).messageId))).toEqual(['m1']);
+
+    // deleteChatSession ile AYNI sıra: fts -> messages -> sessions
+    db.exec("DELETE FROM ai_chat_messages_fts WHERE session_id = 's1'");
+    db.exec("DELETE FROM ai_chat_messages WHERE session_id = 's1'");
+    db.exec("DELETE FROM ai_chat_sessions WHERE id = 's1'");
+
+    expect(db.prepare('SELECT COUNT(*) AS n FROM ai_chat_messages').get()).toEqual({ n: 0 });
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM ai_chat_messages_fts WHERE ai_chat_messages_fts MATCH 'rust'")
+        .get(),
+    ).toEqual({ n: 0 });
+  });
 });
