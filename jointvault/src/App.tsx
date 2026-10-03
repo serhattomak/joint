@@ -36,6 +36,7 @@ import { ResizeHandles } from '@/components/ui/window-controls';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { listCategories, listCollections, listItems, listTags, resetDb, runDailyBackup, type ItemSort } from '@/lib/db/client';
 import { getAiStatus, isAiEnabled } from '@/lib/ai';
+import { initItemIndexRefresh } from '@/lib/ai-index';
 import { classifyDbError, type DbInitError } from '@/lib/db/db-errors';
 import { pushDest, stepDest, type NavHistory } from '@/lib/nav-history';
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
@@ -186,6 +187,9 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // İçerik/taksonomi değişince ilgili öğenin indeksini arka planda tazele.
+  useEffect(() => initItemIndexRefresh(), []);
 
   // AI etkinliğini tazele: açılışta ve Ayarlar'dan çıkışta (kullanıcı orada
   // açıp kapatmış olabilir). Ayarlar AÇIKKEN arka planda sorgu yapmayız —

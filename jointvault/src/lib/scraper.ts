@@ -1,14 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
-import {
-  getItem,
-  saveArticleForItem,
-  saveItemChunks,
-  updateChunkEmbedding,
-  updateItem,
-} from './db/client';
+import { getItem, saveArticleForItem, updateItem } from './db/client';
 import type { Item, ItemArticle, ScrapedMedia } from './db/types';
-import { chunkArticleText, vectorToBase64 } from './chunker';
-import { generateEmbeddings, getAiStatus, isAiEnabled } from './ai';
+import { refreshItemIndex } from './ai';
 
 export interface ScrapedArticleResult {
   url: string;
@@ -65,33 +58,12 @@ export async function scrapeAndStoreArticle(itemId: string, url: string): Promis
   // 1. Veritabanına kaydet
   await saveArticleForItem(article);
 
-  // 2. Metni chunk'lara ayırıp SQLite FTS5 tam metin aramasına indeksle
+  // 2. TÜM chunk türlerini (meta+not+transcript+makale) birlikte kur ve indeksle.
+  //    Ayrı yazım chunk'ları eziyordu; tek geçiş kullanılır.
   try {
-    const chunks = chunkArticleText(itemId, scraped.content_text);
-    if (chunks.length > 0) {
-      await saveItemChunks(itemId, chunks);
-
-      // Vektörleme motoru (BGE-M3) hazırsa anında embedding üret
-      try {
-        const aiStatus = await getAiStatus();
-        // AI kapalıyken (modeller diskte olsa bile) vektörleme denenmez: arka uç
-        // reddeder ve hata yutulurdu — sessiz başarısızlık.
-        if (isAiEnabled(aiStatus) && aiStatus.embed_ready && aiStatus.engine_available) {
-          const texts = chunks.map((c) => c.chunkText);
-          const embeddings = await generateEmbeddings(texts);
-          for (let i = 0; i < chunks.length; i++) {
-            if (embeddings[i]) {
-              const b64 = vectorToBase64(embeddings[i]);
-              await updateChunkEmbedding(chunks[i].id, b64);
-            }
-          }
-        }
-      } catch {
-        // AI motoru çalışmıyorsa metin FTS'te indeksli kalır, vektörleme sonraya kalır
-      }
-    }
+    await refreshItemIndex(itemId);
   } catch (err) {
-    console.warn('[scraper] FTS indeksleme uyarısı:', err);
+    console.warn('[scraper] indeksleme uyarısı:', err);
   }
 
   // 3. Öğenin eksik başlığı veya kapak görseli varsa güncelle
