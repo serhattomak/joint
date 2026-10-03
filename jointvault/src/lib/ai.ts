@@ -9,18 +9,20 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
-  buildMetaChunks,
-  groupSrtIntoChunks,
+  buildItemChunks,
   parseSrt,
   vectorToBase64,
   type ItemChunk,
 } from './chunker';
 import { useComponentDownloadProgress } from './components';
 import {
+  getAllCategoriesByItem,
   getAllTagsByItem,
+  getArticleForItem,
   getCategoriesForItem,
   getChunksMissingEmbeddings,
   getDb,
+  getItem,
   getOrCreateCategory,
   getOrCreateTag,
   getTagsForItem,
@@ -30,10 +32,11 @@ import {
   saveItemChunks,
   searchHybridChunks,
   setCategoriesForItem,
+  setChunkEmbeddingsBatch,
   setTagsForItem,
-  updateChunkEmbedding,
 } from './db/client';
 import type { HybridSearchResult, Item } from './db/types';
+import { invalidateVectorIndex } from './vector-cache';
 import {
   buildHistoryWindow,
   mergeQueryPayload,
@@ -307,66 +310,107 @@ export function useAiModelProgress(jobId: string | null): number | null {
 
 // --- İndeksleme ve Vektörleme Hattı ---
 
+/** Chunk'ları yazar ve (motor hazırsa) TOPLU embedding üretir; önbelleği düşürür. */
+async function embedAndSaveChunks(itemId: string, chunks: ItemChunk[]): Promise<void> {
+  await saveItemChunks(itemId, chunks);
+  invalidateVectorIndex();
+  if (chunks.length === 0) return;
+
+  try {
+    const status = await getAiStatus();
+    // `ai_enabled` ŞART: AI kapalıyken vektörleme denenmez (sessiz başarısızlık).
+    if (isAiEnabled(status) && status.embed_ready && status.engine_available) {
+      const embeddings = await generateEmbeddings(chunks.map((c) => c.chunkText));
+      const rows = chunks
+        .map((c, i) =>
+          embeddings[i] ? { id: c.id, embedding: vectorToBase64(embeddings[i]) } : null,
+        )
+        .filter((r): r is { id: string; embedding: string } => r !== null);
+      await setChunkEmbeddingsBatch(rows);
+    }
+  } catch {
+    // Motor hazır değilse metin indeksli kalır; embedding sonra tamamlanır.
+  }
+}
+
+/** Öğenin SRT metnini diskten okur (yoksa null). */
+async function readSrtForItem(item: Item): Promise<string | null> {
+  if (!item.local_path) return null;
+  try {
+    const srtPath = item.local_path.replace(/\.[^/.\\]+$/, '-transkript.srt');
+    const content = await invoke<string>('preview_media_read_text', { path: srtPath }).catch(
+      () => null,
+    );
+    return content || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bir öğenin TÜM chunk türlerini (meta + not + transcript + makale) tazeler ve
+ * vektörler. İçerik/taksonomi değiştiğinde çağrılır.
+ */
+export async function refreshItemIndex(itemId: string): Promise<void> {
+  const item = await getItem(itemId);
+  if (!item) return;
+
+  const [tags, categories, article, srt] = await Promise.all([
+    getTagsForItem(itemId),
+    getCategoriesForItem(itemId),
+    getArticleForItem(itemId),
+    readSrtForItem(item),
+  ]);
+
+  const chunks = buildItemChunks(itemId, {
+    title: item.title,
+    platform: item.platform,
+    note: item.note,
+    tags: tags.map((t) => t.name),
+    categories: categories.map((c) => c.name),
+    srt,
+    article: article?.content_text ?? null,
+  });
+  await embedAndSaveChunks(itemId, chunks);
+}
+
 /**
  * Tek bir öğeyi ve varsa transkriptini chunk'lara böler ve SQLite'a kaydeder.
+ * (Geri uyum: birleşik üretim; srt dışarıdan verilebilir.)
  */
 export async function indexItemChunks(
   item: Item,
   tags: string[] = [],
   srtContent?: string | null,
 ): Promise<void> {
-  const chunks: ItemChunk[] = [];
+  const [categories, article, diskSrt] = await Promise.all([
+    getCategoriesForItem(item.id),
+    getArticleForItem(item.id),
+    srtContent ? Promise.resolve(null) : readSrtForItem(item),
+  ]);
 
-  // 1. Meta ve not chunk'ları
-  const meta = buildMetaChunks(item.id, {
+  const chunks = buildItemChunks(item.id, {
     title: item.title,
     platform: item.platform,
     note: item.note,
     tags,
+    categories: categories.map((c) => c.name),
+    srt: srtContent ?? diskSrt,
+    article: article?.content_text ?? null,
   });
-  chunks.push(...meta);
-
-  // 2. Varsa Whisper transkript chunk'ları
-  if (srtContent && srtContent.trim()) {
-    const cues = parseSrt(srtContent);
-    const transcriptChunks = groupSrtIntoChunks(item.id, cues);
-    chunks.push(...transcriptChunks);
-  }
-
-  // SQLite tablosuna yaz
-  await saveItemChunks(item.id, chunks);
-
-  // Vektörleme motoru hazırsa hemen embedding üret
-  try {
-    const status = await getAiStatus();
-    // `ai_enabled` ŞART: AI kapalıyken (modeller diskte dursa bile) vektörleme
-    // denenmemeli — arka uç reddeder ve hata yutulurdu (sessiz başarısızlık).
-    if (isAiEnabled(status) && status.embed_ready && status.engine_available) {
-      const texts = chunks.map((c) => c.chunkText);
-      const embeddings = await generateEmbeddings(texts);
-      for (let i = 0; i < chunks.length; i++) {
-        if (embeddings[i]) {
-          const b64 = vectorToBase64(embeddings[i]);
-          await updateChunkEmbedding(chunks[i].id, b64);
-        }
-      }
-    }
-  } catch {
-    // Vektörleme motoru henüz hazır değilse metinler kaydedilmiş olarak kalır, sonra taranır
-  }
+  await embedAndSaveChunks(item.id, chunks);
 }
 
 /**
- * Eksik embedding'i olan chunk'ları toplu olarak BGE-M3 ile vektörleştirir.
+ * Eksik embedding'i olan chunk'ları TOPLU olarak BGE-M3 ile vektörleştirir.
  */
 export async function indexMissingEmbeddings(
   onProgress?: (done: number, total: number) => void,
 ): Promise<{ processed: number }> {
   let processed = 0;
-  const BATCH_SIZE = 16;
+  const BATCH_SIZE = 32;
 
-  // Kullanıcı "yeniden indeksle"yi açıkça istedi: AI kapalıysa sessizce hiçbir şey
-  // yapmamak yalan olurdu, net bir hata ver.
+  // Kullanıcı "yeniden indeksle"yi açıkça istedi: AI kapalıysa net bir hata ver.
   const gate = await getAiStatus();
   if (!isAiEnabled(gate)) {
     throw new Error('AI kapalı — Ayarlar → AI bölümünden açabilirsiniz.');
@@ -376,63 +420,71 @@ export async function indexMissingEmbeddings(
     const missing = await getChunksMissingEmbeddings(BATCH_SIZE);
     if (missing.length === 0) break;
 
-    const texts = missing.map((m) => m.chunk_text);
-    const embeddings = await generateEmbeddings(texts);
-
-    for (let i = 0; i < missing.length; i++) {
-      if (embeddings[i]) {
-        const b64 = vectorToBase64(embeddings[i]);
-        await updateChunkEmbedding(missing[i].id, b64);
-        processed++;
-        if (onProgress) onProgress(processed, processed + missing.length);
-      }
-    }
+    const embeddings = await generateEmbeddings(missing.map((m) => m.chunk_text));
+    const rows = missing
+      .map((m, i) =>
+        embeddings[i] ? { id: m.id, embedding: vectorToBase64(embeddings[i]) } : null,
+      )
+      .filter((r): r is { id: string; embedding: string } => r !== null);
+    await setChunkEmbeddingsBatch(rows);
+    processed += rows.length;
+    if (onProgress) onProgress(processed, processed + missing.length);
   }
 
   return { processed };
 }
 
 /**
- * Kasadaki tüm kayıtları baştan indeksler.
+ * Kasadaki tüm kayıtları baştan indeksler (iki faz: içerik kurulumu + vektörleme).
  */
 export async function reindexVault(
   onProgress?: (current: number, total: number) => void,
 ): Promise<void> {
+  // AI kapalıysa baştan dur: yarıda kalıp yanıltıcı sonuç bırakma.
+  const gate = await getAiStatus();
+  if (!isAiEnabled(gate)) {
+    throw new Error('AI kapalı — Ayarlar → AI bölümünden açabilirsiniz.');
+  }
+
   const db = await getDb();
-  // Mevcut chunk'ları temizle
   await db.execute('DELETE FROM item_chunks');
   try {
     await db.execute('DELETE FROM item_chunks_fts');
   } catch {
     // ignore
   }
+  invalidateVectorIndex();
 
   const items = await listItems();
-  const allTags = await getAllTagsByItem();
+  const [allTags, allCategories] = await Promise.all([
+    getAllTagsByItem(),
+    getAllCategoriesByItem(),
+  ]);
   const total = items.length;
 
+  // Faz 1: içerik kurulumu (öğe bazlı ilerleme) — meta+not+transcript+makale birlikte.
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     const tags = (allTags[it.id] ?? []).map((t) => t.name);
+    const categories = (allCategories[it.id] ?? []).map((c) => c.name);
+    const [article, srt] = await Promise.all([getArticleForItem(it.id), readSrtForItem(it)]);
 
-    // Varsa transkript dosyasını oku
-    let srtContent: string | null = null;
-    if (it.local_path) {
-      try {
-        const srtPath = it.local_path.replace(/\.[^/.\\]+$/, '-transkript.srt');
-        // invoke tauri text reader or custom read if available
-        const content = await invoke<string>('preview_media_read_text', { path: srtPath }).catch(
-          () => null,
-        );
-        if (content) srtContent = content;
-      } catch {
-        // ignore
-      }
-    }
-
-    await indexItemChunks(it, tags, srtContent);
+    const chunks = buildItemChunks(it.id, {
+      title: it.title,
+      platform: it.platform,
+      note: it.note,
+      tags,
+      categories,
+      srt,
+      article: article?.content_text ?? null,
+    });
+    await saveItemChunks(it.id, chunks);
     if (onProgress) onProgress(i + 1, total);
   }
+  invalidateVectorIndex();
+
+  // Faz 2: vektörleme (chunk bazlı ilerleme) — toplu.
+  await indexMissingEmbeddings(onProgress);
 }
 
 // --- RAG Hattı: 'Kasa Asistanı' ---
@@ -722,6 +774,10 @@ export async function applyCategorization(
 
   // UI'ın haberdar olması için CustomEvent fırlat
   window.dispatchEvent(new CustomEvent('vault-items-updated'));
+  // Etiket/kategori meta chunk'a girdiği için ilgili öğenin indeksi tazelensin.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('vault-item-index-dirty', { detail: { id: itemId } }));
+  }
 }
 
 /**
