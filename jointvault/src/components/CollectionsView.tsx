@@ -788,7 +788,7 @@ export function CollectionsView({
 
       {/* TAKSONOMİ BAKIMI */}
       <Dialog open={maintOpen} onOpenChange={setMaintOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl w-[min(92vw,56rem)]">
           <DialogHeader>
             <DialogTitle>Taksonomi Bakımı</DialogTitle>
             <DialogDescription>
@@ -837,26 +837,44 @@ export function CollectionsView({
           </div>
 
           {/* Yinelenenler */}
-          {duplicateGroups(maintList(maintKind)).map((g) => (
-            <div
-              key={g.canonical}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
-            >
-              <span className="truncate">
-                <span className="font-medium">{g.canonical}</span>
-                <span className="text-muted-foreground"> ← {g.duplicates.join(', ')}</span>
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setConfirmMerge({ kind: maintKind, canonical: g.canonical, duplicates: g.duplicates })
-                }
+          <div className="flex flex-col gap-1">
+            <span className="text-2xs text-muted-foreground">
+              Aynı ada düşen kayıtlar aşağıda gruplanır. Birleştirmede yalnız
+              <strong> yazımı normalleşen </strong>
+              yinelenenler taşınır; yakın-anlamlı ama farklı adlar (ör. "tasarruf" ↔ "tut tasarruf")
+              için aşağıdaki <strong>Asistan önerilerini</strong> kullan ve her birini ayrı onayla.
+            </span>
+            {duplicateGroups(maintList(maintKind)).map((g) => (
+              <div
+                key={g.canonical}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
               >
-                Birleştir
-              </Button>
-            </div>
-          ))}
+                <div className="flex min-w-0 flex-[1_1_16rem] flex-wrap items-center gap-1.5">
+                  <span className="text-2xs text-muted-foreground">Korunacak:</span>
+                  <Badge variant="secondary" className="font-medium">
+                    {g.canonical}
+                  </Badge>
+                  <span className="text-muted-foreground">←</span>
+                  <span className="text-2xs text-muted-foreground">Silinecek:</span>
+                  {g.duplicates.map((d) => (
+                    <Badge key={d} variant="outline" className="text-3xs text-muted-foreground line-through">
+                      {d}
+                    </Badge>
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto shrink-0"
+                  onClick={() =>
+                    setConfirmMerge({ kind: maintKind, canonical: g.canonical, duplicates: g.duplicates })
+                  }
+                >
+                  Birleştir
+                </Button>
+              </div>
+            ))}
+          </div>
 
           {/* Yakın-anlam önerileri (AI) */}
           <div className="flex flex-col gap-2">
@@ -869,12 +887,25 @@ export function CollectionsView({
             {suggestions.map((grp, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
               >
-                <span className="truncate">{grp.join(' · ')}</span>
+                <div className="flex min-w-0 flex-[1_1_16rem] flex-wrap items-center gap-1.5">
+                  <span className="text-2xs text-muted-foreground">Korunacak:</span>
+                  <Badge variant="secondary" className="font-medium">
+                    {grp[0]}
+                  </Badge>
+                  <span className="text-muted-foreground">←</span>
+                  <span className="text-2xs text-muted-foreground">Silinecek:</span>
+                  {grp.slice(1).map((d) => (
+                    <Badge key={d} variant="outline" className="text-3xs text-muted-foreground line-through">
+                      {d}
+                    </Badge>
+                  ))}
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
+                  className="ml-auto shrink-0"
                   onClick={() =>
                     setConfirmMerge({ kind: maintKind, canonical: grp[0], duplicates: grp.slice(1) })
                   }
@@ -910,13 +941,28 @@ export function CollectionsView({
         onOpenChange={(open) => {
           if (!open) setConfirmMerge(null);
         }}
-        title="Birleştirilsin mi?"
-        description={
-          confirmMerge
-            ? `"${confirmMerge.duplicates.join(', ')}" → "${confirmMerge.canonical}" taşınır; fazlalık silinir. Önce yedek alınır.`
-            : ''
+        title={
+          confirmMerge && maintKind === 'tags'
+            ? 'Etiketler birleştirilsin mi?'
+            : 'Kategoriler birleştirilsin mi?'
         }
-        confirmLabel="Birleştir"
+        description={
+          confirmMerge ? (
+            <span className="flex flex-col gap-1">
+              <span>
+                <strong>{confirmMerge.duplicates.join(', ')}</strong> öğesindeki tüm kayıtlar{' '}
+                <strong>{confirmMerge.canonical}</strong> adına taşınacak.
+              </span>
+              <span className="text-muted-foreground">
+                Korunacak: {confirmMerge.canonical} · Silinecek: {confirmMerge.duplicates.join(', ')}.
+                Önce otomatik yedek alınır.
+              </span>
+            </span>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel={`"${confirmMerge?.canonical ?? ''}" adında birleştir`}
         tone="destructive"
         onConfirm={() => void runMerge()}
       />
