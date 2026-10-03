@@ -44,6 +44,7 @@ import {
   resolveTags,
   shouldAutoApply,
 } from './taxonomy';
+import { parseMergeSuggestions } from './taxonomy-maintenance';
 import {
   buildHistoryWindow,
   mergeQueryPayload,
@@ -864,6 +865,8 @@ export async function batchCategorizeItems(
   items: Item[],
   options?: {
     forceAutoApply?: boolean;
+    /** true ise uygulanabilir sonuçta öğenin mevcut atamaları temizlenip yenisi yazılır. */
+    replaceExisting?: boolean;
     onProgress?: (current: number, total: number, itemTitle: string) => void;
   },
 ): Promise<{
@@ -873,12 +876,14 @@ export async function batchCategorizeItems(
   failed: number;
   deterministic: number;
   skipped: number;
+  replaced: number;
 }> {
   const allCats = (await listCategories()).map((c) => c.name);
   const allTags = (await listTags()).map((t) => t.name);
 
   const cfg = await getAiStatus();
   const shouldApply = options?.forceAutoApply ?? cfg.auto_apply_tags ?? false;
+  const replaceExisting = options?.replaceExisting ?? false;
 
   let processed = 0;
   let applied = 0;
@@ -886,6 +891,7 @@ export async function batchCategorizeItems(
   let failed = 0;
   let deterministic = 0;
   let skipped = 0;
+  let replaced = 0;
 
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -904,8 +910,13 @@ export async function batchCategorizeItems(
       const canApply = hasSuggestions && shouldApplySuggestion(result, shouldApply);
 
       if (canApply) {
+        if (replaceExisting) {
+          await setCategoriesForItem(it.id, []);
+          await setTagsForItem(it.id, []);
+        }
         await applyCategorization(it.id, result.categories, result.tags);
         applied++;
+        if (replaceExisting) replaced++;
         for (const c of result.categories) {
           if (!allCats.includes(c)) allCats.push(c);
         }
@@ -926,6 +937,40 @@ export async function batchCategorizeItems(
     }
   }
 
-  return { processed, applied, lowConfidence, failed, deterministic, skipped };
+  return { processed, applied, lowConfidence, failed, deterministic, skipped, replaced };
+}
+
+/**
+ * Taksonomide yakın-anlamlı öğeleri gruplar (LLM önerisi). Yalnızca ÖNERİ üretir;
+ * uygulama kullanıcı onayındadır. AI kapalıysa boş döner.
+ */
+export async function suggestTaxonomyMerges(
+  kind: 'tags' | 'categories',
+  names: string[],
+): Promise<string[][]> {
+  if (names.length < 2) return [];
+
+  const status = await getAiStatus();
+  if (!isAiEnabled(status) || !status.llm_ready || !status.engine_available) return [];
+
+  const label = kind === 'tags' ? 'etiket' : 'kategori';
+  const system =
+    'Sen bir taksonomi düzenleme asistanısın. Yalnızca geçerli bir JSON dizisi döndür; başka metin yazma.';
+  const prompt =
+    `Aşağıdaki ${label} listesinde AYNI KAVRAMI taşıyan (yakın anlamlı) öğeleri grupla.\n` +
+    'Yalnızca listede geçen adları kullan. Tek elemanlı grupları yazma.\n' +
+    `Liste: ${names.join(', ')}\n` +
+    'Yanıt biçimi (yalnız JSON): [["ad1","ad2"],["ad3","ad4"]]';
+
+  try {
+    const text = await streamAiChat(
+      crypto.randomUUID(),
+      [{ role: 'user', content: prompt }],
+      system,
+    );
+    return parseMergeSuggestions(text, names);
+  } catch {
+    return [];
+  }
 }
 
