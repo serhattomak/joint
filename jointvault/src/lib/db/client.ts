@@ -5,6 +5,7 @@ import { createRetryCache } from '../retry-cache';
 import { runAtomic } from './atomic';
 import { createBackupWith, runDailyBackupIfDue } from './backup';
 import { MIGRATIONS, runMigrations, type MigrationExecutor } from './migrations';
+import { getVectorIndex, invalidateVectorIndex } from '../vector-cache';
 
 /*
  * Veritabanı yolu.
@@ -24,6 +25,15 @@ type ItemRow = Omit<Item, 'favorite'> & { favorite: number };
 const toItem = (r: ItemRow): Item => ({ ...r, favorite: r.favorite === 1 });
 
 const now = (): string => new Date().toISOString();
+
+/** meta chunk'lar (başlık/etiket/kategori taşır) hafifçe öne alınır. */
+const META_BOOST = 0.002;
+
+/** İndekslenen metni değişen öğeler için tazelik olayı yayar (webview dışında no-op). */
+function emitItemIndexDirty(id: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('vault-item-index-dirty', { detail: { id } }));
+}
 
 export function getDb(): Promise<Database> {
   return dbCache.get();
@@ -167,6 +177,12 @@ export async function updateItem(id: string, patch: ItemPatch): Promise<Item> {
     id,
   ]);
   const [row] = await db.select<ItemRow[]>('SELECT * FROM items WHERE id = $1', [id]);
+
+  // İndekslenen metin (başlık/not/platform/url) değiştiyse arama tazelensin.
+  if (entries.some(([k]) => k === 'title' || k === 'note' || k === 'platform' || k === 'url')) {
+    emitItemIndexDirty(id);
+  }
+
   return toItem(row);
 }
 
@@ -622,6 +638,7 @@ export async function saveItemChunks(itemId: string, chunks: ItemChunk[]): Promi
       // ignore FTS insert errors if virtual table is unavailable
     }
   }
+  invalidateVectorIndex();
 }
 
 export async function deleteItemChunks(itemId: string): Promise<void> {
@@ -632,6 +649,7 @@ export async function deleteItemChunks(itemId: string): Promise<void> {
   } catch {
     // ignore
   }
+  invalidateVectorIndex();
 }
 
 export async function getChunksByItem(itemId: string): Promise<ItemChunkRow[]> {
@@ -653,6 +671,28 @@ export async function getChunksMissingEmbeddings(limit = 100): Promise<ItemChunk
 export async function updateChunkEmbedding(id: string, embeddingBase64: string): Promise<void> {
   const db = await getDb();
   await db.execute('UPDATE item_chunks SET embedding = $1 WHERE id = $2', [embeddingBase64, id]);
+  invalidateVectorIndex();
+}
+
+/**
+ * Embedding'leri TOPLU yazar (satır başına ayrı IPC yerine parti).
+ * Yeniden indeksleme/eksik tamamlama bu yolu kullanır.
+ */
+export async function setChunkEmbeddingsBatch(
+  rows: { id: string; embedding: string }[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const db = await getDb();
+  const BATCH = 200;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const slice = rows.slice(i, i + BATCH);
+    const body = slice
+      .map((_, j) => `UPDATE item_chunks SET embedding = $${j * 2 + 1} WHERE id = $${j * 2 + 2};`)
+      .join(' ');
+    const values = slice.flatMap((r) => [r.embedding, r.id]);
+    await runAtomic(db, body, values);
+  }
+  invalidateVectorIndex();
 }
 
 export async function getAllChunksWithEmbeddings(): Promise<ItemChunkRow[]> {
@@ -673,7 +713,7 @@ export async function searchHybridChunks(
 ): Promise<HybridSearchResult[]> {
   const db = await getDb();
   const ftsScores = new Map<string, number>();
-  const vectorScores = new Map<string, { score: number; chunk: ItemChunkRow }>();
+  const vectorScores = new Map<string, { score: number; chunk?: ItemChunkRow }>();
 
   const cleanQuery = query.trim().replace(/['"*^]/g, ' ');
   if (cleanQuery) {
@@ -704,29 +744,38 @@ export async function searchHybridChunks(
     }
   }
 
-  let allChunks: ItemChunkRow[] = [];
   if (queryEmbedding && queryEmbedding.length > 0) {
-    allChunks = await getAllChunksWithEmbeddings();
-    const queryVec = queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding);
+    const queryVec =
+      queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding);
 
-    const scored = allChunks.map((c) => {
-      let sim = 0;
-      if (c.embedding) {
-        try {
-          const cVec = base64ToVector(c.embedding);
-          sim = cosineSimilarity(queryVec, cVec);
-        } catch {
-          sim = 0;
+    // Önbellekten: base64'ü SORGU BAŞINA değil, bir kez çöz.
+    const index = await getVectorIndex(() => getAllChunksWithEmbeddings());
+    if (index) {
+      const scored = index.vectors.map((vec, i) => ({
+        id: index.ids[i],
+        sim: cosineSimilarity(queryVec, vec),
+      }));
+      scored.sort((a, b) => b.sim - a.sim);
+      for (const s of scored.slice(0, 50)) vectorScores.set(s.id, { score: s.sim });
+    } else {
+      // ponytail: tavan aşıldı — akışkan yola düş (eski davranış).
+      const allChunks = await getAllChunksWithEmbeddings();
+      const scored = allChunks.map((c) => {
+        let sim = 0;
+        if (c.embedding) {
+          try {
+            sim = cosineSimilarity(queryVec, base64ToVector(c.embedding));
+          } catch {
+            sim = 0;
+          }
         }
+        return { chunk: c, sim };
+      });
+      scored.sort((a, b) => b.sim - a.sim);
+      for (const s of scored.slice(0, 50)) {
+        vectorScores.set(s.chunk.id, { score: s.sim, chunk: s.chunk });
       }
-      return { chunk: c, sim };
-    });
-
-    scored.sort((a, b) => b.sim - a.sim);
-    const topVec = scored.slice(0, 50);
-    topVec.forEach((s) => {
-      vectorScores.set(s.chunk.id, { score: s.sim, chunk: s.chunk });
-    });
+    }
   }
 
   const k = 60;
@@ -771,9 +820,23 @@ export async function searchHybridChunks(
 
   /* `chunk` alanı isteğe bağlıdır. flatMap ile süzmek TS'in daraltma yapmasını
      sağlar; aksi hâlde `!` ile susturmak gerekirdi. */
-  const scored = Array.from(chunkMap.values())
+  const ranked = Array.from(chunkMap.values())
     .flatMap((entry) => (entry.chunk ? [{ ...entry, chunk: entry.chunk }] : []))
-    .sort((a, b) => b.rrf - a.rrf)
+    .map((entry) => ({
+      ...entry,
+      finalScore: entry.rrf + (entry.chunk.chunk_type === 'meta' ? META_BOOST : 0),
+    }))
+    .sort((a, b) => b.finalScore - a.finalScore);
+
+  // Aynı öğeden en fazla 2 chunk: referanslar çeşitlensin, tek öğe doldurmasın.
+  const perItem = new Map<string, number>();
+  const scored = ranked
+    .filter((entry) => {
+      const n = perItem.get(entry.chunk.item_id) ?? 0;
+      if (n >= 2) return false;
+      perItem.set(entry.chunk.item_id, n + 1);
+      return true;
+    })
     .slice(0, limit);
 
   const itemIds = Array.from(new Set(scored.map((entry) => entry.chunk.item_id)));
