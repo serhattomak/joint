@@ -159,6 +159,7 @@ export function buildMetaChunks(
     platform?: string | null;
     note?: string | null;
     tags?: string[];
+    categories?: string[];
   }
 ): ItemChunk[] {
   const chunks: ItemChunk[] = [];
@@ -167,6 +168,9 @@ export function buildMetaChunks(
   if (meta.title) metaParts.push(`Başlık: ${meta.title}`);
   if (meta.platform && meta.platform !== 'other') metaParts.push(`Platform: ${meta.platform}`);
   if (meta.tags && meta.tags.length > 0) metaParts.push(`Etiketler: ${meta.tags.join(', ')}`);
+  if (meta.categories && meta.categories.length > 0) {
+    metaParts.push(`Kategoriler: ${meta.categories.join(', ')}`);
+  }
 
   if (metaParts.length > 0) {
     chunks.push({
@@ -190,6 +194,41 @@ export function buildMetaChunks(
     });
   }
 
+  return chunks;
+}
+
+/**
+ * Bir öğenin TÜM chunk türlerini (meta + not + transcript + makale) birlikte üretir.
+ *
+ * Ayrı ayrı yazmak yerine tek geçiş: `saveItemChunks` öğenin chunk'larını baştan
+ * yazdığı için türleri ayrı çağırmak birbirini EZERDİ.
+ */
+export function buildItemChunks(
+  itemId: string,
+  input: {
+    title?: string | null;
+    platform?: string | null;
+    note?: string | null;
+    tags?: string[];
+    categories?: string[];
+    srt?: string | null;
+    article?: string | null;
+  }
+): ItemChunk[] {
+  const chunks: ItemChunk[] = buildMetaChunks(itemId, {
+    title: input.title,
+    platform: input.platform,
+    note: input.note,
+    tags: input.tags,
+    categories: input.categories,
+  });
+
+  if (input.srt && input.srt.trim()) {
+    chunks.push(...groupSrtIntoChunks(itemId, parseSrt(input.srt)));
+  }
+  if (input.article && input.article.trim()) {
+    chunks.push(...chunkArticleText(itemId, input.article));
+  }
   return chunks;
 }
 
