@@ -202,6 +202,8 @@ export interface ItemFilters {
   /** Yalnızca diske inmiş kayıtlar (local_path dolu). */
   localOnly?: boolean;
   downloadedOnly?: boolean;
+  /** Son N gündür eklenen kayıtlar (created_at >= şimdi - N gün). */
+  sinceDays?: number;
   sort?: ItemSort;
 }
 
@@ -252,6 +254,10 @@ export async function listItemsPage(
   if (f.favoritesOnly) conds.push('i.favorite = 1');
   if (f.localOnly) conds.push('i.local_path IS NOT NULL');
   if (f.downloadedOnly) conds.push("i.download_status = 'done'");
+  if (typeof f.sinceDays === 'number' && f.sinceDays > 0) {
+    conds.push('i.created_at >= ?');
+    params.push(new Date(Date.now() - f.sinceDays * 86_400_000).toISOString());
+  }
   /*
    * Taksonomi katılımı yalnızca gerçekten gerektiğinde yapılır. LEFT JOIN
    * bire-çok olduğu için satırları çoğaltır, DISTINCT de bunları geri toplar;
