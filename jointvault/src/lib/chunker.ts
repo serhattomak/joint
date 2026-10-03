@@ -285,10 +285,26 @@ export function vectorToBase64(floats: number[] | Float32Array): string {
 }
 
 /**
+ * (id, embedding) çiftlerini yazıma hazır satırlara paketler; BOŞ veya eksik
+ * vektörleri ATLAR. Aksi hâlde `embedding = ""` yazılır ve "eksik embedding"
+ * sorgusu aynı satırı sonsuza kadar geri getirirdi.
+ */
+export function packEmbeddingRows(
+  ids: string[],
+  embeddings: number[][],
+): { id: string; embedding: string }[] {
+  const rows: { id: string; embedding: string }[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const v = embeddings[i];
+    if (v && v.length > 0) rows.push({ id: ids[i], embedding: vectorToBase64(v) });
+  }
+  return rows;
+}
+
+/**
  * Base64 dizesini Float32Array vektörüne dönüştürür.
  */
-export function base64ToVector(base64: string): Float32Array {
-  const binary = atob(base64);
+export function base64ToVector(base64: string): Float32Array {  const binary = atob(base64);
   const len = binary.length;
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) {

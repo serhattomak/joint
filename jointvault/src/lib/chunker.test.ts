@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildItemChunks, buildMetaChunks } from './chunker';
+import { buildItemChunks, buildMetaChunks, packEmbeddingRows } from './chunker';
 
 describe('buildMetaChunks', () => {
   it('kategorileri meta metnine yazar', () => {
@@ -34,5 +34,13 @@ describe('buildItemChunks', () => {
 
   it('boş girdide boş dizi döner', () => {
     expect(buildItemChunks('i1', {})).toEqual([]);
+  });
+});
+
+describe('packEmbeddingRows', () => {
+  it('boş/geçersiz vektörleri atlar', () => {
+    const rows = packEmbeddingRows(['a', 'b', 'c'], [[1, 0], [], [0, 1]]);
+    expect(rows.map((r) => r.id)).toEqual(['a', 'c']);
+    expect(rows[0]?.embedding).toBeTruthy();
   });
 });

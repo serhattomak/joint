@@ -10,8 +10,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   buildItemChunks,
+  packEmbeddingRows,
   parseSrt,
-  vectorToBase64,
   type ItemChunk,
 } from './chunker';
 import { useComponentDownloadProgress } from './components';
@@ -321,12 +321,7 @@ async function embedAndSaveChunks(itemId: string, chunks: ItemChunk[]): Promise<
     // `ai_enabled` ŞART: AI kapalıyken vektörleme denenmez (sessiz başarısızlık).
     if (isAiEnabled(status) && status.embed_ready && status.engine_available) {
       const embeddings = await generateEmbeddings(chunks.map((c) => c.chunkText));
-      const rows = chunks
-        .map((c, i) =>
-          embeddings[i] ? { id: c.id, embedding: vectorToBase64(embeddings[i]) } : null,
-        )
-        .filter((r): r is { id: string; embedding: string } => r !== null);
-      await setChunkEmbeddingsBatch(rows);
+      await setChunkEmbeddingsBatch(packEmbeddingRows(chunks.map((c) => c.id), embeddings));
     }
   } catch {
     // Motor hazır değilse metin indeksli kalır; embedding sonra tamamlanır.
@@ -420,15 +415,21 @@ export async function indexMissingEmbeddings(
     const missing = await getChunksMissingEmbeddings(BATCH_SIZE);
     if (missing.length === 0) break;
 
-    const embeddings = await generateEmbeddings(missing.map((m) => m.chunk_text));
-    const rows = missing
-      .map((m, i) =>
-        embeddings[i] ? { id: m.id, embedding: vectorToBase64(embeddings[i]) } : null,
-      )
-      .filter((r): r is { id: string; embedding: string } => r !== null);
+    let embeddings: number[][];
+    try {
+      embeddings = await generateEmbeddings(missing.map((m) => m.chunk_text));
+    } catch (err) {
+      // ponytail: bir parti hatası tüm işi çökertmez; kalanlar bir sonraki
+      // taramada tamamlanır. Sonsuz döngüyü önlemek için burada dururuz.
+      console.warn('[ai] embedding partisi başarısız, kalanlar atlandı', err);
+      break;
+    }
+
+    const rows = packEmbeddingRows(missing.map((m) => m.id), embeddings);
     await setChunkEmbeddingsBatch(rows);
     processed += rows.length;
     if (onProgress) onProgress(processed, processed + missing.length);
+    if (rows.length === 0) break; // ilerleme yoksa sonsuz döngüye girme
   }
 
   return { processed };
@@ -440,20 +441,13 @@ export async function indexMissingEmbeddings(
 export async function reindexVault(
   onProgress?: (current: number, total: number) => void,
 ): Promise<void> {
-  // AI kapalıysa baştan dur: yarıda kalıp yanıltıcı sonuç bırakma.
+  // AI/model hazır değilse baştan dur: aksi hâlde chunk'lar embedding'siz kalır.
   const gate = await getAiStatus();
-  if (!isAiEnabled(gate)) {
-    throw new Error('AI kapalı — Ayarlar → AI bölümünden açabilirsiniz.');
+  if (!isAiEnabled(gate) || !gate.embed_ready || !gate.engine_available) {
+    throw new Error('AI hazır değil — vektörleme motoru ve BGE-M3 modeli gerekli.');
   }
 
   const db = await getDb();
-  await db.execute('DELETE FROM item_chunks');
-  try {
-    await db.execute('DELETE FROM item_chunks_fts');
-  } catch {
-    // ignore
-  }
-  invalidateVectorIndex();
 
   const items = await listItems();
   const [allTags, allCategories] = await Promise.all([
@@ -480,6 +474,15 @@ export async function reindexVault(
     });
     await saveItemChunks(it.id, chunks);
     if (onProgress) onProgress(i + 1, total);
+  }
+
+  // Silinmiş öğelerin chunk'larını temizle. Global silme YOK: her öğe kendi
+  // chunk'larını değiştirdi; tur yarıda kalırsa diğerlerinin indeksi korunur.
+  await db.execute('DELETE FROM item_chunks WHERE item_id NOT IN (SELECT id FROM items)');
+  try {
+    await db.execute('DELETE FROM item_chunks_fts WHERE item_id NOT IN (SELECT id FROM items)');
+  } catch {
+    // ignore
   }
   invalidateVectorIndex();
 
