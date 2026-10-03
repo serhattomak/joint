@@ -1039,7 +1039,7 @@ export function SettingsView(props: SettingsViewProps) {
                         variant="outline"
                         size="sm"
                         onClick={() => void runOrganizeUncategorized()}
-                        disabled={organizeBusy || !aiStatus?.llm_ready}
+                        disabled={organizeBusy || !aiEnabled || !aiStatus?.llm_ready}
                       >
                         {organizeBusy ? 'İşleniyor…' : 'Kategorisizleri Düzenle'}
                       </Button>
@@ -1049,15 +1049,15 @@ export function SettingsView(props: SettingsViewProps) {
                       label="Semantik Kasa İndeksi"
                       hint={
                         reindexProgress
-                          ? `${reindexProgress.current} / ${reindexProgress.total} içerik indeksleniyor…`
-                          : 'Tüm not ve transkriptleri BGE-M3 ile baştan vektörleştir.'
+                          ? `${reindexProgress.current} / ${reindexProgress.total} işleniyor…`
+                          : 'Not, transkript, makale ve künye parçalarını baştan kurup BGE-M3 ile vektörleştirir.'
                       }
                     >
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => void runReindex()}
-                        disabled={reindexBusy || !aiStatus?.embed_ready}
+                        disabled={reindexBusy || !aiEnabled || !aiStatus?.embed_ready}
                       >
                         {reindexBusy ? 'İndeksleniyor…' : 'Tümünü Yeniden İndeksle'}
                       </Button>
