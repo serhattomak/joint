@@ -388,6 +388,22 @@ export async function removeTag(id: string): Promise<void> {
   await db.execute('DELETE FROM tags WHERE id = $1', [id]);
 }
 
+/**
+ * `duplicateIds` etiketlerindeki üyeleri `canonicalId`'ye taşır, sonra
+ * fazlalıkları siler. FK CASCADE boşalan item_tags satırlarını temizler.
+ */
+export async function mergeTags(canonicalId: string, duplicateIds: string[]): Promise<void> {
+  if (duplicateIds.length === 0) return;
+  const db = await getDb();
+  const inClause = duplicateIds.map((_, i) => `$${i + 2}`).join(', ');
+  await runAtomic(
+    db,
+    `INSERT OR IGNORE INTO item_tags (item_id, tag_id) SELECT item_id, $1 FROM item_tags WHERE tag_id IN (${inClause}); ` +
+      `DELETE FROM tags WHERE id IN (${inClause}); `,
+    [canonicalId, ...duplicateIds],
+  );
+}
+
 export async function getOrCreateTag(name: string, user_id: string | null = null): Promise<Tag> {
   const db = await getDb();
   const [existing] = await db.select<Tag[]>('SELECT * FROM tags WHERE name = $1', [name]);
@@ -483,6 +499,19 @@ export async function updateCategory(id: string, name: string): Promise<Category
 export async function removeCategory(id: string): Promise<void> {
   const db = await getDb();
   await db.execute('DELETE FROM categories WHERE id = $1', [id]);
+}
+
+/** `mergeTags`'in kategori karşılığı. */
+export async function mergeCategories(canonicalId: string, duplicateIds: string[]): Promise<void> {
+  if (duplicateIds.length === 0) return;
+  const db = await getDb();
+  const inClause = duplicateIds.map((_, i) => `$${i + 2}`).join(', ');
+  await runAtomic(
+    db,
+    `INSERT OR IGNORE INTO item_categories (item_id, category_id) SELECT item_id, $1 FROM item_categories WHERE category_id IN (${inClause}); ` +
+      `DELETE FROM categories WHERE id IN (${inClause}); `,
+    [canonicalId, ...duplicateIds],
+  );
 }
 
 export async function getOrCreateCategory(name: string, user_id: string | null = null): Promise<Category> {
