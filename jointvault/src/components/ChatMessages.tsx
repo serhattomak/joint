@@ -45,7 +45,7 @@ function QueryResultCards({
           return (
             <div
               key={item.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border/80 bg-background/50 p-2.5"
+              className="flex items-center justify-between gap-2 rounded-lg border border-border/80 bg-background p-2.5"
             >
               <div className="flex min-w-0 items-center gap-1.5">
                 <Badge variant="outline" className="px-1 py-0 text-3xs">
@@ -189,7 +189,7 @@ export function ChatMessages({ messages, onOpenItem, querying }: ChatMessagesPro
                       return (
                         <div
                           key={ref.chunk.id}
-                          className="group flex flex-col gap-1.5 rounded-lg border border-border/80 bg-background/50 p-2.5 transition hover:border-border hover:bg-background"
+                          className="group flex flex-col gap-1.5 rounded-lg border border-border/80 bg-background p-2.5 transition hover:border-border hover:bg-background"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex min-w-0 items-center gap-1.5">

@@ -96,6 +96,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
   const [phase, setPhase] = useState<'idle' | 'streaming' | 'querying'>('idle');
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [searchResults, setSearchResults] = useState<ChatSearchHit[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [historyOpen, setHistoryOpen] = useState(() => localStorage.getItem(HISTORY_KEY) !== '0');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [scrollTargetId, setScrollTargetId] = useState<string | null>(null);
@@ -155,6 +156,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
       if (busy) return;
       setActiveId(id);
       localStorage.setItem(SESSION_KEY, id);
+      setSearchQuery('');
       setSearchResults([]);
       void loadMessages(id);
     },
@@ -170,7 +172,8 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
     return s.id;
   }, [refreshSessions]);
 
-  const doSearch = useCallback((q: string) => {
+  const handleSearchChange = useCallback((q: string) => {
+    setSearchQuery(q);
     if (!q.trim()) {
       setSearchResults([]);
       return;
@@ -206,6 +209,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
       .then(refreshSessions)
       .catch(() => null);
 
+    let didQuery = false;
     try {
       const { answer, references, queryItems } = await askVault(q, {
         history,
@@ -213,7 +217,16 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + token } : m)),
           ),
-        onStatus: setPhase,
+        onStatus: (s) => {
+          setPhase(s);
+          if (s === 'querying') didQuery = true;
+          // 2. geçiş başlarken 1. geçişin ham sorgu bloğunu balondan temizle.
+          if (s === 'streaming' && didQuery) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantMsgId ? { ...m, content: '' } : m)),
+            );
+          }
+        },
       });
 
       setMessages((prev) =>
@@ -256,6 +269,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
   };
 
   const removeSession = async (id: string) => {
+    if (busy) return;
     await deleteChatSession(id);
     const list = await listChatSessions();
     setSessions(list);
@@ -319,12 +333,14 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
             sessions={sessions}
             activeId={activeId}
             searchResults={searchResults}
+            searchQuery={searchQuery}
+            busy={busy}
             onSelect={selectSession}
             onCreate={() => void createSession()}
             onRename={(id, title) => void renameChatSession(id, title).then(refreshSessions)}
             onTogglePin={(id) => void togglePin(id)}
             onDelete={setConfirmDeleteId}
-            onSearch={doSearch}
+            onSearchChange={handleSearchChange}
             onOpenResult={(hit) => {
               selectSession(hit.sessionId);
               setScrollTargetId(hit.messageId);

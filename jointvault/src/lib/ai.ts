@@ -594,6 +594,8 @@ KAYNAKLAR:\n${contextText}`;
     );
   }
 
+  // `answer` HAM döner (temizlenmiş değil): UI yeniden ayrıştırıp `action:tag`
+  // kartını gösterebilsin ve mesaj kalıcı olarak bloğu taşısın diye bilinçli.
   return { answer, references, queryItems };
 }
 

@@ -5,6 +5,7 @@
  * iki tabloya birlikte yazılır (tetikleyici yok). Şema: göç 5.
  */
 import { getDb } from './client';
+import { runAtomic } from './atomic';
 import {
   formatChatMarkdown,
   sanitizeFtsQuery,
@@ -96,11 +97,14 @@ export async function setChatSessionPinned(id: string, pinned: boolean): Promise
 /** Oturumu siler. Mesajlar FK CASCADE ile gider; FTS açıkça temizlenir. */
 export async function deleteChatSession(id: string): Promise<void> {
   const db = await getDb();
-  await db.execute('DELETE FROM ai_chat_messages_fts WHERE session_id = $1', [id]);
-  // FK CASCADE'a güvenilmez: mevcut kasada `PRAGMA foreign_keys` bağlantıda
-  // yeniden çalışmamış olabilir; mesajları AÇIKÇA sil (yetim kayıt olmasın).
-  await db.execute('DELETE FROM ai_chat_messages WHERE session_id = $1', [id]);
-  await db.execute('DELETE FROM ai_chat_sessions WHERE id = $1', [id]);
+  // FTS + mesajlar + oturum TEK atomik çağrıda; FK CASCADE'a güvenilmez.
+  await runAtomic(
+    db,
+    'DELETE FROM ai_chat_messages_fts WHERE session_id = $1; ' +
+      'DELETE FROM ai_chat_messages WHERE session_id = $1; ' +
+      'DELETE FROM ai_chat_sessions WHERE id = $1;',
+    [id],
+  );
 }
 
 export async function appendChatMessage(
@@ -112,13 +116,12 @@ export async function appendChatMessage(
   const ts = now();
   const refs = input.references ? JSON.stringify(input.references) : null;
 
-  await db.execute(
-    'INSERT INTO ai_chat_messages (id, session_id, role, content, references_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+  // Mesaj + FTS TEK atomik çağrıda: biri yazılıp diğeri düşerse arama sapması olurdu.
+  await runAtomic(
+    db,
+    'INSERT INTO ai_chat_messages (id, session_id, role, content, references_json, created_at) VALUES ($1, $2, $3, $4, $5, $6); ' +
+      'INSERT INTO ai_chat_messages_fts (message_id, session_id, content) VALUES ($1, $2, $4);',
     [id, sessionId, input.role, input.content, refs, ts],
-  );
-  await db.execute(
-    'INSERT INTO ai_chat_messages_fts (message_id, session_id, content) VALUES ($1, $2, $3)',
-    [id, sessionId, input.content],
   );
 
   // İlk kullanıcı mesajı: başlık hâlâ varsayılansa içerikten türet (elle adı ezme).

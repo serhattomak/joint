@@ -8,12 +8,14 @@ interface ChatHistoryPanelProps {
   sessions: ChatSession[];
   activeId: string | null;
   searchResults: ChatSearchHit[];
+  searchQuery: string;
+  busy: boolean;
   onSelect: (id: string) => void;
   onCreate: () => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string) => void;
   onDelete: (id: string) => void;
-  onSearch: (q: string) => void;
+  onSearchChange: (q: string) => void;
   onOpenResult: (hit: ChatSearchHit) => void;
 }
 
@@ -32,6 +34,7 @@ function relativeDate(iso: string): string {
 function SessionRow({
   session,
   active,
+  busy,
   onSelect,
   onRename,
   onTogglePin,
@@ -39,6 +42,7 @@ function SessionRow({
 }: {
   session: ChatSession;
   active: boolean;
+  busy: boolean;
   onSelect: () => void;
   onRename: (title: string) => void;
   onTogglePin: () => void;
@@ -62,7 +66,7 @@ function SessionRow({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
+            if (e.key === 'Enter') e.currentTarget.blur();
             if (e.key === 'Escape') setEditing(false);
           }}
           className="h-7 min-w-0 flex-1 rounded-sm border border-ring bg-transparent px-2 text-sm focus:outline-none"
@@ -89,27 +93,33 @@ function SessionRow({
         <button
           type="button"
           title={session.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+          aria-label={session.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+          disabled={busy}
           onClick={onTogglePin}
-          className="rounded-xs p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="rounded-xs p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
         >
           {session.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
         </button>
         <button
           type="button"
           title="Yeniden adlandır"
+          aria-label="Yeniden adlandır"
+          disabled={busy}
           onClick={() => {
             setDraft(session.title);
             setEditing(true);
           }}
-          className="rounded-xs p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="rounded-xs p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
         >
           <Pencil className="size-3.5" />
         </button>
         <button
           type="button"
           title="Sil"
+          aria-label="Sil"
+          disabled={busy}
           onClick={onDelete}
-          className="rounded-xs p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+          className="rounded-xs p-1 text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-40"
         >
           <Trash2 className="size-3.5" />
         </button>
@@ -122,16 +132,17 @@ export function ChatHistoryPanel({
   sessions,
   activeId,
   searchResults,
+  searchQuery,
+  busy,
   onSelect,
   onCreate,
   onRename,
   onTogglePin,
   onDelete,
-  onSearch,
+  onSearchChange,
   onOpenResult,
 }: ChatHistoryPanelProps) {
-  const [query, setQuery] = useState('');
-  const searching = query.trim().length > 0;
+  const searching = searchQuery.trim().length > 0;
 
   const pinned = sessions.filter((s) => s.pinned);
   const rest = sessions.filter((s) => !s.pinned);
@@ -147,16 +158,21 @@ export function ChatHistoryPanel({
         <div className="settings-card flex h-8 min-w-0 flex-1 items-center gap-1.5 px-2">
           <Search className="size-3.5 shrink-0 text-muted-foreground" />
           <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              onSearch(e.target.value);
-            }}
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Sohbetlerde ara…"
             className="min-w-0 flex-1 bg-transparent text-xs placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
-        <Button variant="ghost" size="sm" className="size-8 shrink-0 p-0" title="Yeni sohbet" onClick={onCreate}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="size-8 shrink-0 p-0"
+          title="Yeni sohbet"
+          aria-label="Yeni sohbet"
+          onClick={onCreate}
+          disabled={busy}
+        >
           <Plus className="size-4" />
         </Button>
       </div>
@@ -192,6 +208,7 @@ export function ChatHistoryPanel({
                     key={s.id}
                     session={s}
                     active={s.id === activeId}
+                    busy={busy}
                     onSelect={() => onSelect(s.id)}
                     onRename={(title) => onRename(s.id, title)}
                     onTogglePin={() => onTogglePin(s.id)}
