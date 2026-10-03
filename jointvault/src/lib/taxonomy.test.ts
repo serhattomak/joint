@@ -3,9 +3,11 @@ import {
   matchExisting,
   matchTaxonomyInText,
   normalizeKey,
+  normalizeLlmSuggestion,
   normalizeTag,
   resolveCategories,
   resolveTags,
+  shouldAutoApply,
 } from './taxonomy';
 
 describe('normalizeKey', () => {
@@ -67,5 +69,56 @@ describe('matchTaxonomyInText', () => {
 
   it('kısa adı eşlemez', () => {
     expect(matchTaxonomyInText('AI çağı', ['AI'], []).categories).toEqual([]);
+  });
+});
+
+describe('normalizeKey — sembol ve Latin-dışı', () => {
+  it('C/C++/C# ayırır', () => {
+    expect(normalizeKey('C++')).toBe('c++');
+    expect(normalizeKey('C#')).toBe('c#');
+    expect(matchExisting('C#', ['C'])).toBeNull();
+  });
+
+  it('Latin-dışı harfleri korur', () => {
+    expect(normalizeKey('Привет')).toBe('привет');
+  });
+});
+
+describe('normalizeTag — boşluk sonrası hash', () => {
+  it('baştaki boşluktan sonraki # söker', () => {
+    expect(normalizeTag('  #Python')).toBe('python');
+  });
+});
+
+describe('normalizeLlmSuggestion', () => {
+  it('boş/eksik yanıtta çökmeden varsayılan döner', () => {
+    expect(normalizeLlmSuggestion({})).toEqual({
+      categories: [],
+      tags: [],
+      summary: '',
+      confidence: 0,
+    });
+    expect(normalizeLlmSuggestion(null)).toEqual({
+      categories: [],
+      tags: [],
+      summary: '',
+      confidence: 0,
+    });
+  });
+
+  it('geçerli alanları korur, yanlış tipleri atar', () => {
+    expect(
+      normalizeLlmSuggestion({ categories: ['A'], tags: [1, 'b'], confidence: 0.9 }),
+    ).toEqual({ categories: ['A'], tags: ['b'], summary: '', confidence: 0.9 });
+  });
+});
+
+describe('shouldAutoApply', () => {
+  it('deterministik/both her zaman, llm eşiğe göre', () => {
+    expect(shouldAutoApply('deterministic', 0, true, 0.6)).toBe(true);
+    expect(shouldAutoApply('both', 0, true, 0.6)).toBe(true);
+    expect(shouldAutoApply('llm', 0.5, true, 0.6)).toBe(false);
+    expect(shouldAutoApply('llm', 0.6, true, 0.6)).toBe(true);
+    expect(shouldAutoApply('llm', 0.9, false, 0.6)).toBe(false);
   });
 });

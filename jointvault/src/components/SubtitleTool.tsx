@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { PageSurface } from '@/components/ui/page-surface';
 import { getItem, getTagsForItem, listItems, updateItem } from '@/lib/db/client';
-import { applyCategorization, categorizeAndTagItem, getAiStatus, indexItemChunks } from '@/lib/ai';
+import { applyCategorization, categorizeAndTagItem, getAiStatus, indexItemChunks, shouldApplySuggestion } from '@/lib/ai';
 import type { Item } from '@/lib/db/types';
 import {
   embedSubtitle,
@@ -197,13 +197,14 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
           const aiStat = await getAiStatus().catch(() => null);
           if (aiStat?.engine_available && aiStat.llm_ready) {
             const catResult = await categorizeAndTagItem(item);
-            if (aiStat.auto_apply_tags && (catResult.categories.length > 0 || catResult.tags.length > 0)) {
+            const hasSuggestions = catResult.categories.length > 0 || catResult.tags.length > 0;
+            if (hasSuggestions && shouldApplySuggestion(catResult, !!aiStat.auto_apply_tags)) {
               await applyCategorization(itemId, catResult.categories, catResult.tags);
               setAiNotice({
                 message: `Otomatik uygulandı: ${catResult.categories.join(', ')} / ${catResult.tags.map((t) => '#' + t).join(' ')}`,
                 status: 'applied',
               });
-            } else if (catResult.categories.length > 0 || catResult.tags.length > 0) {
+            } else if (hasSuggestions) {
               setAiNotice({
                 message: `AI Önerisi: ${catResult.categories.join(', ')} / ${catResult.tags.map((t) => '#' + t).join(' ')}`,
                 status: 'suggested',

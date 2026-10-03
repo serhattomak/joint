@@ -5,6 +5,7 @@ import {
   getAiStatus,
   indexItemChunks,
   isAiEnabled,
+  shouldApplySuggestion,
 } from './ai';
 import {
   createItem,
@@ -180,7 +181,8 @@ export async function processDownloadedItemWithAi(
     if (aiStat && isAiEnabled(aiStat) && aiStat.engine_available && aiStat.llm_ready) {
       onProgress?.('Yapay zekâ ile içerik ve etiketler çözümleniyor…');
       const catResult = await categorizeAndTagItem(item);
-      if (catResult.categories.length > 0 || catResult.tags.length > 0) {
+      const hasSuggestions = catResult.categories.length > 0 || catResult.tags.length > 0;
+      if (hasSuggestions && shouldApplySuggestion(catResult, true)) {
         await applyCategorization(itemId, catResult.categories, catResult.tags);
         aiCategorized = true;
       }

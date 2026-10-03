@@ -37,7 +37,13 @@ import {
 } from './db/client';
 import type { HybridSearchResult, Item } from './db/types';
 import { invalidateVectorIndex } from './vector-cache';
-import { matchTaxonomyInText, resolveCategories, resolveTags } from './taxonomy';
+import {
+  matchTaxonomyInText,
+  normalizeLlmSuggestion,
+  resolveCategories,
+  resolveTags,
+  shouldAutoApply,
+} from './taxonomy';
 import {
   buildHistoryWindow,
   mergeQueryPayload,
@@ -742,10 +748,11 @@ export async function categorizeAndTagItem(
 
   // 2. Boşluk varsa LLM devreye girer.
   const needLlm = det.categories.length === 0 || det.tags.length < 2;
-  let llm: CategorizeAndTagResult | null = null;
+  let llm = { categories: [] as string[], tags: [] as string[], summary: '', confidence: 0 };
+  let llmValid = false;
   if (needLlm) {
     try {
-      llm = await invoke<CategorizeAndTagResult>('ai_categorize_and_tag', {
+      const raw = await invoke<unknown>('ai_categorize_and_tag', {
         payload: {
           title: item.title || '',
           text: [
@@ -760,20 +767,19 @@ export async function categorizeAndTagItem(
           existing_tags: tags,
         },
       });
+      llm = normalizeLlmSuggestion(raw);
+      // Geçersiz/boş yanıt tespiti (eksik alanlar normalize edilir; çökme yok).
+      llmValid =
+        llm.confidence > 0 || llm.categories.length > 0 || llm.tags.length > 0 || !!llm.summary;
     } catch {
-      llm = null;
+      llmValid = false;
     }
   }
 
-  // Geçersiz JSON tespiti: boş + 0 güven → başarısız say.
-  const llmValid =
-    !!llm &&
-    (llm.confidence > 0 || llm.categories.length > 0 || llm.tags.length > 0 || !!llm.summary);
+  const suggestedCats = [...det.categories, ...(llmValid ? llm.categories : [])];
+  const suggestedTags = [...det.tags, ...(llmValid ? llm.tags : [])];
 
-  const suggestedCats = [...det.categories, ...(llmValid ? llm!.categories : [])];
-  const suggestedTags = [...det.tags, ...(llmValid ? llm!.tags : [])];
-
-  const llmConfidence = llmValid ? llm!.confidence : 0;
+  const llmConfidence = llmValid ? llm.confidence : 0;
   const resolvedCats = resolveCategories(suggestedCats, cats, {
     confidence: llmConfidence,
     minConfidence: readTagThreshold(),
@@ -782,7 +788,7 @@ export async function categorizeAndTagItem(
   const resolvedTags = resolveTags(suggestedTags, tags, { max: 5 });
 
   const detHasAny = det.categories.length > 0 || det.tags.length > 0;
-  const confidence = detHasAny ? 1 : llmValid ? llm!.confidence : 0;
+  const confidence = detHasAny ? 1 : llmValid ? llm.confidence : 0;
   const source: CategorizeAndTagResult['source'] = detHasAny
     ? llmValid
       ? 'both'
@@ -794,10 +800,15 @@ export async function categorizeAndTagItem(
   return {
     categories: resolvedCats.names,
     tags: resolvedTags,
-    summary: llmValid ? llm!.summary : '',
+    summary: llmValid ? llm.summary : '',
     confidence,
     source,
   };
+}
+
+/** Önerinin uygulanıp uygulanmayacağı: deterministik/both her zaman; llm eşikle. */
+export function shouldApplySuggestion(result: CategorizeAndTagResult, enabled: boolean): boolean {
+  return shouldAutoApply(result.source, result.confidence, enabled, readTagThreshold());
 }
 
 /**
@@ -862,7 +873,6 @@ export async function batchCategorizeItems(
 
   const cfg = await getAiStatus();
   const shouldApply = options?.forceAutoApply ?? cfg.auto_apply_tags ?? false;
-  const threshold = readTagThreshold();
 
   let processed = 0;
   let applied = 0;
@@ -883,12 +893,7 @@ export async function batchCategorizeItems(
       if (result.source === 'deterministic' || result.source === 'both') deterministic++;
 
       const hasSuggestions = result.categories.length > 0 || result.tags.length > 0;
-      const canApply =
-        shouldApply &&
-        hasSuggestions &&
-        (result.source === 'deterministic' ||
-          result.source === 'both' ||
-          result.confidence >= threshold);
+      const canApply = hasSuggestions && shouldApplySuggestion(result, shouldApply);
 
       if (canApply) {
         await applyCategorization(it.id, result.categories, result.tags);
