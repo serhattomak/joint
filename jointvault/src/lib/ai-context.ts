@@ -35,7 +35,7 @@ export interface VaultQuery {
 
 const MAX_LIMIT = 30;
 const DEFAULT_LIMIT = 10;
-const SUMMARY_MAX_CHARS = 1200;
+const SUMMARY_MAX_CHARS = 1800;
 
 const asString = (v: unknown): string | undefined => {
   if (typeof v !== 'string') return undefined;
@@ -105,9 +105,16 @@ export async function buildVaultSummary(): Promise<string> {
     'SELECT COUNT(*) AS n FROM items WHERE local_path IS NOT NULL',
   );
 
-  const cats = (await listCategoriesWithCounts()).filter((c) => c.count > 0).slice(0, 10);
-  const tags = (await listTagsWithCounts()).filter((t) => t.count > 0).slice(0, 10);
-  const recent = (await listItemsPage(8, 0, { sort: 'new' })).rows;
+  // Taksonomi SAYIYA göre sıralanır ve tamamı görünür: kullanıcı "X kategorisinde
+  // kaç kayıt" diye sorduğunda kategori özetten düşmemeli.
+  const cats = (await listCategoriesWithCounts())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+  const tags = (await listTagsWithCounts())
+    .filter((t) => t.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 30);
+  const recent = (await listItemsPage(5, 0, { sort: 'new' })).rows;
 
   const lines: string[] = [];
   lines.push(
@@ -188,4 +195,128 @@ export async function executeVaultQuery(
       }));
 
   return { count: total, items };
+}
+
+// --- Deterministik yapısal niyet tespiti ---
+//
+// Küçük yerel modeller `action:query` bloğunu güvenilir üretmez (kanıtlandı: sayı
+// sorularında kaçamak yanıt). Bu yüzden sayı/liste/filtre sorularını burada
+// DETERMİNİSTİK yakalayıp modelden ÖNCE çalıştırırız; model yalnızca dili kurar.
+
+export interface VaultTaxonomy {
+  categories: string[];
+  tags: string[];
+  platforms: string[];
+}
+
+/** Kasadaki taksonomi adları + platform slug'ları (niyet tespiti için). */
+export async function loadTaxonomy(): Promise<VaultTaxonomy> {
+  const db = await getDb();
+  const [cats, tags, platRows] = await Promise.all([
+    listCategories(),
+    listTags(),
+    db.select<{ platform: string }[]>('SELECT DISTINCT platform FROM items'),
+  ]);
+  return {
+    categories: cats.map((c) => c.name),
+    tags: tags.map((t) => t.name),
+    platforms: platRows.map((p) => p.platform),
+  };
+}
+
+const COUNT_RE = /(kaç|adet|toplam|sayısı|sayisi|tane|ne kadar)/i;
+const DURATION_RE =
+  /kaç\s*(dakika|saniye|saat|gün|günlük|dakikalık|saniyelik|mb|gb|kb|bit|lira|tl|para)/i;
+const LIST_RE =
+  /(listele|listesi|listesini|göster|hangileri|neler|neler var|var mı|var mi|çıkar|kaydettim|kayıtlarım|arşivim)/i;
+const FAV_NEG_RE = /(favori olmayan|favorisiz|favori olmayanlar)/i;
+const FAV_RE = /(favori|favoriler|favorilerim)/i;
+const LOCAL_NEG_RE = /(indirilmemiş|indirilmeyen|yerel olmayan)/i;
+const LOCAL_RE = /(indirilmiş|indirilen|yerel|diskte|indirmiş)/i;
+
+/**
+ * Sorudan yapısal niyet çıkarır.
+ *
+ * Yalnızca bir "sorgu sinyali" (sayı / liste / favori / yerel / tarih) varsa
+ * döner; taksonomi eşleşmesi tek başına yetmez (aksi hâlde içerik soruları da
+ * yapısal sorguya dönüşürdü).
+ */
+export function detectStructuralIntent(query: string, tax: VaultTaxonomy): VaultQuery | null {
+  const q = query.toLocaleLowerCase('tr-TR');
+
+  const countWord = COUNT_RE.test(q) && !DURATION_RE.test(q);
+  const listWord = LIST_RE.test(q);
+
+  let favorite: boolean | undefined;
+  if (FAV_NEG_RE.test(q)) favorite = false;
+  else if (FAV_RE.test(q)) favorite = true;
+
+  let downloaded: boolean | undefined;
+  if (LOCAL_NEG_RE.test(q)) downloaded = false;
+  else if (LOCAL_RE.test(q)) downloaded = true;
+
+  let sinceDays: number | undefined;
+  const sinceMatch = q.match(/son\s+(\d{1,3})\s*g[üu]n/);
+  if (sinceMatch) {
+    const n = Number(sinceMatch[1]);
+    if (Number.isFinite(n) && n > 0) sinceDays = n;
+  } else if (/bu\s+hafta/.test(q)) sinceDays = 7;
+  else if (/geçen\s+hafta/.test(q)) sinceDays = 14;
+  else if (/bu\s+ay/.test(q)) sinceDays = 30;
+
+  const hasSignal =
+    countWord ||
+    listWord ||
+    favorite !== undefined ||
+    downloaded !== undefined ||
+    sinceDays !== undefined;
+  if (!hasSignal) return null;
+
+  const category = tax.categories.find((c) => q.includes(c.toLocaleLowerCase('tr-TR')));
+  const tag = tax.tags.find((t) => q.includes(t.toLocaleLowerCase('tr-TR')));
+  const platform = tax.platforms.find(
+    (p) => p.length >= 3 && q.includes(p.toLocaleLowerCase('tr-TR')),
+  );
+
+  // "kategori"/"etiket" KELİMESİ geçiyor ama ad eşleşmiyorsa yapısal sorgu
+  // çalıştırma: aksi hâlde "tüm kasa" sayısı o kategoriye aitmiş gibi sunulur.
+  // Bu durumda model, kasa özetindeki gerçek kategori listesinden yanıtlar.
+  if (/kategori/.test(q) && !category) return null;
+  if (/etiket/.test(q) && !tag) return null;
+
+  const out: VaultQuery = { limit: 10 };
+  if (category) out.category = category;
+  if (tag) out.tag = tag;
+  if (platform) out.platform = platform;
+  if (favorite !== undefined) out.favorite = favorite;
+  if (downloaded !== undefined) out.downloaded = downloaded;
+  if (sinceDays !== undefined) out.sinceDays = sinceDays;
+  return out;
+}
+
+function describeQuery(q: VaultQuery): string {
+  const parts: string[] = [];
+  if (q.category) parts.push(`kategori="${q.category}"`);
+  if (q.tag) parts.push(`etiket="${q.tag}"`);
+  if (q.platform) parts.push(`platform="${q.platform}"`);
+  if (q.favorite === true) parts.push('yalnız favoriler');
+  if (q.favorite === false) parts.push('favori olmayanlar');
+  if (q.downloaded === true) parts.push('yerel indirilmiş');
+  if (q.downloaded === false) parts.push('indirilmemiş');
+  if (q.sinceDays) parts.push(`son ${q.sinceDays} gün`);
+  if (q.query) parts.push(`"${q.query}"`);
+  return parts.length > 0 ? `(${parts.join(', ')}) ` : '';
+}
+
+/** Yapısal sorgu sonucunu modele verilecek KESİN bir metne çevirir. */
+export function formatQueryResult(
+  q: VaultQuery,
+  result: { count: number; items: VaultQueryItem[] },
+): string {
+  const head = `${describeQuery(q)}Sorgu sonucu: ${result.count} kayıt.`;
+  if (result.items.length === 0) return head;
+  const lines = result.items.map(
+    (i) => `- ${i.title ?? i.url} [${i.platform}] ${i.createdAt.slice(0, 10)} (ID: ${i.id})`,
+  );
+  return `${head}\n${lines.join('\n')}`;
 }

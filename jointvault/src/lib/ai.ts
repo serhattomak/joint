@@ -42,7 +42,10 @@ import {
 } from './ai-chat';
 import {
   buildVaultSummary,
+  detectStructuralIntent,
   executeVaultQuery,
+  formatQueryResult,
+  loadTaxonomy,
   normalizeVaultQuery,
   type VaultQueryItem,
 } from './ai-context';
@@ -448,6 +451,14 @@ const VAULT_QUERY_CONTRACT = [
   'Gerekmiyorsa normal, doğal yanıt ver. Uydurma; yalnızca verilen KAYNAKLAR ve sorgu sonuçlarına dayan.',
 ].join('\n');
 
+/** "Yalnızca kaynaklar" kuralını sayı/liste sorularında ezen açık uyarı. */
+const PRIORITY_RULES = [
+  'ÖNCELİK (aşağıdaki tüm kuralların üstünde):',
+  '1. KASA ÖZETİ ve YAPISAL SONUÇ KESİN veridir; sayı/adet/liste/filtre sorularında tek doğru kaynak bunlardır.',
+  '2. "Kesin sayı veremem", "filtreleme yapılmadı", "kaynaklarda yok" gibi kaçamak yanıt YASAK; sayı varsa doğrudan söyle.',
+  '3. KAYNAKLAR içerik parçalarıdır; içindeki parça sayısı (ör. 5) KAYIT SAYISI DEĞİLDİR.',
+].join('\n');
+
 export interface RagResult {
   answer: string;
   references: HybridSearchResult[];
@@ -502,6 +513,21 @@ export async function askVault(
     vaultSummary = '';
   }
 
+  // 2c. Yapısal niyeti DETERMİNİSTİK çöz ve modelden ÖNCE çalıştır. Küçük
+  //     modeller `action:query` üretmediğinde bile sayı/liste soruları doğru yanıtlanır.
+  let structuredBlock = '';
+  let queryItems: VaultQueryItem[] | undefined;
+  try {
+    const intent = detectStructuralIntent(query, await loadTaxonomy());
+    if (intent) {
+      const result = await executeVaultQuery(intent);
+      queryItems = result.items;
+      structuredBlock = formatQueryResult(intent, result);
+    }
+  } catch {
+    structuredBlock = '';
+  }
+
   // 3. Kontekst metnini oluştur
   let contextText = '';
   if (references.length > 0) {
@@ -522,7 +548,7 @@ export async function askVault(
   const systemPrompt = `Sen JointVault kişisel medya kasasının zeki Türkçe asistanısın.\n\
 Kullanıcının sorularına, aşağıda kasadan çekilen transkript ve not parçalarını (KAYNAKLAR) kullanarak yanıt ver.\n\
 KURALLAR:\n\
-1. Sadece verilen kaynaklara sadık kal. Kaynaklarda olmayan şeyleri uydurma.\n\
+1. SADECE verilen KAYNAKLAR ile üstteki KASA ÖZETİ/YAPISAL SONUÇ bloklarına dayan; bunların dışında hiçbir şey uydurma. Sayı, adet ve liste sorularında KASA ÖZETİ ve YAPISAL SONUÇ KESİNDİR; "kesin sayı veremem" deme.\n\
 2. Bilgi aldığın kaynakları parantez içinde belirt (örn: "[Kaynak 1]").\n\
 3. Eğer transkriptte geçen bir zamandan bahsediyorsan saniyesini de yaz (örn: "01:25 saniyesinde...").\n\
 4. Samimi, teknik ve doğrudan bir dille yanıt ver.\n\
@@ -537,7 +563,8 @@ KURALLAR:\n\
 \`\`\`\n\n\
 KAYNAKLAR:\n${contextText}`;
 
-  const fullSystemPrompt = `${systemPrompt}\n\nKASA ÖZETİ:\n${vaultSummary}\n\n${VAULT_QUERY_CONTRACT}`;
+  const structuredSection = structuredBlock ? `\n\nYAPISAL SONUÇ:\n${structuredBlock}` : '';
+  const fullSystemPrompt = `${PRIORITY_RULES}\n\n${systemPrompt}\n\nKASA ÖZETİ:\n${vaultSummary}${structuredSection}\n\n${VAULT_QUERY_CONTRACT}`;
 
   // Geçmiş, karakter bütçesiyle kırpılır (Qwen context'ini taşırmaz).
   const history: HistoryMessage[] = buildHistoryWindow(
@@ -558,8 +585,7 @@ KAYNAKLAR:\n${contextText}`;
     opts.onToken,
   );
 
-  // 4. Yapısal sorgu eylemi — en fazla 1 tur (ponytail: tavan; gerekirse 2'ye çıkar).
-  let queryItems: VaultQueryItem[] | undefined;
+  // 4. Model kendiliğinden yapısal sorgu ürettiyse onu da uygula (fallback).
   const parsed = parseAssistantMessage(answer);
 
   if (parsed.actionQuery) {
