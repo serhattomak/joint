@@ -53,9 +53,11 @@ import {
   downloadAiModel,
   getAiStatus,
   isAiEnabled,
+  readTagThreshold,
   reindexVault,
   saveAiConfig,
   stopAiServer,
+  TAG_THRESHOLD_KEY,
   useAiEngineProgress,
   useAiModelProgress,
   useAiWarmupStatus,
@@ -66,6 +68,11 @@ import {
 import type { ComponentStatus } from '@/lib/components';
 
 export type SettingsTab = 'view' | 'downloads' | 'speech' | 'ai' | 'diagnostics' | 'extension' | 'backup' | 'components';
+
+const THRESHOLD_OPTIONS: SelectOption[] = ['0.3', '0.5', '0.6', '0.7', '0.8'].map((v) => ({
+  value: v,
+  label: v,
+}));
 
 export interface SettingsViewProps {
   pageSize: number;
@@ -440,6 +447,16 @@ export function SettingsView(props: SettingsViewProps) {
   const [organizeBusy, setOrganizeBusy] = useState(false);
   const [organizeProgress, setOrganizeProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [organizeResult, setOrganizeResult] = useState<string | null>(null);
+  const [tagThreshold, setTagThreshold] = useState(() => readTagThreshold());
+
+  const handleThresholdChange = (v: string): void => {
+    setTagThreshold(Number(v));
+    try {
+      localStorage.setItem(TAG_THRESHOLD_KEY, v);
+    } catch {
+      // localStorage erişilemezse sessizce geç
+    }
+  };
 
   const runOrganizeUncategorized = async () => {
     setOrganizeBusy(true);
@@ -466,7 +483,10 @@ export function SettingsView(props: SettingsViewProps) {
         },
       });
 
-      setOrganizeResult(`${res.processed} içerik tarandı, ${res.applied} içerik otomatik kategorize edildi.`);
+      setOrganizeResult(
+        `${res.applied} uygulandı · ${res.lowConfidence} düşük güvenle atlandı · ` +
+          `${res.deterministic} LLM'siz eşleşti${res.failed > 0 ? ` · ${res.failed} başarısız` : ''}.`,
+      );
     } catch (e) {
       setAiError(String(e));
     } finally {
@@ -1022,6 +1042,20 @@ export function SettingsView(props: SettingsViewProps) {
 
                   {/* Satır listesi: aynı sözlük */}
                   <div className="flex flex-col divide-y divide-border/70">
+                    <SettingRow
+                      label="Öneri Güven Eşiği"
+                      hint="Bu eşiğin altındaki otomatik öneriler uygulanmaz; raporda 'atlandı' olarak görünür."
+                    >
+                      <Select
+                        value={String(tagThreshold)}
+                        onValueChange={handleThresholdChange}
+                        options={THRESHOLD_OPTIONS}
+                        label="Öneri güven eşiği"
+                        size="sm"
+                        className="w-24"
+                      />
+                    </SettingRow>
+
                     <SettingRow
                       label="Kategorisiz İçerikleri Düzenle"
                       hint={
