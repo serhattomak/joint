@@ -70,9 +70,9 @@ rounded:
   xl: "12px"
   "2xl": "16px"
 spacing:
-  rail: "244px"
-  capture-bar: "56px"
-  rule-strip: "40px"
+  toolbar: "52px"
+  sidebar: "244px"
+  rule-strip: "44px"
   accession-band: "28px"
   gutter: "16px"
 components:
@@ -93,13 +93,17 @@ components:
   card:
     backgroundColor: "{colors.card-light}"
     textColor: "{colors.label-light}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.xl}"
     padding: "12px"
   sheet:
     backgroundColor: "{colors.sheet-light}"
     textColor: "{colors.label-light}"
     rounded: "{rounded.xl}"
     padding: "16px"
+  toolbar:
+    backgroundColor: "{colors.toolbar-light}"
+    textColor: "{colors.label-light}"
+    height: "52px"
   rail-item-active:
     backgroundColor: "{colors.card-light}"
     textColor: "{colors.label-light}"
@@ -107,9 +111,25 @@ components:
     padding: "0 8px"
     height: "30px"
     typography: "{typography.body}"
+  scope-tab-active:
+    backgroundColor: "{colors.ground-light}"
+    textColor: "{colors.label-light}"
+    rounded: "{rounded.md}"
+    padding: "0 12px"
+    height: "24px"
+    typography: "{typography.micro}"
 ---
 
 # Design System: JointVault
+
+> **Bu dosya yeni bir sohbet/session için tek sözleşmedir.** Yeni bir ekran ya da özellik
+> geliştirirken önce bunu, sonra `PRODUCT.md`'yi (ürün gerçeği ve dokunulmazlar), gerekiyorsa
+> `jointvault/src/index.css` (`@theme` — token'ların kaynağı) okunur. Buradaki bir kural eskiyse
+> **önce bu dosya güncellenir**, sonra kod yazılır; tersi değil.
+>
+> Değişmez çerçeve: dil **macOS masaüstü uygulaması**, Windows'ta çalışır (pencere kontrolleri
+> sağda). Mimari: Tauri v2 + React 19 + Tailwind v4 (`@theme`) + `@base-ui/react` + lucide.
+> Türkçe arayüz. 1000+ öğe bütçesi, çevrimdışı font, WCAG AA, `prefers-reduced-motion`.
 
 ## Overview
 
@@ -134,10 +154,11 @@ gündüz `#f2f2f7`. Kâğıt/seramik taklidi yok; yüzeyler **malzeme**dir — y
   *anlam* rengidir (`systemRed`, `systemGreen`).
 - Renk asla tek başına anlam taşımaz: her durum ikon + sözcükle birlikte yazılır.
 - Tek yüz: **Inter** (SF Pro'ya en yakın serbest yüz, yerelden gömülü). Ölçüm **JetBrains Mono**.
-- Boyuta bağlı harf aralığı: büyük metin negatif, küçük metin pozitif. Tek bir `letter-spacing` yanlıştır.
+- Boyuta bağlı harf aralığı: büyük metin negatif, küçük metin pozitif.
 - Sürekli köşe: radius 4–16px. Hap biçimi yalnızca durum noktası ve anahtar yuvasına ayrılmıştır.
 - Malzeme gerçek: ray, araç çubuğu ve yaprak yarı saydamdır ve arkalarını bulanıklaştırır.
 - Hareket fiziksel: basış ölçekle iner, geçişler güçlü `ease-out`, süre 150–250ms.
+- **Tek sözlük:** aynı işi yapan iki farklı kontrol bir hatadır. Bu kural mimari kadar bağlayıcıdır.
 
 ## Colors
 
@@ -185,10 +206,10 @@ Inter, SF Pro'nun lisans kısıtı yüzünden **bilinçli ikame**dir. İkisi de 
 `font-optical-sizing: auto` açıktır.
 
 ### Hierarchy
-- **Display** (700, 28px/1.12, -0.022em): Görünüm başlıkları ve uygulama adı.
-- **Title** (600, 22px/1.18, -0.018em): Panel, fiş detayı, boş durum ve diyalog başlığı.
+- **Display** (700, 28px/1.12, -0.022em): Görünüm başlıkları (`text-display`).
+- **Title** (600, 22px/1.18, -0.018em): Panel, fiş detayı, boş durum ve diyalog başlığı (`text-title`).
 - **Body** (400, 14px/1.5, -0.006em): Gövde metni. Kart/satır başlıkları 15px medium.
-- **Micro** (400, 12px/1.4, +0.006em): Alan etiketleri, yardım metni. Büyük harf yok.
+- **Micro** (400, 12px/1.4, +0.006em): Alan etiketleri, yardım metni. Büyük harf yok (`text-micro`).
 - **Data · damga & künye** (400, 11px/1.45, +0.02em, büyük harf · `text-2xs`): Damga, künye bandı,
   tarih, yüzde, hız, sayım.
 - **Data · yol & kimlik** (400, 12px/1.4, mono · `text-micro` + `data-num`): Dosya yolu ve kimlik.
@@ -206,27 +227,39 @@ yüzeylerinde görünür. Başlığın üstüne etiket (eyebrow) koymak yasaktı
 
 ## Layout
 
-Spatial model: sabit çekmece rayı + akan içerik kolonu, üstte iki kalıcı bant.
+Spatial model: **sabit çekmece rayı + akan içerik kolonu**, üstte **tek kalıcı araç çubuğu**.
 
-- **Ray:** 244px, `md` altında gizlenir ve aynı çekmeceler yatay şeride iner — dar pencerede
-  gezinme kaybolmaz.
-- **Yakala çubuğu:** 56px, `sticky top-0`, tüm görünümlerde kalır. Altından içerik akar; bu yüzden
-  ayrım sert bir çizgi değil, **kayan kenar**tır (`scroll-edge-b`: hairline yerine kısa gradyan).
-- **Kural şeridi:** 40px, `sticky top-14`, kasa görünümünde.
+- **Araç çubuğu:** 52px, tam genişlik, `sticky top-0 z-40`, `material-toolbar`. Rayın **da** üstünde
+  tek şerittir — ayrı bir marka başlığı yoktur.
+- **Ray:** 244px, `material-rail`, `sticky top-[52px] h-[calc(100vh-52px)]` (araç çubuğunun altından
+  başlar). `md` altında gizlenir; aynı çekmeceler yatay şeride iner (`SidebarStrip`) — gezinme
+  kaybolmaz. Kapatılabilir: tercih `localStorage`'da (`jv-sidebar`), kapalıyken içerik genişler.
+- **Kural şeridi:** 44px (`h-11`), `sticky`, kasa görünümünde; altında içerik akar.
+- **Büyük başlık:** kasa görünümünde `text-display`; altında kapsam sekmeleri. Sayfa yüzeylerinde
+  başlık `PageSurface` başlığıdır.
 - **Izgara:** 1 / 2 / 3 kolon (sm / xl). Kart yüksekliği içerikten gelir, sabitlenmez.
-- **Kayıt paneli:** 360px, `lg` ve üstünde içerik kolonunun yanında `sticky`; altında tam ekran yaprak.
 - **Yoğunluk:** satır görünümü ~52px, kart ~290px; 2.000 fiş taranabilir kalmalı. Kart ve satırlar
-  `content-visibility: auto` taşır (`cv-card`, `cv-row`), sayfalama SQL'de yapılır, arama 250ms debounce'ludur.
+  `content-visibility: auto` taşır (`cv-card`, `cv-row`), sayfalama SQL'de yapılır, arama 250ms
+  debounce'ludur.
 - **Ritim:** gruplar sıkı, ayrım cömert; başlığın üstündeki boşluk altındakinden fazladır.
+- **Kaydırma:** kök `min-h-screen` + sayfa kaydırma. Yüzeyler kendi kaydırma kabını açmaz.
 
-### Pencere çerçevesi (titlebar)
+### Named Rules
+**The Sıra-Kolon-Değil Kuralı.** Bir sayfa birden çok bölümü (kart, tablo, boş durum) art arda
+koyuyorsa aralarındaki ritmi **bölümleri saran kapsayıcı** verir (`flex flex-col gap-6`) —
+`PageSurface` gövdesi kendi boşluğunu **vermez**. "Kartlar birbirine yapışık" görünüyorsa sebep
+budur.
 
-Pencere çerçevesizdir (`decorations: false`); yerel başlık çubuğu yoktur. Üstteki 56px'lik bant
-(solda marka bloğu, sağda yakala çubuğu) aynı zamanda titlebar'dır: boş alanları sürüklenebilir
-(`data-tauri-drag-region` → Windows'ta `HTCAPTION`; taşıma, yarı-ekrana yapıştırma ve çift tıkla
-büyütme yerel kalır). Çerçevesizlik Windows'ta kenardan boyutlandırmayı götürdüğü için görünmez
-kenar/köşe tutamaçları `startResizeDragging` ile bunu geri koyar — tutamaçlar bir kabuk
-ayrıntısıdır, çizilmez ve odak almaz.
+**The Kart-İçinde-Kart-Yok Kuralı.** Bir kartın içine ikinci bir kart koymak yasaktır. Gruplama
+gerekiyorsa: ya başlık + hairline satır listesi (kart **içinde**), ya ayrı kartlar (kart **yanında**).
+
+## Pencere çerçevesi (titlebar)
+
+Pencere çerçevesizdir (`decorations: false`); yerel başlık çubuğu yoktur. **Araç çubuğu aynı
+zamanda titlebar'dır:** boş alanları sürüklenebilir (`data-tauri-drag-region` → Windows'ta
+`HTCAPTION`; taşıma, yarı-ekrana yapıştırma ve çift tıkla büyütme yerel kalır). Çerçevesizlik
+Windows'ta kenardan boyutlandırmayı götürdüğü için görünmez kenar/köşe tutamaçları
+`startResizeDragging` ile bunu geri koyar — tutamaçlar bir kabuk ayrıntısıdır, çizilmez ve odak almaz.
 
 Pencere kontrolleri **sağda** durur (Windows alışkanlığı korunur) ama Mac trafik ışığı biçiminde
 çizilir: 12px daireler — küçült `#febc2e`, büyüt `#28c840`, kapat `#ff5f57`; grup üzerine gelince
@@ -237,17 +270,60 @@ Değişen yalnızca görünümdür: native başlık çubuğunun sağ-tık sistem
 "maximize üzerine gel → snap layouts" paneli yoktur; geri kalan davranış (taşıma, boyutlandırma,
 yarı-ekran, tepsiye kapanma) aynen sürer.
 
-### Sayfa yüzeyi
+## Araç çubuğu (imza bileşen)
 
-Tam-sayfa görünümler (Koleksiyonlar, İndirilenler, Eşitleme, İstatistikler, Araç Kutusu) tek bir
-`PageSurface` kabuğu kullanır — Apple'ın gruplandırılmış sayfa ritmi: solda ikon çipi, yanında
-**tek** başlık ölçeği (`text-title`), altında açıklama, sağda eylemler; tek padding ve içeriğe göre
-seçilen genişlik. Görünüm kendi `min-h-screen` / `max-w-*` / `px-*` kabuğunu ve kendi başlık ölçeğini
-(`text-2xl` · `text-display` · `text-title` karışımı) yazmaz; bu üçe ayrışma bir sürüklenmeydi.
+Tek 52px bant, üç bölge (`Toolbar.tsx`):
+
+- **Sol (rayın üstünde):** ray daralt/göster (`PanelLeft`, tercih kalıcı) + **geri/ileri**
+  (gerçek görünüm geçmişi; sınırda `disabled`) + **marka** (ray açıkken görünür, kapalıyken gizlenir).
+  Dar pencerede marka gizlenir, denetimler kalır.
+- **Orta — yakala/ara alanı:** uygulamanın imza etkileşimi. Alan ortada, hafif dolgulu
+  (`rounded-lg bg-card/60`), `Ctrl K` ipucu **alanın içinde sağda**. Durum ikonu modu söyler:
+  bağlantı (kayıt), büyüteç (arama), kıvılcım (semantik). Kayıt modunda sağda platform damgası +
+  **Ayrıntılı** + **Kaydet** (stamp varyantı) belirir; Enter kaydeder, Escape temizler. Arama
+  modunda yanında **Semantik** ve **Eşitle** sessiz düğmeleri durur.
+- **Sağ:** görünüm (kart/satır) segmenti (yalnızca kasada) + tema + **pencere kontrolleri**.
+
+**The Tek-Yakala Kuralı.** Kaydetme eylemi yalnızca araç çubuğundadır; sayfaya ikinci bir "kaydet"
+koymak yasaktır.
+
+## Sayfa yüzeyi
+
+Tam-sayfa görünümler (Koleksiyonlar, İndirilenler, Eşitleme, İstatistikler, Araç Kutusu, Dönüştürücü,
+Araç Kutusu alt ekranları) tek bir `PageSurface` kabuğu kullanır — Apple'ın gruplandırılmış sayfa
+ritmi: solda ikon çipi (`size-8 rounded-lg bg-primary/10 text-primary`, ikon 18px), yanında **tek**
+başlık ölçeği (`text-title`), altında açıklama, sağda eylemler; tek padding
+(`px-6 pt-6 pb-12 md:px-8`) ve içeriğe göre genişlik (`3xl`–`6xl`). Görünüm kendi
+`min-h-screen` / `max-w-*` / `px-*` kabuğunu ve kendi başlık ölçeğini yazmaz.
 
 **The Tek-Sayfa-Kabuğu Kuralı.** Yeni bir tam-sayfa görünüm eklerken başlık, padding ve genişlik elle
-kurulmaz; `PageSurface` kullanılır. Kaydırma yüzeye ait değildir: kök `min-h-screen`, yakala çubuğu
-`sticky`tir ve içerik sayfa olarak akar — yüzey kendi kaydırma kabını açmaz.
+kurulmaz; `PageSurface` kullanılır. Kaydırma yüzeye ait değildir.
+
+## Kapsam sekmeleri (kasa görünümü)
+
+Kasanın kapsamı bir segmenttir: **`Tümü · Favoriler · Yerel`** (`ItemGrid`, büyük başlığın altında).
+Segment dili: `rounded-lg border border-border bg-card/60 p-0.5`; aktif öğe
+`rounded-md bg-background font-medium shadow-xs`, pasif `text-muted-foreground`.
+
+- Kapsam bir **sekmedir**, gezinme durağı değil: sidebar'da yer almaz, geri/ileri geçmişine yazılmaz.
+- Filtre uygulamak seçili sekmeyi bozmaz.
+- "Tümü" sidebar öğesi **kasa açık olduğu sürece** aktiftir; ayrımı sekmeler verir.
+- Bir kayıt grubunu daraltmak (platform, koleksiyon, kategori, etiket) **filtredir**, kapsam değil.
+
+## Filtre paneli
+
+Seçim tek bir **`Filtrele`** düğmesinden yapılır; ama **yürürlükteki kurallar gizlenmez**.
+
+- Düğme: filtre ikonu + "Filtrele" + aktif sayı rozeti; aktifken aksan kenarı (`border-primary/40
+  bg-primary/10`).
+- Panel: iki bölmeli — solda filtre adları (dolu olan nokta işaretli), sağda **arama alanı** +
+  seçenekler (TR-duyarlı süzme, `Bulunamadı` durumu).
+- **Aktif filtreler şeritte çip olarak kalır** (`YouTube ✕`) ve tek tıkla kaldırılır. Seçim panele,
+  durum şeride aittir.
+- Sağda sıralama + `N fiş` sayımı (`data-num`) sabittir.
+
+**The Kural-Görünür-Kalır Kuralı.** Bir filtre ya da ayar yürürlükteyse, onu açan panel kapalıyken
+de görünür olmalıdır (çip, damga, etiket). Durum asla yalnızca panel içinde kalmaz.
 
 ## Materials
 
@@ -257,66 +333,64 @@ bulanıklaştırır**, böylece altındaki içerik hem görünür hem geri iter.
 | Malzeme | Nerede | Gece | Gündüz | Blur |
 |---|---|---|---|---|
 | `material-rail` | Sol çekmece rayı, dar-pencere şeridi | `rgb(38 38 41 / .72)` | `rgb(232 232 237 / .72)` | 24px · saturate 180% |
-| `material-toolbar` | Yakala çubuğu | `rgb(28 28 30 / .72)` | `rgb(242 242 247 / .72)` | 24px · saturate 180% |
-| `material-sheet` | Diyalog, albüm, ayarlar | `rgb(44 44 46 / .8)` | `rgb(255 255 255 / .78)` | 40px · saturate 180% |
+| `material-toolbar` | Araç çubuğu | `rgb(28 28 30 / .72)` | `rgb(242 242 247 / .72)` | 24px · saturate 180% |
+| `material-sheet` | Diyalog, yaprak, denetçi | `rgb(44 44 46 / .8)` | `rgb(255 255 255 / .78)` | 40px · saturate 180% |
 
 - **Malzeme yalnızca altından bir şey geçtiğinde anlamlıdır.** Sabit bir kolonun arkasında düz zemin
-  varsa blur görünmez; bu yüzden `material-rail` çoğunlukla *ton* olarak okunur, `material-toolbar`
-  ve `material-sheet` ise gerçekten bulanıklaştırır.
+  varsa blur görünmez; bu yüzden `material-rail` çoğunlukla *ton* olarak okunur.
 - **Üstteki ince ışık çizgisi** (`inset 0 1px 0 rgb(255 255 255 / .06)`) malzemenin ışığı yakaladığı
   yerdir; süs değil, yön bilgisidir.
 - **Işık malzemeyi kesmez:** malzeme üstüne ikinci bir yarı saydam yüzey yığılmaz; okunabilirlik çöker.
+  Saydamlık malzemenin işidir — **kart opaktır**.
 
 ### Named Rules
 **The Azaltılmış-Saydamlık Kuralı.** `prefers-reduced-transparency: reduce` altında üç malzemenin
-tabanı opak karşılığına döner ve blur kapanır (`index.css`). Apple'ın üçüncü erişilebilirlik sinyali
-budur ve görmezden gelinmez.
+tabanı opak karşılığına döner ve blur kapanır (`index.css`).
 
 ## Elevation & Depth
 
-Derinlik **katmanlı ve yumuşak**tır. Gölge artık yasak değil, ama sıfır-ofsetli renkli hale hâlâ
-yasaktır.
+Derinlik **katmanlı ve yumuşak**tır. Sıfır-ofsetli renkli hale yasaktır.
 
 ### Shadow Vocabulary
-- **Kart** (`0 1px 2px rgb(0 0 0 / .05), 0 1px 1px rgb(0 0 0 / .03)` · gece `…/.4, …/.24`):
-  Dinlenme hâlindeki kart ve satır kabı. Neredeyse görünmez; kenarı besler.
-- **Kart hover** (`0 6px 20px rgb(0 0 0 / .1), 0 2px 6px rgb(0 0 0 / .05)`): Kart yalnızca fare
-  üzerindeyken yükselir; dokunmatikte tetiklenmez (Tailwind `hover:` `@media (hover: hover)` içindedir).
-- **Yaprak** (`0 12px 32px rgb(0 0 0 / .14), 0 2px 8px rgb(0 0 0 / .06)` · gece `…/.55, …/.35`):
-  Diyalog, menü, popover, bildirim. Gerçek ofset + yumuşak blur.
+- **`shadow-card`**: etkileşimli içerik kartının dinlenme gölgesi (neredeyse görünmez).
+- **`shadow-hover`**: kart yalnızca fare üzerindeyken yükselir (dokunmatikte tetiklenmez).
+- **`shadow-lift`**: yüzen katmanlar — diyalog, menü, popover, bildirim, toplu eylem çubuğu.
+
+**Kenar yapı taşır, gölge yükseklik.** Gruplanmış kart (`settings-card`) dinlenmede gölge taşımaz;
+gölge yalnızca etkileşim ve yüzme içindir.
 
 ## Shapes
 
-Sürekli köşe: radius 4px (xs) – 16px (2xl). Kartlar 10px, girdi ve butonlar 6px, damgalar 4px,
-yapraklar 12–16px. Tam yuvarlak (`rounded-full`) yalnızca durum noktaları, anahtar yuvası,
-avatar kırpımı ve pencerenin trafik ışıkları için ayrılmıştır — bir kart ya da buton asla hap değildir.
+Sürekli köşe: radius 4px (xs) – 16px (2xl). **Kartlar 12px** (`settings-card`), girdi ve butonlar
+6px, damgalar 4px, yapraklar 12–16px. Tam yuvarlak (`rounded-full`) yalnızca durum noktaları,
+anahtar yuvası, avatar kırpımı ve pencere trafik ışıkları içindir — bir kart ya da buton asla hap
+değildir.
 
 Kenarlar 1px hairline'dır ve rolü bölmektir. Bir yüzeyin kenarına kalın renkli şerit koymak yasaktır:
-platform artık bir renk alanı değil, künye bandındaki bir *sözcüktür*. Renk yalnızca noktada kalır.
+platform bir renk alanı değil, künye bandındaki bir *sözcüktür*. Renk yalnızca noktada kalır.
 
 ## Motion
 
 Hareket bir katman değil, arayüzün kendisidir; görsellerle birlikte tasarlanır.
 
 - **Eğriler:** `--ease-out` `cubic-bezier(0.23,1,0.32,1)` (giriş ve basış) · `--ease-in-out`
-  `cubic-bezier(0.77,0,0.175,1)` (ekranda yer değiştirme) · `--ease-drawer` `cubic-bezier(0.32,0.72,0,1)`
-  (yaprak/drawer). `--ease-paper` adı korunur ama değeri `--ease-out`'tur, böylece mevcut yüzeylerin
-  tamamı tek satır değişmeden yeni eğriye geçer.
+  `cubic-bezier(0.77,0,0.175,1)` · `--ease-drawer` `cubic-bezier(0.32,0.72,0,1)`. `--ease-paper`
+  adı korunur ama değeri `--ease-out`'tur.
 - **Süre:** 150ms (basış/hover) · 200ms (katman girişi) · 250ms (yaprak). UI hareketi 300ms'i geçmez.
-- **Basış:** `active:scale-[0.97]`. Basış `:active`'tedir, yani parmak değer değmez geri bildirim
-  başlar; `motion-reduce` altında ölçek kapanır.
-- **Giriş:** hiçbir şey `scale(0)`'dan gelmez. Katmanlar `opacity 0` + `scale .95`'ten girer
-  (`data-[starting-style]`), `scale .97` + `opacity 0`'a çıkar (`data-[ending-style]`).
-- **Malzeme birden belirmez:** yaprak girerken ölçek ve opaklık birlikte hareket eder.
-- **Etkileşimli hiçbir şey kilitlenmez:** geçiş sürerken yeni girdi kabul edilir.
+- **Basış:** `active:scale-[0.97]`; `:active`'te başlar (bırakışta değil), `motion-reduce` altında kapanır.
+- **Giriş/Çıkış:** `data-[starting-style]` / `data-[ending-style]` ile `opacity 0` + `scale .95`
+  girer, `scale .97` + `opacity 0`'a çıkar. Hiçbir şey `scale(0)`'dan gelmez; çıkış girişten hızlıdır.
+- **Çekip-kapat (drag-to-dismiss):** `motion` paketi (`lib/use-drag-dismiss`). Kayıt ve oynatıcı
+  yaprakları **aşağı** çekilerek kapatılır; eşik = mesafe > 120px **veya** hız > 600px/s.
+  `prefers-reduced-motion` altında tamamen kapalıdır (kapatma düğmesi ve Escape kalır).
+- **Etkileşimli hiçbir şey kilitlenmez.**
 
 ### Named Rules
 **The Basış-Parmak-Altında Kuralı.** Buton yalnızca tıklanınca değil, basılı tutulduğu anda tepki
 verir. Sadece bırakışta geri bildirim veren kontrol ölü hisseder.
 
-**The Azaltılmış-Hareket Kuralı.** `prefers-reduced-motion: reduce` altında tüm süreler ve animasyonlar
-anlamlı biçimde sadeleşir (global `!important` bloğu), ama opaklık/renk geçişleri kalır — azaltmak
-yok etmek değildir.
+**The Azaltılmış-Hareket Kuralı.** `prefers-reduced-motion: reduce` altında süreler ve animasyonlar
+anlamlı biçimde sadeleşir, ama opaklık/renk geçişleri kalır — azaltmak yok etmek değildir.
 
 ## Components
 
@@ -326,9 +400,8 @@ Genel duruş: **sakin kontrol, ölçülü hareket.**
 - **Shape:** 6px radius, 32px yükseklik (sm 28px, lg 36px), 10px yatay dolgu.
 - **Primary:** systemBlue düz dolgu + beyaz metin. Hover'da dolgu %85 opaklığa iner.
 - **Stamp:** Çerçeveli aksan varyantı — şeffaf zemin, mavi kenar ve metin; hover'da doluya döner.
-  Yakala çubuğunun birincil eylemi budur.
-- **Hover / Focus:** Odak halkası tek yerden gelir (`:focus-visible`, 2px `--color-ring`, 1px ofset);
-  hiçbir varyant kendi ring'ini yazmaz. Basış `scale(.97)`.
+- **Hover / Focus:** Odak halkası tek yerden gelir (`:focus-visible`, 2px `--color-ring`); hiçbir
+  varyant kendi ring'ini yazmaz. Basış `scale(.97)`.
 - **Secondary / Outline / Ghost / Destructive:** İkincil; dışa çizgi; sessiz; kenarlıklı kırmızı
   blok (dolgu değil). Yıkıcı eylem asla dolu kırmızı değildir.
 
@@ -339,16 +412,23 @@ glif veya emoji asla. Renk durumun kendisidir ama tek başına yetmez: ikon ve s
 
 ### Cards / Containers
 - **Tek kabuk:** Her kart `settings-card` yardımcı sınıfıdır — 1px kenar, 12px sürekli köşe, **opak**
-  `--color-card` zemin. Elle yazılmış `rounded-* border border-border bg-card` varyantları sürüklenmedir;
-  yeni kart bu yardımcıyla kurulur. Yarı saydam kart (`bg-card/30`…) yoktur — saydamlık malzemenin
-  (ray · çubuk · yaprak) işidir, kartın değil.
-- **Elevation:** Kenar yapı taşır, gölge yükseklik. Dinlenmede gölge **yok**; yalnızca etkileşimli kart
-  hover'da 2px kalkıp `shadow-hover` alır. Yüzen katmanlar (bildirim, toplu eylem çubuğu, yaprak)
-  `shadow-lift` taşır.
+  `--color-card` zemin. Elle yazılmış `rounded-* border border-border bg-card` varyantları
+  sürüklenmedir. Yarı saydam kart (`bg-card/30`…) yoktur.
+- **Elevation:** Dinlenmede gölge yok; etkileşimli kart hover'da 2px kalkıp `shadow-hover` alır.
 - **Border:** 1px ayırıcı; hover'da girdi rengine döner.
-- **Internal Padding:** 12px; künye bandı 28px sabit yükseklikte ve altında hairline.
+- **Internal Padding:** 12px; künye bandı (`record-band`) 28px sabit yükseklikte ve altında hairline.
 - **Künye bandı:** Platform solda, tarih sağda, mono 11px büyük harf. Kartta platform ve tarih
   *yalnızca* burada yazılır; alt satırda tekrarlanmaz.
+
+### Gruplanmış liste (kart içi satır) — `SettingRow` / `FieldGroup`
+Ayarlar dili ve tüm listelerin ortak sözlüğü:
+- Kap: `settings-card` + `divide-y divide-border/70` (hairline'lar **alt** kenara yazılır).
+- Satır (`SettingRow`): solda etiket (`text-sm`) + ipucu (`text-micro text-muted-foreground`),
+  sağda kontrol (`shrink-0`). Etiket bloğu `flex-1 min-w-0` — uzun ipucu kontrolü alt satıra düşürmez.
+- Kenar yastığı satırda: `px-4` (kap) ya da satır `p-3`.
+- **Liste öğesi (ör. Araç Kutusu):** tinted ikon çipi (`size-8 rounded-lg bg-primary/10 text-primary
+  [&_svg]:size-[18px]`) + başlık (`text-sm font-medium`) + açıklama (`text-micro`) + sağda ok
+  (`ChevronRight`). Her satır aynı yükseklik ve aynı hizada.
 
 ### Inputs / Fields
 - **Style:** Şeffaf zemin, 1px `--color-input` kenar, 6px radius, 32px yükseklik.
@@ -357,21 +437,97 @@ glif veya emoji asla. Renk durumun kendisidir ama tek başına yetmez: ikon ve s
 
 ### Sheets & Dialogs
 Yalnızca kesinti veya korunmuş odak gerektiren işler buraya gelir; kayıt düzenleme ve araç işleri
-satır içi panelde yaşar. Yaprak `material-sheet` + 12px radius + yaprak gölgesi taşır; örtü `--color-overlay`
-ile zemini geri iter. Giriş `data-[starting-style]` ile ölçek+opaklık birlikte, çıkış daha hızlıdır.
+satır içi panelde yaşar. Yaprak `material-sheet` + 12px radius + `shadow-lift` taşır; örtü
+`--color-overlay` ile zemini geri iter. Giriş `data-[starting-style]` ile ölçek+opaklık birlikte,
+çıkış daha hızlıdır.
+
+**Not (tarihsel karar):** Kayıt detayı için sağda sabit **denetçi** denendi; içerik dar kaldığı için
+reddedildi ve **merkezî modal** korundu (1024×704, medya solda büyük / künye sağda). Bir denetçiyi
+yeniden gündeme getirirken dar içerik sütununun okunurluğu test edilir.
 
 ### Navigation
-- **Rail:** 244px, `material-rail`, bölümler (Kasa · Araçlar · Sistem) mono olmayan, büyük harf
-  olmayan 11px bölüm etiketleriyle ayrılır. Öğe 30px yükseklik, 6px radius, 16px ikon.
-- **Default / Hover / Active:** Hover'da yüzey belirir; aktif öğe bir çekmece sekmesidir (kart yüzeyi
-  + sağ kenara taşan çentik).
-- **Mobile:** `md` altında ray yatay kaydırılabilir bir şeride iner; aynı çekmeceler, aynı sıra.
+- **Rail:** 244px, `material-rail`, gruplar **KASA · ARAÇLAR · SİSTEM**. Bölüm etiketi 11px, mono ya
+  da büyük harf **değil**. Öğe 30px yükseklik, 6px radius, 16px lucide ikon.
+- **Default / Hover / Active:** Hover'da sessiz yüzey belirir; **aktif ray öğesi** kart yüzeyidir
+  (`bg-card` + `font-medium`) ve sağ kenara taşan küçük bir **çentik** rayın hairline'ını keser —
+  ray öğesi hap/kapsül değildir. Tinted kapsül seçim (`bg-primary/15` + aksan ikon) **Ayarlar'ın
+  pano listesinin** dilidir, ana rayın değil.
+- **Mobile:** `md` altında ray yatay kaydırılabilir şeride iner (`SidebarStrip`).
 
-### Yakala Çubuğu (imza bileşen)
-Tek satır, çift kişilik. Değer alan adı veya şema içeriyorsa çubuk **kayıt moduna** geçer: sol ikon
-bağlantıya döner, sağda platform damgası + "Ayrıntılı" + "Kaydet" (stamp varyantı) belirir; Enter
-kaydeder, Escape temizler. Aksi hâlde **arama modundadır**: ikon büyüteç, sağda `Ctrl K` ipucu.
-Mod her zaman görünürdür; tahmin edilmez. Çubuğun sağ ucunda pencere kontrolleri durur.
+### Kapsam sekmeleri & Filtre paneli
+Yukarıdaki iki bölüm (`## Kapsam sekmeleri`, `## Filtre paneli`) bu sözlüğün parçasıdır.
+
+### Empty states
+Her boş/öğretici durum aynı üçlüdür: **ikon (`size-7`, `text-muted-foreground` ya da anlam rengi) +
+başlık (`text-title`) + açıklama (`text-sm text-muted-foreground`, ~46ch)**. Ortalanır, bol dikey
+boşluk alır. Üç hâl ayrıdır ve karıştırılmaz: **tarama öncesi** (ne yapılacağını öğretir),
+**işlem sürerken** (spinner + durum), **sonuç yok** (olumlu "Temiz" durumu). Boş bir kart ya da
+"bulunamadı" satırı **çizilmez**; bölüm yoksa o bölüm render edilmez.
+
+### Satır görünümü hizalama (bağlayıcı)
+`ItemRowView` her satırda **sabit sütunlar** taşır; durum (indirilmiş/indiriliyor/hata/kuyrukta) ve
+aksiyon sayısı değişse bile sütunlar kaymaz:
+
+| Sütun | Genişlik | Hizalama |
+|---|---|---|
+| onay kutusu | `size-3.5` | başta |
+| küçük görsel | `size-9` | başta |
+| başlık + künye | `flex-1 min-w-0` | sola, taşarsa `truncate` |
+| "Okunabilir" çipi | `w-[84px]` | sağa (yoksa da yer tutar) |
+| tarih | `w-[72px]` | sağa |
+| durum (`DownloadControl`) | `w-[140px]` | sağa |
+| aksiyonlar (`ActionButtons`) | `w-[148px]` | sağa (hover'da yalnızca opaklık değişir, yer değişmez) |
+
+**The Hizalı-Satır Kuralı.** Değişken genişlikli bir sağ blok, solundaki bütün sütunları kaydırır —
+hizasızlık buradan doğar. Sağdaki her şey **sabit genişlik + sağa hizalı** olur; künye satırı tek
+satır `truncate` edilir; tarih ve çip kendi sabit sütununda durur. Ölçerek doğrula: farklı durumdaki
+satırların sağ kenarları **birebir** eşit çıkmalı.
+
+## Primitives (koddaki sözlük — yeniden icat etme)
+
+Koordinatlar `jointvault/` köküne göredir.
+
+- **Kabuk:** `src/components/Toolbar.tsx` · `src/components/Sidebar.tsx` (`Sidebar`,
+  `SidebarStrip`) · `src/App.tsx` (kabuk düzeni, kapsam sekmeleri burada bağlanır).
+- **Yüzey:** `src/components/ui/page-surface.tsx` · `src/components/ui/window-controls.tsx`.
+- **Controls:** `ui/button` · `ui/input` · `ui/select` · `ui/switch` · `ui/badge` · `ui/stamp` ·
+  `ui/progress` · `ui/tabs` · `ui/dialog` · `ui/alert-dialog` (`ConfirmDialog`) · `ui/popover` ·
+  `ui/menu` · `ui/tooltip` · `ui/notice` · `ui/field` (`Field`, `SettingRow`, `FieldGroup`).
+- **Kasa:** `src/components/ItemGrid.tsx` (ızgara, büyük başlık, sekmeler, sayfalama) ·
+  `src/components/RuleStrip.tsx` (Filtrele paneli) · `src/components/ItemViews.tsx`
+  (`ItemCardView`, `ItemRowView`, `Stamp`, `DownloadControl`, `ActionButtons`).
+- **Tam-sayfa yüzeyler:** `CollectionsView` · `DownloadsView` · `SyncView` · `StatsView` ·
+  `ToolboxHub` (+ `MergeTool`/`SilenceTool`/`GifTool`/`SubtitleTool`/`DuplicatesView`) ·
+  `ConverterStudio` · `SettingsView`.
+- **Yardımcılar:** `lib/nav-history.ts` (geri/ileri) · `lib/use-drag-dismiss.ts` (çekip-kapat) ·
+  `lib/theme.ts` (tema) · `lib/platform.ts` (platform mürekkebi).
+- **CSS yardımcıları (`index.css`):** `material-rail|toolbar|sheet` · `settings-card` ·
+  `record-band` · `cv-card` · `cv-row` · `skeleton-paper` · `scroll-edge-b`.
+
+## Yeni ekran/özellik için kontrol listesi
+
+Koda başlamadan:
+1. Bu dosyayı ve `PRODUCT.md`'yi oku; dokunulmazları (Türkçe metin, IPC/veri akışı, performans
+   bütçesi, çevrimdışı, erişilebilirlik) not et.
+2. Ekran **tam-sayfa** mı → `PageSurface`. **Modal/kesinti** mi → `Dialog`. **Satır içi** mi →
+   panel. Modalı refleksle seçme.
+3. Mevcut primitif var mı? (yukarıdaki envanter) — varsa **kullan**, yoksa tek bir yeni sözlük kur.
+4. Token kullan (`index.css` `@theme`); ham hex yazma.
+5. Durumları say: hover · focus · disabled · loading · **boş** · hata · seçili. Boş durumu **öğret**.
+
+Yazarken:
+6. Kart = `settings-card` (opak). Kart içine kart koyma. Liste = `divide-y divide-border/70` satırlar.
+7. Sağ blokları **sabit genişlik + sağa hizalı** yap (satır hizalaması).
+8. Yürürlükteki filtre/ayar kapalı panelde de görünür kalsın (çip/damga).
+9. Hareket: giriş `ease-out`, basış `scale(.97)`, `data-[starting-style]`, `motion-reduce` +
+   `reduced-transparency` sinyallerini ele al.
+10. Dar pencereyi birinci sınıf tut (gezinme şeride iner, kart/tablo yeniden akar).
+
+Bitirmeden:
+11. `npm run typecheck && npm run lint && npm run test && npm run build` — dördü de yeşil olmalı.
+12. Görsel doğrula (`npx tauri dev`, ya da saf bileşenler için `dev/kitchen-sink.html` /
+    `dev/verify-controls.html`). Ölçebildiğini **ölç** (örn. satır hizası: sağ kenarlar eşit mi?).
+13. Bu dosyada değişen bir kural olduysa **önce burayı güncelle**.
 
 ## Do's and Don'ts
 
@@ -379,20 +535,25 @@ Mod her zaman görünürdür; tahmin edilmez. Çubuğun sağ ucunda pencere kont
 - **Do** her durumu damgayla ve mutlaka ikon + sözcükle bildir; rengi yalnız bırakma.
 - **Do** `data-num` kullan: tarih, yüzde, hız, süre, adet, kimlik, dosya yolu.
 - **Do** yüzen katmanları malzemeyle kur (`material-toolbar`, `material-sheet`); içerik altlarından aksın.
-- **Do** yeni bir yüzey eklerken önce mevcut primitifi (Button, Input, Select, Stamp, Field, Progress,
-  Menu, Popover, Dialog, ConfirmDialog) kullan; yeni bir sözlük icat etme.
-- **Do** kayıt düzenlemeyi kayıt panelinde tut; modalı yalnızca kesinti veya korunmuş odak için sakla.
-- **Do** yükleniyor durumunu iskeletle göster (`skeleton-paper`), boş durumu öğret, dönen çarkla değil.
-- **Do** dar pencereyi birinci sınıf tut: gezinme şeride iner, kart ve tablolar yeniden akar.
+- **Do** yeni bir yüzey eklerken önce mevcut primitifi kullan; yeni bir sözlük icat etme.
+- **Do** kart dilini tek tut (`settings-card`), listeyi hairline satırlarla kur.
+- **Do** sağ blokları sabit genişlikte tut; satırları **ölçerek** hizala.
+- **Do** yükleniyor durumunu iskeletle göster (`skeleton-paper`), boş durumu öğret.
+- **Do** dar pencereyi birinci sınıf tut.
 
 ### Don't:
 - **Don't** ikinci bir doygun aksan ekleme; systemBlue tek damgadır.
+- **Don't** kart içine kart koyma; gruplama satır listesi ya da kardeş kartlarla yapılır.
+- **Don't** yarı saydam kart kullanma (`bg-card/30`…); saydamlık malzemenin hakkıdır.
+- **Don't** emoji ya da unicode glifi ikon yerine kullanma; lucide çizilir.
+- **Don't** elle `rounded-* border border-border bg-card` kart yazma; `settings-card` var.
+- **Don't** filtre/ayar durumunu yalnızca panel içinde bırakma; çip/damga ile görünür tut.
 - **Don't** harf aralığını tek değere sabitleme; boyutun fonksiyonudur.
-- **Don't** bir yüzeyin kenarına kalın renkli şerit koyma; platform künye bandında sözcüktür, renk noktada.
+- **Don't** bir yüzeyin kenarına kalın renkli şerit koyma; platform künye bandında sözcüktür.
 - **Don't** kart ya da butonu hap biçiminde yapma; 4–16px sürekli köşe kuraldır.
 - **Don't** `scale(0)`'dan animasyon başlatma; hiçbir şey yoktan belirmez.
-- **Don't** `ease-in` kullanma; arayüzü yavaş hissettirir. Giriş her zaman `ease-out`.
+- **Don't** `ease-in` kullanma; giriş her zaman `ease-out`.
 - **Don't** UI hareketini 300ms'in üstüne çıkarma.
 - **Don't** `prefers-reduced-motion` / `prefers-reduced-transparency` sinyallerini yok sayma.
 - **Don't** büyük harf + geniş aralığı gövde metnine uygulama; o damga ve künyenin hakkıdır.
-- **Don't** sayfaya ikinci bir "kaydet" eylemi koyma; birincil kayıt yakala çubuğunundur.
+- **Don't** sayfaya ikinci bir "kaydet" eylemi koyma; birincil kayıt araç çubuğunundur.
