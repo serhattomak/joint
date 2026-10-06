@@ -659,6 +659,7 @@ function App() {
                   <NotebookView
                     refreshKey={refreshKey}
                     onOpenItem={(item) => openRecord(item, 'detail')}
+                    onOpenSettings={() => openSettings('ai')}
                   />
                 </div>
               ) : converterOnly ? (

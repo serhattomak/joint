@@ -5,6 +5,7 @@ import { createRetryCache } from '../retry-cache';
 import { runAtomic } from './atomic';
 import { createBackupWith, runDailyBackupIfDue } from './backup';
 import { MIGRATIONS, runMigrations, type MigrationExecutor } from './migrations';
+import { buildMergeBlob } from './merge-sql';
 import { getVectorIndex, invalidateVectorIndex } from '../vector-cache';
 
 /*
@@ -1245,6 +1246,17 @@ export async function listDownloadedItems(): Promise<Item[]> {
   return rows.map(toItem);
 }
 
+/** Kayıt künyesi için yazarlar (tek sorgu; N+1 değil). */
+export async function listArticleAuthors(): Promise<Record<string, string>> {
+  const db = await getDb();
+  const rows = await db.select<{ item_id: string; author: string | null }[]>(
+    'SELECT item_id, author FROM item_articles WHERE author IS NOT NULL',
+  );
+  const out: Record<string, string> = {};
+  for (const r of rows) if (r.author) out[r.item_id] = r.author;
+  return out;
+}
+
 // --- defter (notebook): kategori sayfalarına okunabilir derlem ---
 
 export interface NotebookSummary {
@@ -1380,41 +1392,22 @@ export async function mergeItems(
 ): Promise<void> {
   if (victimIds.length === 0) return;
   const db = await getDb();
-  // $1 = targetId; victims $2..$n; scalar patch bundan sonra devam eder.
-  const values: unknown[] = [targetId];
-  const victims = victimIds.map((_, i) => `$${i + 2}`).join(', ');
-  const statements = [
-    `INSERT OR IGNORE INTO item_tags (item_id, tag_id) SELECT $1, tag_id FROM item_tags WHERE item_id IN (${victims});`,
-    `INSERT OR IGNORE INTO item_categories (item_id, category_id) SELECT $1, category_id FROM item_categories WHERE item_id IN (${victims});`,
-    `UPDATE items SET
-       note = $${victimIds.length + 2},
-       favorite = $${victimIds.length + 3},
-       title = $${victimIds.length + 4},
-       thumbnail = $${victimIds.length + 5},
-       created_at = $${victimIds.length + 6},
-       updated_at = $${victimIds.length + 7}
-     WHERE id = $1;`,
-    `UPDATE item_articles SET item_id = $1
-     WHERE item_id = (
-       SELECT ja.item_id FROM item_articles ja
-       WHERE ja.item_id IN (${victims})
-       ORDER BY ja.scraped_at ASC
-       LIMIT 1
-     )
-     AND NOT EXISTS (SELECT 1 FROM item_articles ea WHERE ea.item_id = $1);`,
-    `DELETE FROM item_articles WHERE item_id IN (${victims});`,
-    `DELETE FROM item_chunks_fts WHERE item_id IN (${victims});`,
-    `DELETE FROM items WHERE id IN (${victims});`,
-  ];
-  values.push(
-    patch.note,
-    patch.favorite ? 1 : 0,
-    patch.title,
-    patch.thumbnail,
-    patch.created_at,
-    now(),
+  /* Tek parametreli blob gövde: values cümle başına sırayla bağlanır
+     (plugin-sql ölçülmüş davranış) ve her cümle aynı blob'u görür. */
+  const { body, values } = buildMergeBlob(
+    {
+      target: targetId,
+      note: patch.note,
+      favorite: patch.favorite,
+      title: patch.title,
+      thumbnail: patch.thumbnail,
+      created_at: patch.created_at,
+      updated_at: now(),
+    },
+    victimIds,
   );
-  await runAtomicSafe(db, statements.join(' '), values);
+  await runAtomicSafe(db, body, values);
+  invalidateVectorIndex();
 }
 
 

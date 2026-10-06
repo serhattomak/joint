@@ -125,7 +125,7 @@ tek iş: deterministik kısım (Adım 1) ağ habersiz çalışır; Adım 2-3 AI 
 - `src/lib/db/client.ts`: `getCategorySummary(categoryId)`, `saveCategorySummary`,
   `listNotebookCategories` (ad + kayıt sayısı; 0 kayıtlı kategoriler de listelenir),
   `listNotebookItems(categoryId|null, page, pageSize)`,
-  `countItemsWithoutArticle()`, `listItemsWithoutArticle()`, `mergeItems`.
+  `listItemsWithoutArticle()` (mevcut), `mergeItems`.
 - `src/lib/ai.ts`: `summarizeCategory(categoryName, texts) → string` — yeni Rust komutu
   `ai_summarize_category` (ai.rs mevcut llama-server HTTP deseni; `dedupe_cap` yeniden
   kullanılır; 300-600 kelime Türkçe özet; kaynak metinlerin örnek linklerini **yazmaz**,

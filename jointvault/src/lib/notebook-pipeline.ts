@@ -2,6 +2,7 @@ import type { Item } from './db/types';
 import { planItemMerge, type MergePatch } from './notebook';
 import {
   getAllChunksWithEmbeddings,
+  listArticleAuthors,
   listItems,
   listItemsMissingCategory,
   listItemsWithoutArticle,
@@ -73,13 +74,25 @@ export interface ScrapeResult {
   failed: Item[];
 }
 
+export interface DupeMember {
+  id: string;
+  url: string;
+  title: string | null;
+  note: string | null;
+  favorite: boolean;
+  thumbnail: string | null;
+  author: string | null;
+  created_at: string;
+}
+
 export interface DupeGroup {
   targetId: string;
   victimIds: string[];
   patch: MergePatch;
-  /** Onay tablosu için okunur başlıklar. */
+  /** Onay tablosu için okunur başlıklar + üye künyesi (hedef değiştirilebilir). */
   targetTitle: string;
   victimTitles: string[];
+  members: DupeMember[];
 }
 
 export interface NotebookDeps {
@@ -91,6 +104,7 @@ export interface NotebookDeps {
   scrape: (
     items: Item[],
     onProgress?: (done: number, total: number, current: Item) => void,
+    isCancelled?: () => boolean,
   ) => Promise<ScrapeResult>;
   isAi: () => Promise<boolean>;
   categorize: (
@@ -98,7 +112,12 @@ export interface NotebookDeps {
     onProgress?: (current: number, total: number, itemTitle: string) => void,
   ) => Promise<BatchCategorizeReport>;
   /** Tüm arşiv vektörleri: embedding'i olan/olmayan öğeleri ayırt ettirir. */
-  vectors: () => Promise<{ items: Item[]; vectors: Map<string, Float32Array> }>;
+  vectors: () => Promise<{
+    items: Item[];
+    vectors: Map<string, Float32Array>;
+    /** Kayıt künyesi için yazarlar (makale yazarı; yoksa boş). */
+    authors: Map<string, string>;
+  }>;
   findGroups: (vectors: number[][], threshold: number) => Promise<number[][]>;
   merge: (
     targetId: string,
@@ -106,6 +125,8 @@ export interface NotebookDeps {
     patch: MergePatch,
   ) => Promise<void>;
   refresh: (targetId: string) => Promise<void>;
+  /** Kullanıcı iptal bayrağı: aşama sınırında sorgulanır. */
+  isCancelled?: () => boolean;
 }
 
 export interface NotebookReport {
@@ -114,6 +135,8 @@ export interface NotebookReport {
   scrapeFailures: Item[];
   categorize?: BatchCategorizeReport | { aiOff: true };
   dedupe?: { missingEmbedding: number; groups: DupeGroup[]; aiOff?: true };
+  /** Kullanıcı aşama sınırında durdurdu; kalan aşamalar koşulmadı. */
+  cancelled?: boolean;
 }
 
 export type ProgressCb = (
@@ -132,14 +155,25 @@ export async function runNotebookPipeline(
   // Adım 1 — içerik tamamla
   const backfill = await deps.listBackfill();
   if (backfill.length > 0) {
-    const res = await deps.scrape(backfill, (done, total) =>
-      onProgress(1, done, total, 'İçerik tamamlama'),
+    const res = await deps.scrape(
+      backfill,
+      (done, total) => onProgress(1, done, total, 'İçerik tamamlama'),
+      () => Boolean(deps.isCancelled?.()),
     );
+    const processed = res.successCount + res.errorCount;
     report.scraped = res.successCount;
     report.scrapeFailed = res.errorCount;
     report.scrapeFailures = res.failed;
+    if (processed < backfill.length) {
+      report.cancelled = true;
+    }
   }
   onProgress(1, 1, 1, 'İçerik tamamlama');
+  if (deps.isCancelled?.()) {
+    report.cancelled = true;
+    onProgress(1, 1, 1, 'İptal edildi');
+    return report;
+  }
 
   // Adım 2 — kategorilendirme + etiketleme (AI)
   if (!(await deps.isAi())) {
@@ -166,9 +200,14 @@ export async function runNotebookPipeline(
     };
   }
   onProgress(2, 1, 1, 'Kategorilendirme');
+  if (deps.isCancelled?.()) {
+    report.cancelled = true;
+    onProgress(2, 1, 1, 'İptal edildi');
+    return report;
+  }
 
   // Adım 3 — tekrar tespiti (embedding)
-  const { items, vectors } = await deps.vectors();
+  const { items, vectors, authors } = await deps.vectors();
   const embedded = items.filter((it) => vectors.has(it.id));
   const missingEmbedding = items.length - embedded.length;
   const vectorList = embedded.map((it) => Array.from(vectors.get(it.id) ?? []));
@@ -180,12 +219,23 @@ export async function runNotebookPipeline(
       const target = [...members2].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
       const rest = members2.filter((it) => it.id !== target.id);
       const patch = planItemMerge(target, rest);
+      const toMember = (it: Item): DupeMember => ({
+        id: it.id,
+        url: it.url,
+        title: it.title,
+        note: it.note,
+        favorite: it.favorite,
+        thumbnail: it.thumbnail,
+        author: authors?.get(it.id) ?? null,
+        created_at: it.created_at,
+      });
       return {
         targetId: target.id,
         victimIds: [...patch.victimIds],
         patch: { ...patch, victimIds: [...patch.victimIds] },
         targetTitle: target.title ?? target.url,
         victimTitles: rest.map((it) => it.title ?? it.url),
+        members: members2.map(toMember),
       };
     }),
   };
@@ -220,7 +270,7 @@ export function makeNotebookDeps(): NotebookDeps {
   return {
     listBackfill: () => listItemsWithoutArticle(),
     listMissingCategory: () => listItemsMissingCategory(),
-    scrape: (items, onProgress) => batchScrapeItems(items, onProgress, 500),
+    scrape: (items, onProgress, isCancelled) => batchScrapeItems(items, onProgress, 500, isCancelled),
     isAi: async () => {
       try {
         return isAiEnabled(await getAiStatus());
@@ -230,7 +280,11 @@ export function makeNotebookDeps(): NotebookDeps {
     },
     categorize: (items, onProgress) => batchCategorizeItems(items, { onProgress }),
     vectors: async () => {
-      const [items, chunks] = await Promise.all([listItems(), getAllChunksWithEmbeddings()]);
+      const [items, chunks, authors] = await Promise.all([
+        listItems(),
+        getAllChunksWithEmbeddings(),
+        listArticleAuthors(),
+      ]);
       const byItem = new Map<string, Float32Array[]>();
       for (const chunk of chunks) {
         if (!chunk.embedding) continue;
@@ -247,7 +301,8 @@ export function makeNotebookDeps(): NotebookDeps {
         const mean = meanVector(list);
         if (mean.length > 0) vectors.set(id, mean);
       }
-      return { items, vectors };
+      const authorMap = new Map<string, string>(Object.entries(authors));
+      return { items, vectors, authors: authorMap };
     },
     findGroups: findSimilarGroups,
     merge: (targetId, victimIds, patch) =>

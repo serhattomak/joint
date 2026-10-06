@@ -130,6 +130,7 @@ export async function batchScrapeItems(
   items: Item[],
   onProgress?: (done: number, total: number, currentItem: Item) => void,
   delayMs = 300,
+  isCancelled?: () => boolean,
 ): Promise<{ successCount: number; errorCount: number; failed: Item[] }> {
   let successCount = 0;
   let errorCount = 0;
@@ -137,6 +138,8 @@ export async function batchScrapeItems(
   const total = items.length;
 
   for (let i = 0; i < total; i++) {
+    // İptal: kaldığı yerde durur; işlenmeyenler raporda eksik kalır.
+    if (isCancelled?.()) break;
     const item = items[i];
     onProgress?.(i, total, item);
     try {
@@ -152,6 +155,6 @@ export async function batchScrapeItems(
     }
   }
 
-  onProgress?.(total, total, items[total - 1]);
+  onProgress?.(successCount + errorCount, total, items[total - 1]);
   return { successCount, errorCount, failed };
 }

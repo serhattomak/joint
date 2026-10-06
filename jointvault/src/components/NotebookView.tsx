@@ -27,6 +27,8 @@ const PAGE_SIZE = 48;
 interface NotebookViewProps {
   refreshKey?: number;
   onOpenItem: (item: Item) => void;
+  /** "Kategorilendir" yönlendirmesi: Ayarlar → AI sekmesi. */
+  onOpenSettings?: () => void;
 }
 
 type SortDir = 'new' | 'old';
@@ -39,7 +41,7 @@ const trDate = (iso: string): string => {
   }
 };
 
-export function NotebookView({ refreshKey = 0, onOpenItem }: NotebookViewProps) {
+export function NotebookView({ refreshKey = 0, onOpenItem, onOpenSettings }: NotebookViewProps) {
   const [categories, setCategories] = useState<CategoryWithCount[] | null>(null);
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -116,11 +118,17 @@ export function NotebookView({ refreshKey = 0, onOpenItem }: NotebookViewProps) 
     setSummaryBusy(true);
     try {
       const texts = rows.flatMap((r) => (r.content_text && r.content_text.trim() ? [r.content_text] : []));
-      const name = categories?.find((c) => c.id === selected)?.name ?? 'Sınıflandırılmamış';
+      if (texts.length === 0) {
+        setSummary(null);
+        return;
+      }
+      const name = categories?.find((c) => c.id === selected)?.name ?? 'Defter';
       const out = await summarizeCategory(name, texts);
       await saveCategorySummary(selected, out, 'qwen-notebook');
       const saved = await getCategorySummary(selected);
       setSummary(saved?.summary ?? out);
+    } catch (e) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Özet yazılamadı.');
     } finally {
       setSummaryBusy(false);
     }
@@ -215,8 +223,8 @@ export function NotebookView({ refreshKey = 0, onOpenItem }: NotebookViewProps) 
           </div>
         </header>
 
-        {/* Özet bloğu */}
-        {aiReady === false ? (
+        {/* Özet bloğu: kalıcı özet kategori sayfasına özgü (FK categories) */}
+        {selected === null ? null : aiReady === false ? (
           <p className="mb-4 text-xs text-muted-foreground">
             Sayfa özeti için yapay zekâ kapalı — Ayarlar → AI'dan açabilirsin.
           </p>
@@ -264,7 +272,14 @@ export function NotebookView({ refreshKey = 0, onOpenItem }: NotebookViewProps) 
             </Button>
           </div>
         ) : loadState === 'empty' || !rows || rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Bu sayfada kayıt yok.</p>
+          <div className="flex flex-col items-start gap-2 text-sm text-muted-foreground">
+            <span>Bu sayfada kayıt yok.</span>
+            {selected === null && onOpenSettings && (
+              <Button variant="outline" size="sm" onClick={onOpenSettings}>
+                Kategorilendir — Ayarlar → AI
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col gap-4">
             {rows.map((row) => <NotebookRow key={row.id} row={row} tags={tagsByItem[row.id] ?? []} images={imagesMemo.get(row.id) ?? { first: [], more: 0 }} onOpenItem={onOpenItem} />)}

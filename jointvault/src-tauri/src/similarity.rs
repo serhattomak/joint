@@ -1,8 +1,8 @@
-﻿//! Ã–ÄŸe embedding'leri arasÄ± benzerlik gruplaÅŸmasÄ± (defter tekrar tespiti).
-//! EÅŸik Ã¼stÃ¼ Ã§iftleri union-find ile baÄŸlÄ± bileÅŸenlere indirger; komuta katmanÄ±
-//! TS tarafÄ±nda kategorize/birleÅŸtir akÄ±ÅŸÄ±nÄ± yÃ¶nlendirir.
+﻿//! Öğe embedding'leri arası benzerlik gruplaşması (defter tekrar tespiti).
+//! Eşik üstü çiftleri union-find ile bağlı bileşenlere indirger; komuta katmanı
+//! TS tarafında kategorize/birleştir akışını yönlendirir.
 
-/// KosinÃ¼s benzerliÄŸi. BoÅŸ ve boyut uyuÅŸmayan girdide 0 (NaN yayÄ±lmaz).
+/// Kosinüs benzerliği. Boş ve boyut uyuşmayan girdide 0 (NaN yayılmaz).
 pub(crate) fn cosine(a: &[f32], b: &[f32]) -> f32 {
     if a.is_empty() || b.is_empty() || a.len() != b.len() {
         return 0.0;
@@ -53,7 +53,7 @@ impl Dsu {
         let ra = self.find(a);
         let rb = self.find(b);
         if ra != rb {
-            // KÃ¶k indeksi kÃ¼Ã§Ã¼k olan kazanÄ±r: grup sÄ±ralamasÄ± determinizmin.
+            // Kök indeksi küçük olan kazanır: grup sıralaması determinizmin.
             if ra < rb {
                 self.parent[rb] = ra;
             } else {
@@ -63,8 +63,8 @@ impl Dsu {
     }
 }
 
-/// EÅŸik Ã¼stÃ¼ baÄŸlÄ± bileÅŸenler (senkron Ã§ekirdek): yalnÄ±z >=2 Ã¼yeli gruplar;
-/// gruplar iÃ§inde ve gruplar arasÄ±nda indeks sÄ±ralÄ±.
+/// Eşik üstü bağlı bileşenler (senkron çekirdek): yalnız >=2 üyeli gruplar;
+/// gruplar içinde ve gruplar arasında indeks sıralı.
 fn group_by_threshold(vectors: &[Vec<f32>], threshold: f32) -> Vec<Vec<usize>> {
     let n = vectors.len();
     let mut dsu = Dsu::new(n);
@@ -92,8 +92,8 @@ fn group_by_threshold(vectors: &[Vec<f32>], threshold: f32) -> Vec<Vec<usize>> {
     groups
 }
 
-/// EÅŸik Ã¼stÃ¼ baÄŸlÄ± bileÅŸenleri dÃ¶ndÃ¼rÃ¼r: yalnÄ±z >=2 Ã¼yeli gruplar; gruplar
-/// iÃ§inde ve gruplar arasÄ±nda indeks sÄ±ralÄ±.
+/// Eşik üstü bağlı bileşenleri döndürür: yalnız >=2 üyeli gruplar; gruplar
+/// içinde ve gruplar arasında indeks sıralı.
 #[tauri::command]
 pub async fn dedupe_candidates(
     vectors: Vec<Vec<f32>>,
@@ -101,7 +101,6 @@ pub async fn dedupe_candidates(
 ) -> Result<Vec<Vec<usize>>, String> {
     Ok(group_by_threshold(&vectors, threshold))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -134,8 +133,8 @@ mod tests {
 
     #[test]
     fn gecisli_zincir_tek_grup() {
-        // 0-25-50 derecelik birim vektorler: a~b (0.906), b~c (0.906), ama
-        // a-c (0.643) esik alti — connected component transitivity testi.
+        // 0-25-50 derecelik birim vektörler: a~b (0.906), b~c (0.906), ama
+        // a-c (0.643) eşik altı — connected component transitivity testi.
         let groups = group_by_threshold(
             &vec![
                 vec![1.0, 0.0],

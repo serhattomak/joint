@@ -145,8 +145,14 @@ describe('runNotebookPipeline', () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('db kilitli'));
     const targets = [
-      { targetId: 'a', victimIds: ['b'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['b'] }, targetTitle: 'A', victimTitles: ['B'] },
-      { targetId: 'c', victimIds: ['d'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['d'] }, targetTitle: 'C', victimTitles: ['D'] },
+      { targetId: 'a', victimIds: ['b'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['b'] }, targetTitle: 'A', victimTitles: ['B'], members: [
+        { id: 'a', url: 'https://x.com/a', title: 'A', note: null, favorite: false, thumbnail: null, author: null, created_at: '2026-01-01T00:00:00Z' },
+        { id: 'b', url: 'https://x.com/b', title: 'B', note: null, favorite: false, thumbnail: null, author: null, created_at: '2026-01-02T00:00:00Z' },
+      ] },
+      { targetId: 'c', victimIds: ['d'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['d'] }, targetTitle: 'C', victimTitles: ['D'], members: [
+        { id: 'c', url: 'https://x.com/c', title: 'C', note: null, favorite: false, thumbnail: null, author: null, created_at: '2026-01-01T00:00:00Z' },
+        { id: 'd', url: 'https://x.com/d', title: 'D', note: null, favorite: false, thumbnail: null, author: null, created_at: '2026-01-02T00:00:00Z' },
+      ] },
     ];
     const app = await applyMerges(targets, deps);
     expect(app.merged).toBe(1);
