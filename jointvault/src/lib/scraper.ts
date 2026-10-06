@@ -96,7 +96,9 @@ export async function scrapeAndStoreArticle(itemId: string, url: string): Promis
 /**
  * Kayıtlı bir makalenin görsellerini ayrıştırır.
  */
-export function parseArticleImages(article: ItemArticle | null): ScrapedMedia[] {
+export function parseArticleImages(
+  article: { images_json?: string | null } | null,
+): ScrapedMedia[] {
   if (!article || !article.images_json) return [];
   try {
     const parsed = JSON.parse(article.images_json);
@@ -109,7 +111,9 @@ export function parseArticleImages(article: ItemArticle | null): ScrapedMedia[] 
 /**
  * Kayıtlı bir makalenin videolarını ayrıştırır.
  */
-export function parseArticleVideos(article: ItemArticle | null): ScrapedMedia[] {
+export function parseArticleVideos(
+  article: { videos_json?: string | null } | null,
+): ScrapedMedia[] {
   if (!article || !article.videos_json) return [];
   try {
     const parsed = JSON.parse(article.videos_json);
@@ -125,9 +129,11 @@ export function parseArticleVideos(article: ItemArticle | null): ScrapedMedia[] 
 export async function batchScrapeItems(
   items: Item[],
   onProgress?: (done: number, total: number, currentItem: Item) => void,
-): Promise<{ successCount: number; errorCount: number }> {
+  delayMs = 300,
+): Promise<{ successCount: number; errorCount: number; failed: Item[] }> {
   let successCount = 0;
   let errorCount = 0;
+  const failed: Item[] = [];
   const total = items.length;
 
   for (let i = 0; i < total; i++) {
@@ -139,11 +145,13 @@ export async function batchScrapeItems(
     } catch (e) {
       console.error(`[batch-scraper] ${item.url} kazınamadı:`, e);
       errorCount++;
+      failed.push(item);
     }
-    // Sunucu ve ağ nezaketi: istekler arası 300ms dinlenme
-    await new Promise((r) => setTimeout(r, 300));
+    if (delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
   }
 
   onProgress?.(total, total, items[total - 1]);
-  return { successCount, errorCount };
+  return { successCount, errorCount, failed };
 }
