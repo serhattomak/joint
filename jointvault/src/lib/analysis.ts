@@ -12,8 +12,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { applyCategorization, getAiStatus, isAiEnabled, readTagThreshold, refreshItemIndex } from './ai';
 import { getItem, listCategories, listTags } from './db/client';
-import { getItemAnalysis, listItemIdsNeedingAnalysis, upsertItemAnalysis } from './db/item_analysis';
-import type { RecipeText } from './db/types';
+import {
+  getItemAnalysis,
+  listItemIdsNeedingAnalysis,
+  setItemAnalysisStatus,
+  upsertItemAnalysis,
+} from './db/item_analysis';
+import type { ItemAnalysis, RecipeText } from './db/types';
 import { resolveCategories, resolveTags } from './taxonomy';
 
 /** Rust `analyze_media` dönen JSON'un şekli (serde PascalCase değil, snake_case). */
@@ -56,6 +61,40 @@ export interface AnalyzeProgressEvent {
 export function shouldSkipAnalysis(existing: { status: string } | null, force: boolean): boolean {
   if (force || !existing) return false;
   return existing.status === 'done' || existing.status === 'partial';
+}
+
+/**
+ * Tarif kartı gösterilsin mi? SAF (gösterim kararı; sonuç her zaman saklanır).
+ *
+ * `contains_recipe` VE tespit edilen tarif VE `confidence ≥ 0.6` gerekir;
+ * `confidence` null → eşik altı sayılır.
+ */
+export function shouldShowRecipe(
+  analysis: Pick<ItemAnalysis, 'contains_recipe' | 'confidence' | 'recipe'> | null,
+): boolean {
+  if (!analysis || !analysis.recipe) return false;
+  return analysis.contains_recipe === true && (analysis.confidence ?? 0) >= 0.6;
+}
+
+/**
+ * LLM çıktısını taksonomiye bağlar: topic → kategoriler (eşik + `maxNew`),
+ * keyword → etiketler (`max`). SAF (DB/ağ yok). `analyzeItem` bunu kullanır.
+ */
+export function resolveAnalysisTaxonomy(
+  topics: string[],
+  keywords: string[],
+  existingCats: string[],
+  existingTags: string[],
+  confidence: number,
+  minConfidence: number,
+): { categories: string[]; tags: string[] } {
+  const categories = resolveCategories(topics, existingCats, {
+    confidence,
+    minConfidence,
+    maxNew: 1,
+  }).names;
+  const tags = resolveTags(keywords, existingTags, { max: 12 });
+  return { categories, tags };
 }
 
 /** Rust yanıtını domain alanlarına eşler. SAF (Rust alan adları zaten hizalı). */
@@ -130,7 +169,7 @@ export async function analyzeItem(
 
   const jobId = opts?.jobId ?? crypto.randomUUID();
   try {
-    await upsertItemAnalysis({ ...base, status: 'running' });
+    await setItemAnalysisStatus(itemId, 'running');
 
     const raw = await invoke<string>('analyze_media', {
       payload: {
@@ -147,15 +186,13 @@ export async function analyzeItem(
     const m = mapAnalysisResponse(resp);
 
     const [allCats, allTags] = await Promise.all([listCategories(), listTags()]);
-    const cats = resolveCategories(
+    const { categories, tags } = resolveAnalysisTaxonomy(
       m.topics,
-      allCats.map((c) => c.name),
-      { confidence: m.confidence, minConfidence: readTagThreshold(), maxNew: 1 },
-    );
-    const tags = resolveTags(
       m.keywords,
+      allCats.map((c) => c.name),
       allTags.map((t) => t.name),
-      { max: 12 },
+      m.confidence,
+      readTagThreshold(),
     );
 
     await upsertItemAnalysis({
@@ -166,7 +203,7 @@ export async function analyzeItem(
       language: m.language,
       summary: m.summary,
       recipe: m.recipe,
-      // Ham LLM değerleri (denetim/çip); uygulanan taksonomi `cats.names`/`tags`.
+      // Ham LLM değerleri (denetim/çip); uygulanan taksonomi `categories`/`tags`.
       topics: m.topics,
       keywords: m.keywords,
       transcript_source: m.transcript_source,
@@ -178,8 +215,8 @@ export async function analyzeItem(
     // Yan etkiler `done` satırı yazıldıktan SONRA çalışır: buradaki bir hata
     // (taksonomi/indeks yazımı) pahalı analizi ASLA ezmez. Başarısızlık
     // yutulur; analiz yine `ok:true` döner.
-    if (aiStatus.auto_apply_tags && (cats.names.length > 0 || tags.length > 0)) {
-      await applyCategorization(itemId, cats.names, tags).catch(() => {});
+    if (aiStatus.auto_apply_tags && (categories.length > 0 || tags.length > 0)) {
+      await applyCategorization(itemId, categories, tags).catch(() => {});
     }
     await refreshItemIndex(itemId).catch(() => {});
     return { ok: true, partial: false, jobId };
@@ -187,7 +224,8 @@ export async function analyzeItem(
     const message =
       typeof err === 'string' ? err : err instanceof Error ? err.message : 'Analiz başarısız.';
     // Hata durumunu yaz; bu yazının kendisi patlarsa çağıranı yine de kırmayız.
-    await upsertItemAnalysis({ ...base, status: 'error', error_message: message }).catch(() => {});
+    // Kısmi yazım: önceki iyi sonuç (özet/tarif/topik/keyword) KORUNUR.
+    await setItemAnalysisStatus(itemId, 'error', message).catch(() => {});
     return { ok: false, error: message, jobId };
   }
 }

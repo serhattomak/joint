@@ -12,6 +12,18 @@ describe('migration 6 — item_analysis', () => {
     // Faz 2 alanı Faz 1'de rezerve:
     expect(v6!.statements.join('\n')).toContain('visual_notes_json');
   });
+
+  /* CASCADE/UNIQUE için gerçek davranış (item silince satır gider; item başına
+     tek satır) DB entegrasyon testi gerektirir; bu repoda saf + migration
+     statement altyapısı var. Tanımı burada teyit ediyoruz — davranış testi
+     raporda "ertelendi" olarak not düşüldü. */
+  it('item_analysis CASCADE + UNIQUE tanımı schema ve v6 statement\u2019ında', () => {
+    const create = (statements: string[]): string =>
+      statements.find((s) => s.includes('CREATE TABLE IF NOT EXISTS item_analysis')) ?? '';
+    const def = /item_id\s+TEXT NOT NULL UNIQUE REFERENCES items\(id\) ON DELETE CASCADE/;
+    expect(def.test(create(MIGRATIONS[0].statements))).toBe(true); // schema.sql
+    expect(def.test(create(MIGRATIONS.find((m) => m.version === 6)!.statements))).toBe(true);
+  });
 });
 
 describe('toItemAnalysis', () => {

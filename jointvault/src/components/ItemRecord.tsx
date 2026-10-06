@@ -32,7 +32,7 @@ import {
   summarizeText,
   type CategorizeAndTagResult,
 } from '@/lib/ai';
-import { analyzeItem, useAnalyzeProgress, type AnalyzeProgressEvent } from '@/lib/analysis';
+import { analyzeItem, shouldShowRecipe, useAnalyzeProgress, type AnalyzeProgressEvent } from '@/lib/analysis';
 import { getItemAnalysis } from '@/lib/db/item_analysis';
 import { writeClipboardText } from '@/lib/clipboard';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
@@ -429,13 +429,14 @@ export function ItemRecord({
 
   const platform = PLATFORM_META[item.platform as Platform] ?? PLATFORM_META.other;
 
-  const analysisRunning = analyzing || analysis?.status === 'running' || analysis?.status === 'pending';
+  // Yalnızca YEREL iş aktifken "çalışıyor" göster. DB'de kalan `running`/`pending`
+  // satır (uygulama öldü/reload) çıkmaz yaratmasın: buton yeniden denenebilir kalır.
+  const analysisRunning = analyzing;
   const analysisDone = analysis?.status === 'done' || analysis?.status === 'partial';
   const analysisErrorText =
     analyzeError ??
     (analysis?.status === 'error' ? (analysis.error_message ?? 'Analiz başarısız oldu.') : null);
-  const showRecipe =
-    analysis?.contains_recipe === true && (analysis.confidence ?? 0) >= 0.6 && !!analysis.recipe;
+  const showRecipe = shouldShowRecipe(analysis);
   const canAnalyze = aiEnabled && !!localPath;
   const stageLabel =
     analyzeProgress?.stage === 'transcript'

@@ -232,7 +232,7 @@ CREATE INDEX IF NOT EXISTS idx_item_analysis_status ON item_analysis(status);
   - Tarif kartı (`confidence ≥ 0.6` ve `contains_recipe`): başlık, malzeme listesi, adım listesi, notlar, **kopyala**.
   - Özet + konu/keyword çipleri (mevcut etiket çipi bileşeni).
   - Aksiyonlar: **Analiz et**, **Yeniden analiz et** (force).
-- **Kayıt listesi / toplu**: "Analiz edilmemişleri analiz et" eylemi; İndirmeler ile aynı desende "N/M" ilerleme + **İptal**.
+- **Toplu (Ayarlar → Yapay Zekâ, `SettingsView`)**: "Analiz edilmemişleri analiz et" eylemi; "N/M" ilerleme + **İptal**. (Kayıt listesinde ayrı toplu yüzey yok — bilinçli UX kararı.)
 - AI kapalı veya gerekli model eksikse eylemler kilitli + yönlendirme mesajı (mevcut desen).
 
 ## 8. Test ve doğrulama
@@ -255,8 +255,8 @@ CREATE INDEX IF NOT EXISTS idx_item_analysis_status ON item_analysis(status);
 
 ## 9. Dosya listesi
 
-**Faz 1 — Yeni:** `src-tauri/src/analyze.rs` · `src/lib/db/item_analysis.ts` (client) · `src/components/ItemAnalysisPanel.tsx` (+ testler)
-**Faz 1 — Değişen:** `src-tauri/src/whisper.rs` · `src-tauri/src/components.rs` · `src-tauri/src/ai.rs` · `src-tauri/src/lib.rs` · `src/lib/db/schema.sql` · `src/lib/db/migrations.ts` · `src/lib/db/client.ts` · `src/lib/ai.ts` · `src/lib/chunker.ts` (gerekirse) · kayıt detay görünümü · Ayarlar/Bileşenler
+**Faz 1 — Yeni:** `src-tauri/src/analyze.rs` · `src/lib/db/item_analysis.ts` (client) — "İçerik Analizi" bölümü ayrı panel değil, **`src/components/ItemRecord.tsx`** içinde (+ `analysis.test.ts` / `item_analysis.test.ts`)
+**Faz 1 — Değişen:** `src-tauri/src/whisper.rs` · `src-tauri/src/components.rs` · `src-tauri/src/ai.rs` · `src-tauri/src/lib.rs` · `src/lib/db/schema.sql` · `src/lib/db/migrations.ts` · `src/lib/db/client.ts` · `src/lib/ai.ts` · `src/lib/analysis.ts` · `src/lib/taxonomy.ts` (gerekirse) · `src/components/ItemRecord.tsx` · `src/components/SettingsView.tsx` (toplu analiz)
 
 **Faz 2 — Yeni:** `src-tauri/src/vision.rs` (VLM süreci + kare) · `src/lib/vision.ts`
 **Faz 2 — Değişen:** `src-tauri/src/ai.rs` (VLM_PORT) · `src-tauri/src/components.rs` (VLM modelleri) · `tauri.conf.json` (CSP) · `analyze.rs` (Aşama 1) · UI (visual_notes)

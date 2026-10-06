@@ -578,6 +578,7 @@ export async function setCategoriesForItem(item_id: string, category_ids: string
 
 // --- backup (JSON export/import, merge by id) ---
 
+// item_analysis kasıtlı hariç: `items` ile birlikte yedeklenmez, türev tablolarla tutarlı.
 const BACKUP_TABLES = ['items', 'collections', 'tags', 'categories', 'item_tags', 'item_categories'] as const;
 
 export interface VaultBackup {

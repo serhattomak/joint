@@ -120,6 +120,31 @@ export async function upsertItemAnalysis(input: ItemAnalysisInput): Promise<void
   );
 }
 
+/**
+ * Yalnızca durum alanlarını yazar; SONUÇ kolonlarına dokunmaz.
+ *
+ * `running`/`error` geçişleri bu yolu kullanır: başarısız bir zorunlu yeniden
+ * analiz (veya `running` yazıp çökme) önceki iyi `done` sonucunu
+ * (özet/tarif/topik/keyword) silmesin. Yeni satır gerekirse diğer kolonlar
+ * şema varsayılanıyla (NULL) oluşur.
+ */
+export async function setItemAnalysisStatus(
+  itemId: string,
+  status: AnalysisStatus,
+  errorMessage?: string | null,
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO item_analysis (id, item_id, status, error_message)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT(item_id) DO UPDATE SET
+       status = excluded.status,
+       error_message = excluded.error_message,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+    [crypto.randomUUID(), itemId, status, errorMessage ?? null],
+  );
+}
+
 export async function deleteItemAnalysis(itemId: string): Promise<void> {
   const db = await getDb();
   await db.execute('DELETE FROM item_analysis WHERE item_id = $1', [itemId]);

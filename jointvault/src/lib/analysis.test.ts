@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { mapAnalysisResponse, shouldSkipAnalysis, summarizeBatch } from './analysis';
+import {
+  mapAnalysisResponse,
+  resolveAnalysisTaxonomy,
+  shouldShowRecipe,
+  shouldSkipAnalysis,
+  summarizeBatch,
+} from './analysis';
 
 describe('summarizeBatch', () => {
   it('sonuçları sayar', () => {
@@ -22,6 +28,56 @@ describe('shouldSkipAnalysis', () => {
     expect(shouldSkipAnalysis({ status: 'error' }, false)).toBe(false);
     expect(shouldSkipAnalysis({ status: 'running' }, false)).toBe(false);
     expect(shouldSkipAnalysis(null, false)).toBe(false);
+  });
+});
+
+describe('shouldShowRecipe', () => {
+  const recipe = { title: 'Kek', ingredients: ['un'], steps: ['kar'], notes: '' };
+
+  it('contains_recipe + confidence ≥ 0.6 + recipe birlikteyse gösterir', () => {
+    expect(shouldShowRecipe({ contains_recipe: true, confidence: 0.6, recipe })).toBe(true);
+    expect(shouldShowRecipe({ contains_recipe: true, confidence: 0.9, recipe })).toBe(true);
+  });
+  it('sınır: 0.59 gizli', () => {
+    expect(shouldShowRecipe({ contains_recipe: true, confidence: 0.59, recipe })).toBe(false);
+  });
+  it('confidence null → gizli', () => {
+    expect(shouldShowRecipe({ contains_recipe: true, confidence: null, recipe })).toBe(false);
+  });
+  it('recipe null → gizli (confidence yüksek olsa da)', () => {
+    expect(shouldShowRecipe({ contains_recipe: true, confidence: 0.9, recipe: null })).toBe(false);
+  });
+  it('contains_recipe false/null → gizli', () => {
+    expect(shouldShowRecipe({ contains_recipe: false, confidence: 0.9, recipe })).toBe(false);
+    expect(shouldShowRecipe({ contains_recipe: null, confidence: 0.9, recipe })).toBe(false);
+  });
+  it('analiz yok → gizli', () => {
+    expect(shouldShowRecipe(null)).toBe(false);
+  });
+});
+
+describe('resolveAnalysisTaxonomy', () => {
+  it('mevcut kategori eşleşmesi eşikten bağımsız korunur (kanonik ad)', () => {
+    const r = resolveAnalysisTaxonomy(['Yemek'], [], ['yemek'], [], 0.1, 0.6);
+    expect(r.categories).toEqual(['yemek']);
+  });
+  it('yeni kategori yalnız eşik üstünde kabul edilir', () => {
+    expect(resolveAnalysisTaxonomy(['Tatlı'], [], [], [], 0.5, 0.6).categories).toEqual([]);
+    expect(resolveAnalysisTaxonomy(['Tatlı'], [], [], [], 0.6, 0.6).categories).toEqual(['Tatlı']);
+  });
+  it('maxNew=1: en fazla bir YENİ kategori; toplam ≤ 2', () => {
+    const r = resolveAnalysisTaxonomy(['A', 'B', 'C'], [], [], [], 0.9, 0.6);
+    expect(r.categories).toEqual(['A']);
+  });
+  it('keyword → etiket, normalize + max 12', () => {
+    const keywords = Array.from({ length: 15 }, (_, i) => `#Etiket ${i}`);
+    const r = resolveAnalysisTaxonomy([], keywords, [], [], 0.9, 0.6);
+    expect(r.tags).toHaveLength(12);
+    expect(r.tags[0]).toBe('etiket 0');
+  });
+  it('etiket mevcut adla eşlenir (kanonik)', () => {
+    const r = resolveAnalysisTaxonomy([], ['kek'], [], ['Kek'], 0.9, 0.6);
+    expect(r.tags).toEqual(['Kek']);
   });
 });
 
