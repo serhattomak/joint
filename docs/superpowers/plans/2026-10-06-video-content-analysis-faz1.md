@@ -201,19 +201,14 @@ git commit -m "feat(db): item_analysis tablosu + migration 6 + client"
 - Produces: model id'leri `"large-v3"` ve `"large-v3-q5_0"`; bileşen id'leri `whisper-model-large-v3`, `whisper-model-large-v3-q5_0`.
 - `whisper.rs`: `valid_model` ve `whisper_status` yeni id'leri içerir. `model_file_name` zaten `ggml-{model}.bin` üretir → `ggml-large-v3.bin`, `ggml-large-v3-q5_0.bin`.
 
-- [ ] **Step 1: sha256'ları hesapla ve sabitle** (HF'de sha256 yok; bir kez indir, yerelde hesapla).
+- [ ] **Step 1: sha256'ları sabitle** — HF API `tree?expand=true` LFS `oid` alanından alındı (indirmeye gerek yok):
 
-Run (PowerShell, geçici dizin):
-```powershell
-$u1='https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin'
-$u2='https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin'
-Invoke-WebRequest $u1 -OutFile "$env:TEMP\ggml-large-v3-q5_0.bin"
-Invoke-WebRequest $u2 -OutFile "$env:TEMP\ggml-large-v3.bin"
-(Get-FileHash "$env:TEMP\ggml-large-v3-q5_0.bin" -Algorithm SHA256).Hash.ToLower()
-(Get-FileHash "$env:TEMP\ggml-large-v3.bin" -Algorithm SHA256).Hash.ToLower()
-```
-Beklenen boyutlar (indirmeden de doğrula): q5_0 = `1081140203`, large-v3 = `3095033483` bayt.
-Çıkan iki sha256'yı Step 2'de sabitle.
+| dosya | boyut (bayt) | sha256 |
+|---|---|---|
+| `ggml-large-v3-q5_0.bin` | `1081140203` | `d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1` |
+| `ggml-large-v3.bin` | `3095033483` | `64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2` |
+
+Bu değerler Step 2'de sabitlenir.
 
 - [ ] **Step 2: `components.rs` sabitlerini ekle** (line ~332 sonrası, tiny/base/small desenini birebir kopyala):
 
@@ -221,14 +216,16 @@ Beklenen boyutlar (indirmeden de doğrula): q5_0 = `1081140203`, large-v3 = `309
 const WHISPER_MODEL_LARGE_V3_Q5_FILE: &str = "ggml-large-v3-q5_0.bin";
 const WHISPER_MODEL_LARGE_V3_Q5_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin";
-const WHISPER_MODEL_LARGE_V3_Q5_SHA256: &str = "<Step 1 sha256>";
+const WHISPER_MODEL_LARGE_V3_Q5_SHA256: &str =
+    "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1";
 const WHISPER_MODEL_LARGE_V3_Q5_BYTES: u64 = 1_081_140_203;
 const WHISPER_MODEL_LARGE_V3_Q5_MB: u32 = 1031;
 
 const WHISPER_MODEL_LARGE_V3_FILE: &str = "ggml-large-v3.bin";
 const WHISPER_MODEL_LARGE_V3_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin";
-const WHISPER_MODEL_LARGE_V3_SHA256: &str = "<Step 1 sha256>";
+const WHISPER_MODEL_LARGE_V3_SHA256: &str =
+    "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2";
 const WHISPER_MODEL_LARGE_V3_BYTES: u64 = 3_095_033_483;
 const WHISPER_MODEL_LARGE_V3_MB: u32 = 2951;
 ```
