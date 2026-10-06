@@ -1245,4 +1245,176 @@ export async function listDownloadedItems(): Promise<Item[]> {
   return rows.map(toItem);
 }
 
+// --- defter (notebook): kategori sayfalarına okunabilir derlem ---
+
+export interface NotebookSummary {
+  category_id: string;
+  summary: string;
+  model: string | null;
+  generated_at: string;
+}
+
+export interface NotebookItemRow extends Item {
+  content_text: string | null;
+  content_markdown: string | null;
+  images_json: string | null;
+  videos_json: string | null;
+  author: string | null;
+  published_at: string | null;
+}
+
+export async function getCategorySummary(categoryId: string): Promise<NotebookSummary | null> {
+  const db = await getDb();
+  const rows = await db.select<NotebookSummary[]>(
+    'SELECT category_id, summary, model, generated_at FROM notebook_summaries WHERE category_id = $1',
+    [categoryId],
+  );
+  return rows[0] ?? null;
+}
+
+export async function saveCategorySummary(
+  categoryId: string,
+  summary: string,
+  model: string | null,
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO notebook_summaries (category_id, summary, model, generated_at)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT(category_id) DO UPDATE SET
+       summary = excluded.summary,
+       model = excluded.model,
+       generated_at = excluded.generated_at`,
+    [categoryId, summary, model, now()],
+  );
+}
+
+/** Kategorize edilmemiş kayıtlar — defterin "Sınıflandırılmamış" sayfası kaynağı. */
+export async function listItemsMissingCategory(): Promise<Item[]> {
+  const db = await getDb();
+  const rows = await db.select<ItemRow[]>(
+    `SELECT i.* FROM items i
+     WHERE NOT EXISTS (SELECT 1 FROM item_categories ic WHERE ic.item_id = i.id)
+     ORDER BY i.created_at DESC`,
+  );
+  return rows.map(toItem);
+}
+
+/**
+ * Defter sayfa kayıtları: item alanları + makale içeriği tek sorguda
+ * (sayfa başına 48 satır; N+1 okuma yerine JOIN).
+ */
+export async function listNotebookItems(
+  categoryId: string | null,
+  limit = 48,
+  offset = 0,
+  sort: 'new' | 'old' = 'new',
+): Promise<{ rows: NotebookItemRow[]; total: number }> {
+  const db = await getDb();
+  const dir = sort === 'old' ? 'ASC' : 'DESC';
+  const join = categoryId === null ? '' : 'JOIN item_categories ic ON ic.item_id = i.id';
+  const where =
+    categoryId === null ? 'NOT EXISTS (SELECT 1 FROM item_categories c WHERE c.item_id = i.id)' : '';
+  const filter = categoryId === null ? 'WHERE ' + where : 'WHERE ic.category_id = $1';
+  const params = categoryId === null ? [] : [categoryId];
+  const totals = await db.select<{ count: number }[]>(
+    `SELECT COUNT(*) as count FROM items i ${join} ${filter}`,
+    params,
+  );
+  const base = categoryId === null ? 1 : 2;
+  const rows = await db.select<
+    (ItemRow & {
+      content_text: string | null;
+      content_markdown: string | null;
+      images_json: string | null;
+      videos_json: string | null;
+      author: string | null;
+      published_at: string | null;
+    })[]
+  >(
+    `SELECT i.*, a.content_text, a.content_markdown, a.images_json, a.videos_json, a.author, a.published_at
+     FROM items i
+     LEFT JOIN item_articles a ON a.item_id = i.id
+     ${join}
+     ${filter}
+     ORDER BY i.created_at ${dir}
+     LIMIT $${base} OFFSET $${base + 1}`,
+    [...params, limit, offset],
+  );
+  return { rows: rows.map(toNotebookRow), total: totals[0]?.count ?? 0 };
+}
+
+const toNotebookRow = (
+  r: ItemRow & {
+    content_text: string | null;
+    content_markdown: string | null;
+    images_json: string | null;
+    videos_json: string | null;
+    author: string | null;
+    published_at: string | null;
+  },
+): NotebookItemRow => ({
+  ...toItem(r),
+  content_text: r.content_text,
+  content_markdown: r.content_markdown,
+  images_json: r.images_json,
+  videos_json: r.videos_json,
+  author: r.author,
+  published_at: r.published_at,
+});
+
+/**
+ * Birleştirme: tek transaction (runAtomicSafe) — junction union, scalar patch,
+ * article taşıma/kaldırma, fts temizliği ve artık silme. Kapı: K organizasyon.
+ */
+export async function mergeItems(
+  targetId: string,
+  victimIds: string[],
+  patch: {
+    note: string;
+    favorite: boolean;
+    title: string | null;
+    thumbnail: string | null;
+    created_at: string;
+  },
+): Promise<void> {
+  if (victimIds.length === 0) return;
+  const db = await getDb();
+  // $1 = targetId; victims $2..$n; scalar patch bundan sonra devam eder.
+  const values: unknown[] = [targetId];
+  const victims = victimIds.map((_, i) => `$${i + 2}`).join(', ');
+  const statements = [
+    `INSERT OR IGNORE INTO item_tags (item_id, tag_id) SELECT $1, tag_id FROM item_tags WHERE item_id IN (${victims});`,
+    `INSERT OR IGNORE INTO item_categories (item_id, category_id) SELECT $1, category_id FROM item_categories WHERE item_id IN (${victims});`,
+    `UPDATE items SET
+       note = $${victimIds.length + 2},
+       favorite = $${victimIds.length + 3},
+       title = $${victimIds.length + 4},
+       thumbnail = $${victimIds.length + 5},
+       created_at = $${victimIds.length + 6},
+       updated_at = $${victimIds.length + 7}
+     WHERE id = $1;`,
+    `UPDATE item_articles SET item_id = $1
+     WHERE item_id = (
+       SELECT ja.item_id FROM item_articles ja
+       WHERE ja.item_id IN (${victims})
+       ORDER BY ja.scraped_at ASC
+       LIMIT 1
+     )
+     AND NOT EXISTS (SELECT 1 FROM item_articles ea WHERE ea.item_id = $1);`,
+    `DELETE FROM item_articles WHERE item_id IN (${victims});`,
+    `DELETE FROM item_chunks_fts WHERE item_id IN (${victims});`,
+    `DELETE FROM items WHERE id IN (${victims});`,
+  ];
+  values.push(
+    patch.note,
+    patch.favorite ? 1 : 0,
+    patch.title,
+    patch.thumbnail,
+    patch.created_at,
+    now(),
+  );
+  await runAtomicSafe(db, statements.join(' '), values);
+}
+
 

@@ -119,6 +119,18 @@ export const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_item_analysis_status ON item_analysis(status)`,
     ],
   },
+  {
+    version: 7,
+    description: 'defter kategori özetleri',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS notebook_summaries (
+        category_id TEXT PRIMARY KEY REFERENCES categories(id) ON DELETE CASCADE,
+        summary TEXT NOT NULL,
+        model TEXT,
+        generated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      )`,
+    ],
+  },
 ];
 
 /** Sürümü `current` olan bir arşivden sonra uygulanacak göçleri sırayla döndürür. */
