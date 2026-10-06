@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
+  Check,
+  Copy,
   Download,
   ExternalLink,
+  FileSearch,
   FileText,
   FolderOpen,
   Loader2,
@@ -13,6 +16,7 @@ import {
   Sparkles,
   Star,
   Trash2,
+  UtensilsCrossed,
   X,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -21,13 +25,19 @@ import { useOpenTarget } from '@/lib/open-target';
 import { useDragDismiss } from '@/lib/use-drag-dismiss';
 import {
   categorizeAndTagItem,
+  getAiStatus,
   indexItemChunks,
+  isAiEnabled,
   suggestTags,
   summarizeText,
   type CategorizeAndTagResult,
 } from '@/lib/ai';
+import { analyzeItem, useAnalyzeProgress, type AnalyzeProgressEvent } from '@/lib/analysis';
+import { getItemAnalysis } from '@/lib/db/item_analysis';
+import { writeClipboardText } from '@/lib/clipboard';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -60,7 +70,7 @@ import {
   toggleFavorite,
   updateItem,
 } from '@/lib/db/client';
-import type { Collection, Item, ItemArticle } from '@/lib/db/types';
+import type { Collection, Item, ItemAnalysis, ItemArticle } from '@/lib/db/types';
 import { QUALITY_OPTIONS, getDefaultQuality, useDownloadProgress, type DownloadQuality } from '@/lib/downloads';
 import { openExternal } from '@/lib/external';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
@@ -128,6 +138,17 @@ export function ItemRecord({
   const [article, setArticle] = useState<ItemArticle | null>(null);
   const [scrapeBusy, setScrapeBusy] = useState(false);
 
+  // İçerik analizi (item_analysis): durum, ilerleme ve tarif kopyalama.
+  const [analysis, setAnalysis] = useState<ItemAnalysis | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState<AnalyzeProgressEvent | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [recipeCopied, setRecipeCopied] = useState(false);
+  const activeJobIdRef = useRef<string | null>(null);
+  // Kayıt değişince geç gelen analiz yanıtı yeni kaydın bölümünü ezmesin.
+  const analysisItemRef = useRef(item.id);
+
   // Canlı indirme durumu ve yerel dosya takibi
   const [downloadStatus, setDownloadStatus] = useState<Item['download_status']>(item.download_status);
   const [localPath, setLocalPath] = useState<string | null>(item.local_path ?? null);
@@ -160,6 +181,21 @@ export function ItemRecord({
     void getTagsForItem(item.id).then((ts) => setTags(ts.map((t) => t.name)));
     void getCategoriesForItem(item.id).then((cs) => setCategories(cs.map((c) => c.name)));
     void getArticleForItem(item.id).then(setArticle);
+    setAnalysis(null);
+    setAnalyzing(false);
+    setAnalyzeProgress(null);
+    setAnalyzeError(null);
+    setRecipeCopied(false);
+    activeJobIdRef.current = null;
+    analysisItemRef.current = item.id;
+    void getItemAnalysis(item.id)
+      .then((a) => {
+        if (analysisItemRef.current === item.id) setAnalysis(a);
+      })
+      .catch(() => {
+        if (analysisItemRef.current === item.id) setAnalysis(null);
+      });
+    void getAiStatus().then((s) => setAiEnabled(isAiEnabled(s))).catch(() => setAiEnabled(false));
   }, [item, initialTab]);
 
   // Arka planda indirme olaylarını dinle — kaydı kapatmadan video anında hazır olsun
@@ -194,6 +230,16 @@ export function ItemRecord({
       [item.id, onChanged],
     ),
   );
+
+  // İçerik analizi ilerlemesi — yalnızca bu kayıttan başlatılan iş yansıtılır.
+  // `analyzeItem` jobId'yi içeride üretir ve döndürmez; bu yüzden başlatma
+  // anından sonra gelen ilk jobId sahiplenilir, farklı işler yok sayılır.
+  useAnalyzeProgress((e) => {
+    if (!analyzing) return;
+    if (!activeJobIdRef.current) activeJobIdRef.current = e.jobId;
+    else if (activeJobIdRef.current !== e.jobId) return;
+    setAnalyzeProgress(e);
+  });
 
   // Depolanan ham hata makine işareti taşıyabilir; önek kullanıcıya gösterilmez.
   const missingComponent = parseMissingComponent(downloadError);
@@ -283,6 +329,52 @@ export function ItemRecord({
     setAiSuggestion(null);
   };
 
+  // İçerik analizini başlat/yenile; bitince kalıcı sonucu yeniden oku.
+  const runAnalysis = async (force: boolean): Promise<void> => {
+    setAnalyzing(true);
+    setAnalyzeProgress(null);
+    setAnalyzeError(null);
+    setRecipeCopied(false);
+    activeJobIdRef.current = null;
+    try {
+      const res = await analyzeItem(item.id, { force });
+      if (!res.ok) setAnalyzeError(res.error ?? 'Analiz başarısız.');
+    } catch (e) {
+      setAnalyzeError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Analiz başarısız.');
+    } finally {
+      setAnalyzing(false);
+      setAnalyzeProgress(null);
+      activeJobIdRef.current = null;
+      void getItemAnalysis(item.id)
+        .then((a) => {
+          if (analysisItemRef.current === item.id) setAnalysis(a);
+        })
+        .catch(() => {});
+    }
+  };
+
+  const copyRecipe = async (): Promise<void> => {
+    const r = analysis?.recipe;
+    if (!r) return;
+    const lines = [
+      r.title,
+      '',
+      'Malzemeler:',
+      ...r.ingredients.map((i) => `- ${i}`),
+      '',
+      'Adımlar:',
+      ...r.steps.map((s, i) => `${i + 1}. ${s}`),
+    ];
+    if (r.notes) lines.push('', 'Notlar:', r.notes);
+    const result = await writeClipboardText(lines.join('\n'));
+    if (!result.ok) {
+      setError(`Tarif kopyalanamadı: ${result.error}`);
+      return;
+    }
+    setRecipeCopied(true);
+    setTimeout(() => setRecipeCopied(false), 2000);
+  };
+
   const dirty =
     title.trim() !== (item.title ?? '') ||
     note.trim() !== (item.note ?? '') ||
@@ -336,6 +428,21 @@ export function ItemRecord({
   };
 
   const platform = PLATFORM_META[item.platform as Platform] ?? PLATFORM_META.other;
+
+  const analysisRunning = analyzing || analysis?.status === 'running' || analysis?.status === 'pending';
+  const analysisDone = analysis?.status === 'done' || analysis?.status === 'partial';
+  const analysisErrorText =
+    analyzeError ??
+    (analysis?.status === 'error' ? (analysis.error_message ?? 'Analiz başarısız oldu.') : null);
+  const showRecipe =
+    analysis?.contains_recipe === true && (analysis.confidence ?? 0) >= 0.6 && !!analysis.recipe;
+  const canAnalyze = aiEnabled && !!localPath;
+  const stageLabel =
+    analyzeProgress?.stage === 'transcript'
+      ? 'Transkript hazırlanıyor…'
+      : analyzeProgress?.stage === 'extract'
+        ? 'İçerik çıkarılıyor…'
+        : 'Analiz ediliyor…';
 
   return (
     <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -570,6 +677,161 @@ export function ItemRecord({
                           </div>
                         )}
                       </div>
+                    )}
+                  </div>
+
+                  {/* İçerik Analizi — video transkripti, özet, konu ve tarif */}
+                  <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-primary">
+                        <FileSearch className="size-3.5 shrink-0" />
+                        <span className="truncate">İçerik Analizi</span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {analysisDone && analysis?.confidence != null && (
+                          <span data-num className="text-3xs text-muted-foreground">
+                            %{Math.round(analysis.confidence * 100)}
+                          </span>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={() => void runAnalysis(analysisDone || analysis?.status === 'error')}
+                          disabled={analysisRunning || !canAnalyze}
+                          className="h-7 gap-1.5 border-primary/30 px-2.5 text-xs font-medium text-primary hover:bg-primary/10"
+                        >
+                          {analysisRunning ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="size-3" />
+                          )}
+                          {analysisRunning
+                            ? 'Analiz Ediliyor…'
+                            : analysisDone
+                              ? 'Yeniden Analiz Et'
+                              : analysis?.status === 'error'
+                                ? 'Yeniden Dene'
+                                : 'Analiz Et'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {analysisRunning && (
+                      <div className="flex flex-col gap-2 border-t border-primary/20 pt-2.5">
+                        <span className="text-xs font-medium text-foreground">{stageLabel}</span>
+                        <Progress
+                          value={analyzeProgress?.percent ?? 0}
+                          className="h-2"
+                          label="İçerik analizi ilerlemesi"
+                        />
+                      </div>
+                    )}
+
+                    {!analysisRunning && analysisErrorText && (
+                      <div className="border-t border-primary/20 pt-2.5">
+                        <p className="text-xs leading-relaxed text-destructive">{analysisErrorText}</p>
+                      </div>
+                    )}
+
+                    {!analysisRunning && !analysisErrorText && analysisDone && (
+                      <div className="flex flex-col gap-2.5 border-t border-primary/20 pt-2.5">
+                        {analysis?.status === 'partial' && (
+                          <Badge variant="secondary" className="self-start">
+                            Kısmi sonuç
+                          </Badge>
+                        )}
+                        {analysis?.summary && (
+                          <p className="text-xs leading-relaxed text-muted-foreground">{analysis.summary}</p>
+                        )}
+                        {analysis && analysis.topics.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-3xs font-medium text-muted-foreground">Konular:</span>
+                            {analysis.topics.map((t) => (
+                              <Badge key={t} variant="secondary">
+                                {t}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        {analysis && analysis.keywords.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-3xs font-medium text-muted-foreground">
+                              Anahtar Sözcükler:
+                            </span>
+                            {analysis.keywords.map((k) => (
+                              <Badge key={k} variant="outline">
+                                {k}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
+                        {showRecipe && analysis?.recipe && (
+                          <div className="flex flex-col gap-2 border-t border-primary/20 pt-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-foreground">
+                                <UtensilsCrossed className="size-3.5 shrink-0 text-primary" />
+                                <span className="truncate">{analysis.recipe.title || 'Tarif'}</span>
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                type="button"
+                                onClick={() => void copyRecipe()}
+                                className="h-6 shrink-0 gap-1 px-2 text-3xs text-primary hover:bg-primary/10"
+                              >
+                                {recipeCopied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                                {recipeCopied ? 'Kopyalandı' : 'Kopyala'}
+                              </Button>
+                            </div>
+                            {analysis.recipe.ingredients.length > 0 && (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-3xs font-medium text-muted-foreground">Malzemeler</span>
+                                <ul className="list-inside list-disc space-y-0.5 text-xs leading-relaxed text-foreground/90">
+                                  {analysis.recipe.ingredients.map((ing, i) => (
+                                    <li key={i}>{ing}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {analysis.recipe.steps.length > 0 && (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-3xs font-medium text-muted-foreground">Adımlar</span>
+                                <ol className="list-inside list-decimal space-y-0.5 text-xs leading-relaxed text-foreground/90">
+                                  {analysis.recipe.steps.map((step, i) => (
+                                    <li key={i}>{step}</li>
+                                  ))}
+                                </ol>
+                              </div>
+                            )}
+                            {analysis.recipe.notes && (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-3xs font-medium text-muted-foreground">Notlar</span>
+                                <p className="text-xs leading-relaxed text-muted-foreground">
+                                  {analysis.recipe.notes}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!analysisRunning && !analysisErrorText && !analysisDone && canAnalyze && (
+                      <p className="text-3xs leading-relaxed text-muted-foreground">
+                        Videoyu transkripte döker; özet, konu ve varsa tarif çıkarır.
+                      </p>
+                    )}
+                    {!aiEnabled && (
+                      <p className="text-3xs leading-relaxed text-muted-foreground">
+                        AI kapalı — Ayarlar → Yapay Zekâ&apos;dan etkinleştir.
+                      </p>
+                    )}
+                    {aiEnabled && !localPath && !analysisDone && (
+                      <p className="text-3xs leading-relaxed text-muted-foreground">
+                        Analiz için önce medyayı indir.
+                      </p>
                     )}
                   </div>
 
