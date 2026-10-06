@@ -3,7 +3,7 @@
  * kodu DEĞİL.
  *
  * NE KANITLAR:
- *  1. Kayıt/indirilebilirlik: whisper, üç whisper modeli, llama motoru, CUDA
+ *  1. Kayıt/indirilebilirlik: whisper, beş whisper modeli, llama motoru, CUDA
  *     çalışma zamanı, Qwen ve BGE'nin TAMAMI Bileşenler'den indirilebilir;
  *     yt-dlp paketle gömülü kalır ve İNDİRİLEMEZ (tek istisna).
  *  2. TEK YOL (8a): repoda (`src-tauri/binaries/`) gömülü whisper YOKTUR; whisper
@@ -24,7 +24,7 @@
  *     kanıtlanır (--quick/JV_REAL_DOWNLOAD=0 bu indirmeyi atlar → "kanıtlanmadı").
  *  5. Eksik yt-dlp: `list_formats` yapılandırılmış `BILESEN_EKSIK:yt-dlp` +
  *     okunabilir Türkçe ayrıntı döndürür (ham OS hatası yok).
- *  6. Bileşenler ekranı TÜM kaydı çizer: 11 bileşen / 10 paket grubu; gösterilen
+ *  6. Bileşenler ekranı TÜM kaydı çizer: 13 bileşen / 12 paket grubu; gösterilen
  *     boyutlar KAYITTAN gelir (`components.rs` → `components_status` → DOM);
  *     arayüzde sabit sayı yok.
  *
@@ -93,8 +93,9 @@ const BINARIES_DIR = resolve(PROJECT_ROOT, 'src-tauri/binaries');
 // Transkript boru hattı gerçek ffmpeg ister: ffmpeg/ffprobe adları gölge planından
 // ÇIKARILIR. Ad eşleştirmesi ortak `isBundledShadow` kuralıyla yapılır (düz ad ya
 // da `ffmpeg-<üçlü>.exe`) — elle liste, bir gün eklenen varyantı kaçırırdı.
-// Transkript için tercih sırası: diskte OLAN ilk model kullanılır (base dengeli).
-const TRANSCRIBE_MODEL_ORDER = ['base', 'tiny', 'small'];
+// Transkript için tercih sırası: diskte OLAN ilk model kullanılır (base dengeli;
+// büyük modeller yalnızca son çare — 2 sn'lik ton için gereksiz yavaş olurlar).
+const TRANSCRIBE_MODEL_ORDER = ['base', 'tiny', 'small', 'large-v3-q5_0', 'large-v3'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* --- mod seçimi ------------------------------------------------------------ */
@@ -134,15 +135,17 @@ const EXPECTED_IDS = [
   'whisper-model-tiny',
   'whisper-model-base',
   'whisper-model-small',
+  'whisper-model-large-v3-q5_0',
+  'whisper-model-large-v3',
   'llama-engine',
   'llama-cudart',
   'ai-model-llm',
   'ai-model-embed',
 ];
-// yt-dlp DIŞINDA hepsi indirilebilir olmalı (10 satır).
+// yt-dlp DIŞINDA hepsi indirilebilir olmalı (12 satır).
 const DOWNLOADABLE_IDS = EXPECTED_IDS.filter((id) => id !== YTDLP_ID);
-// 11 bileşen, ffmpeg+ffprobe TEK arşivi paylaşır → arayüzde 10 paket grubu.
-const GROUP_COUNT = 10;
+// 13 bileşen, ffmpeg+ffprobe TEK arşivi paylaşır → arayüzde 12 paket grubu.
+const GROUP_COUNT = 12;
 // Whisper motorunun arşivden çıkardığı dosyalar (kayıt: `WHISPER_ENGINE_WANTED`).
 const WHISPER_ENGINE_FILES = ['whisper.exe', 'whisper.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll'];
 // Gölgelenmesi/geri alınması gereken whisper adları (`whisper-cli.exe` arşiv adı).
@@ -504,13 +507,13 @@ const stepBaseline = async (ctx) => {
   artifact.baseline = { components: rows.map(pick), whisperStatus };
 
   report(
-    'taban: kayıt 11 bileşen döndürüyor',
+    `taban: kayıt ${EXPECTED_IDS.length} bileşen döndürüyor`,
     rows.length === EXPECTED_IDS.length && EXPECTED_IDS.every((id) => byId[id]),
     `sayı=${rows.length} · idler=${rows.map((component) => component.id).join(',')}`,
   );
   const wrong = DOWNLOADABLE_IDS.filter((id) => byId[id]?.downloadable !== true);
   report(
-    'taban: 10 bileşen indirilebilir (whisper + modeller + llama + AI dâhil)',
+    `taban: ${DOWNLOADABLE_IDS.length} bileşen indirilebilir (whisper + modeller + llama + AI dâhil)`,
     wrong.length === 0,
     wrong.length ? `eksik: ${wrong.join(', ')}` : DOWNLOADABLE_IDS.join(', '),
   );
@@ -583,7 +586,7 @@ const stepRegistry = async (ctx) => {
     }
   }
   report(
-    'kayıt kaynağı: 11 id için approx_mb okundu',
+    `kayıt kaynağı: ${EXPECTED_IDS.length} id için approx_mb okundu`,
     found.length === EXPECTED_IDS.length,
     `${found.length}/${EXPECTED_IDS.length}`,
   );
@@ -677,12 +680,12 @@ const stepScreen = async (ctx) => {
 
   const unseen = labels.filter((label) => screen.rows[label] === null);
   report(
-    'arayüz: 11 bileşenin tamamı çizildi',
+    `arayüz: ${EXPECTED_IDS.length} bileşenin tamamı çizildi`,
     unseen.length === 0,
     unseen.length ? `görünmeyen: ${unseen.join(' | ')}` : `${labels.length} satır`,
   );
   report(
-    'arayüz: 10 paket grubu (ffmpeg+ffprobe tek arşiv)',
+    `arayüz: ${GROUP_COUNT} paket grubu (ffmpeg+ffprobe tek arşiv)`,
     groups.length === GROUP_COUNT,
     `grup=${groups.length}`,
   );
@@ -935,7 +938,7 @@ const stepTranscribe = async (ctx) => {
       return;
     }
 
-    // (3) Model: diskte OLAN birini kullan (kayıttaki modeller tiny/base/small).
+    // (3) Model: diskte OLAN birini kullan (kayıttaki whisper modelleri).
     const status = await getWhisperStatus(page);
     const modelsDir = status?.models_dir ?? ctx.state.modelsDir ?? null;
     const present = TRANSCRIBE_MODEL_ORDER.filter((model) => status?.models?.[model] === true);
@@ -1291,7 +1294,7 @@ const main = async () => {
   const artifact = {
     kind: 'component-whisper-probe',
     synthetic: false,
-    note: 'Faz 7c-3 → 8a: whisper + modeller + llama/AI indirilebilir; yt-dlp gömülü kalır. 8a: repoda gömülü whisper YOK (tek yol indirme) ve arayüzden indirilen motorla GERÇEK transkripsiyon koşar. BU YALNIZCA motorun çalıştığını/boru hattının bittiğini kanıtlar (0xC0000135 yok); transkriptin İÇERİĞİNİ kanıtlamaz — ses sinüs tonu, içinde konuşma yok (bkz. transcribe.doesNotProve). Kurulu asset "kurulu" görünür ve yeniden indirmeye sunulmaz; eksik yt-dlp BILESEN_EKSIK:yt-dlp döndürür; Bileşenler ekranı 11 satır/10 grubu kayıttan gelen boyutlarla çizer. Geri sonrası ölçüt "makine bulunduğu gibi bırakıldı".',
+    note: 'Faz 7c-3 → 8a: whisper + modeller + llama/AI indirilebilir; yt-dlp gömülü kalır. 8a: repoda gömülü whisper YOK (tek yol indirme) ve arayüzden indirilen motorla GERÇEK transkripsiyon koşar. BU YALNIZCA motorun çalıştığını/boru hattının bittiğini kanıtlar (0xC0000135 yok); transkriptin İÇERİĞİNİ kanıtlamaz — ses sinüs tonu, içinde konuşma yok (bkz. transcribe.doesNotProve). Kurulu asset "kurulu" görünür ve yeniden indirmeye sunulmaz; eksik yt-dlp BILESEN_EKSIK:yt-dlp döndürür; Bileşenler ekranı 13 satır/12 grubu kayıttan gelen boyutlarla çizer. Geri sonrası ölçüt "makine bulunduğu gibi bırakıldı".',
     capturedAt: new Date().toISOString(),
     appUrl: page.url(),
     quick: quickFlag,
@@ -1304,7 +1307,7 @@ const main = async () => {
         ? 'kurulu asset yoksa koşar (~74 MB)'
         : 'atlandı (--quick / JV_REAL_DOWNLOAD=0)',
       multiGb:
-        'llama-engine (242 MB), llama-cudart (373 MB), Qwen (~8.5 GB), BGE (605 MB), base/small modelleri BU SONDA HİÇ İNDİRİLMEZ — yalnız indirilebilirlik bayrakları doğrulanır; kurulumları kanıtlanmadı',
+        'llama-engine (242 MB), llama-cudart (373 MB), Qwen (~8.5 GB), BGE (605 MB), base/small/large-v3-q5_0 (~1.0 GB)/large-v3 (~3.0 GB) modelleri BU SONDA HİÇ İNDİRİLMEZ — yalnız indirilebilirlik bayrakları doğrulanır; kurulumları kanıtlanmadı',
       transcribe:
         'arayüzden indirilen motor + kurulu ffmpeg + diskte model varsa koşar; biri yoksa DÜRÜSTÇE atlanır (kanıtlanmadı)',
     },
