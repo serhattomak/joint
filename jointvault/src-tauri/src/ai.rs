@@ -1114,6 +1114,56 @@ pub async fn ai_suggest_tags(app: AppHandle, payload: Value) -> Result<Vec<Strin
     Ok(tags)
 }
 
+// Yeniden kullanılabilir sohbet tamamlama: sunucuyu (gerekirse) başlatır, tek
+// system+user iletili istek atar ve `choices[0].message.content` döndürür.
+//
+// Kuyruk kilidi (`download::QUEUE`) BURADA ALINMAZ: yeniden-girilemez mutex
+// çağıran komut katmanına aittir (aynı gerekçe `analyze::acquire_transcript`).
+#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
+pub(crate) async fn chat_completion(
+    app: &AppHandle,
+    system: &str,
+    user: &str,
+    temperature: f32,
+    max_tokens: u32,
+) -> Result<String, String> {
+    let port = ensure_server_running(app, "chat").await?;
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user }
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+
+    let res_json: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let content = res_json
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c0| c0.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .trim();
+
+    Ok(content.to_string())
+}
+
 // Özet Çıkarma
 #[tauri::command]
 pub async fn ai_summarize(app: AppHandle, payload: Value) -> Result<String, String> {
