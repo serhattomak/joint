@@ -524,7 +524,13 @@ pub async fn analyze_media(app: AppHandle, payload: Value) -> Result<String, Str
             Ok(raw) if !raw.trim().is_empty() => match parse_analysis(&raw) {
                 Ok(a) if !is_analysis_empty(&a) => parts.push(a),
                 Ok(_) => last_err = Some("model boş bir analiz döndürdü".to_string()),
-                Err(e) => last_err = Some(e),
+                Err(e) => {
+                    // Tanı: modelin ham yanıtının başı (JSON'a neden çevrilemediği görünsün).
+                    let head: String =
+                        raw.chars().take(300).collect::<String>().replace('\n', " ");
+                    eprintln!("[analyze] parse hatası: {e} | ham: {head}");
+                    last_err = Some(format!("{e} | ham yanıt: {head}"));
+                }
             },
             Ok(_) => last_err = Some("model boş yanıt döndürdü".to_string()),
             Err(e) => last_err = Some(e),
