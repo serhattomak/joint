@@ -492,6 +492,8 @@ git commit -m "feat(analyze): analyze_media komutu + ilerleme + fail-closed"
 
 ## Task 6: `lib/analysis.ts` — orkestrasyon + taksonomi + kalıcılık
 
+> **Ruling (SDD, T6):** Planda T6 için öngörülen TS `pickWhisperModel` **düşürüldü** — whisper model seçimi Rust `acquire_transcript` içinde (`pick_whisper_model`) yapılıyor ve `analyze_media` model parametresi almıyor; TS'te tekrarlamak YAGNI ve sapma riski. Yerine iki saf yardımcı test edilir: `shouldSkipAnalysis` ve `mapAnalysisResponse`.
+
 **Files:**
 - Create: `jointvault/src/lib/analysis.ts`
 - Test: `jointvault/src/lib/analysis.test.ts`
