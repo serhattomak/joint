@@ -45,6 +45,8 @@ pub async fn health_check(app: AppHandle) -> Result<String, String> {
             "tiny": model_present(&app, "tiny"),
             "base": model_present(&app, "base"),
             "small": model_present(&app, "small"),
+            "large-v3": model_present(&app, "large-v3"),
+            "large-v3-q5_0": model_present(&app, "large-v3-q5_0"),
         },
         "download_dir": download_dir,
     })

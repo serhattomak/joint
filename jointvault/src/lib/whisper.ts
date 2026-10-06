@@ -6,7 +6,7 @@ import { isTranscriptData, isWhisperStatus } from './backend-contracts';
 // burada YENİDEN TANIMLANMAZ, yalnızca içe aktarılır (kopya ayrışmasın).
 import { type ComponentDownloadProgressEvent, useComponentDownloadProgress } from './components';
 
-export type WhisperModel = 'tiny' | 'base' | 'small';
+export type WhisperModel = 'tiny' | 'base' | 'small' | 'large-v3-q5_0' | 'large-v3';
 export type WhisperLang = 'auto' | 'tr' | 'en';
 
 // Ayarlar → Konuşma sekmesinden seçilir; ilk açılışta indirilmez (A10, lazy).
@@ -14,20 +14,23 @@ export const WHISPER_MODEL_KEY = 'jv-whisper-model';
 
 /*
  * Boyutlar kayıttaki (`components.rs`) `approx_mb` pinleriyle BİREBİR aynıdır:
- * `whisper-model-tiny/base/small` = 74/141/465. 7c-3 öncesi burada 75/142/466
- * yazıyordu ve Ayarlar → Bileşenler aynı modeller için farklı sayı gösterirdi
- * (iki gerçek). Bileşen ekranı boyutu gerçek kaynaktan (`components_status`)
- * okur; burası durum okunamadığında başvurulan tek ve doğru yedektir.
+ * `whisper-model-tiny/base/small/large-v3-q5_0/large-v3` = 74/141/465/1031/2951.
+ * 7c-3 öncesi burada 75/142/466 yazıyordu ve Ayarlar → Bileşenler aynı modeller
+ * için farklı sayı gösterirdi (iki gerçek). Bileşen ekranı boyutu gerçek kaynaktan
+ * (`components_status`) okur; burası durum okunamadığında başvurulan tek ve doğru
+ * yedektir.
  */
 export const WHISPER_MODELS: { id: WhisperModel; sizeMb: number; hint: string }[] = [
   { id: 'tiny', sizeMb: 74, hint: 'En hızlı, kaba sonuç.' },
   { id: 'base', sizeMb: 141, hint: 'Dengeli — önerilen.' },
   { id: 'small', sizeMb: 465, hint: 'En doğru, yavaş + büyük indirme.' },
+  { id: 'large-v3-q5_0', sizeMb: 1031, hint: 'Türkçe için çok doğru; sıkıştırılmış, daha hızlı.' },
+  { id: 'large-v3', sizeMb: 2951, hint: 'En yüksek doğruluk; en yavaş ve en büyük indirme.' },
 ];
 
 export function getWhisperModel(): WhisperModel {
   const v = window.localStorage.getItem(WHISPER_MODEL_KEY);
-  return v === 'tiny' || v === 'small' ? v : 'base';
+  return WHISPER_MODELS.find((m) => m.id === v)?.id ?? 'base';
 }
 
 export function setWhisperModel(m: WhisperModel): void {

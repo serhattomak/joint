@@ -5,7 +5,7 @@ const VALID_HEALTH = {
   ffmpeg: { available: true, version: '6.1' },
   ffprobe: { available: true, version: null },
   whisper: { available: false },
-  models: { tiny: true, base: false, small: false },
+  models: { tiny: true, base: false, small: false, 'large-v3-q5_0': false, 'large-v3': false },
   download_dir: 'D:/vault',
 };
 
@@ -42,7 +42,10 @@ describe('isHealthReport', () => {
 
   it('model bayrağı boolean değilse reddeder', () => {
     // Arrange
-    const broken = { ...VALID_HEALTH, models: { tiny: true, base: 'yok', small: false } };
+    const broken = {
+      ...VALID_HEALTH,
+      models: { tiny: true, base: 'yok', small: false, 'large-v3-q5_0': false, 'large-v3': false },
+    };
 
     // Act
     const result = isHealthReport(broken);
@@ -63,7 +66,7 @@ describe('isHealthReport', () => {
 describe('isWhisperStatus', () => {
   const VALID = {
     whisper_available: true,
-    models: { tiny: true, base: true, small: false },
+    models: { tiny: true, base: true, small: false, 'large-v3-q5_0': false, 'large-v3': false },
     models_dir: 'C:/models',
   };
 

@@ -33,8 +33,11 @@ fn get_str(payload: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("missing required key {key}"))
 }
 
+const VALID_MODEL_MSG: &str =
+    "model \"tiny\", \"base\", \"small\", \"large-v3\" ya da \"large-v3-q5_0\" olmalı.";
+
 fn valid_model(model: &str) -> bool {
-    model == "tiny" || model == "base" || model == "small"
+    matches!(model, "tiny" | "base" | "small" | "large-v3" | "large-v3-q5_0")
 }
 
 fn model_file_name(model: &str) -> String {
@@ -42,7 +45,8 @@ fn model_file_name(model: &str) -> String {
 }
 
 // Model pinleri (URL/sha256/boyut) burada TUTULMAZ: kaynak seçimi ürünün değişmez
-// kararıdır ve `components.rs`'te TEK yerde yaşar (`whisper-model-{tiny|base|small}`).
+// kararıdır ve `components.rs`'te TEK yerde yaşar
+// (`whisper-model-{tiny|base|small|large-v3|large-v3-q5_0}`).
 // Burada ikinci bir kopya tutmak, kayıtla zamanla ayrışan bir pin tablosu üretirdi.
 // İndirme de tek yoldan (`component_download::install_component`) yürür.
 
@@ -58,7 +62,7 @@ fn models_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 
 fn model_path(app: &AppHandle, model: &str) -> Result<std::path::PathBuf, String> {
     if !valid_model(model) {
-        return Err("model \"tiny\", \"base\" ya da \"small\" olmalı.".to_string());
+        return Err(VALID_MODEL_MSG.to_string());
     }
     Ok(models_dir(app)?.join(model_file_name(model)))
 }
@@ -113,7 +117,13 @@ pub async fn whisper_status(app: AppHandle) -> Result<String, String> {
     let has = |m: &str| dir.join(model_file_name(m)).exists();
     Ok(serde_json::json!({
         "whisper_available": available,
-        "models": { "tiny": has("tiny"), "base": has("base"), "small": has("small") },
+        "models": {
+            "tiny": has("tiny"),
+            "base": has("base"),
+            "small": has("small"),
+            "large-v3": has("large-v3"),
+            "large-v3-q5_0": has("large-v3-q5_0"),
+        },
         "models_dir": dir.to_string_lossy().to_string(),
     })
     .to_string())
@@ -124,7 +134,7 @@ pub async fn download_model(app: AppHandle, payload: Value) -> Result<String, St
     let model = get_str(&payload, "model")?;
     let job_id = get_str(&payload, "job_id")?;
     if !valid_model(&model) {
-        return Err("model \"tiny\", \"base\" ya da \"small\" olmalı.".to_string());
+        return Err(VALID_MODEL_MSG.to_string());
     }
     // Tek yol: kayıttaki `whisper-model-{model}` bileşeni. "Hedef dosya varsa atla"
     // kapısı, pin (URL/sha256/boyut), hedef klasör, atomik `.part` yerleştirme,
@@ -218,7 +228,7 @@ pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String
     let model = get_str(&payload, "model")?;
     let language = get_str(&payload, "language")?;
     if !valid_model(&model) {
-        return Err("model \"tiny\", \"base\" ya da \"small\" olmalı.".to_string());
+        return Err(VALID_MODEL_MSG.to_string());
     }
     let lang = match language.as_str() {
         "auto" => "auto",

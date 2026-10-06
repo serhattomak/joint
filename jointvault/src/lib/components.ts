@@ -241,6 +241,14 @@ const MISSING_COMPONENT_FALLBACKS = new Map<string, string>([
     "Whisper 'small' modeli kurulu değil. Daha yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.",
   ],
   [
+    'whisper-model-large-v3-q5_0',
+    "Whisper 'large-v3' (hızlı) modeli kurulu değil. Türkçe için yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
+    'whisper-model-large-v3',
+    "Whisper 'large-v3' modeli kurulu değil. En yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
     'llama-engine',
     'llama-server motoru kurulu değil. Yerel sohbet, özetleme ve etiketleme bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
   ],

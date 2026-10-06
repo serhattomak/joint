@@ -10,7 +10,13 @@ export interface HealthReport {
   ffmpeg: HealthToolStatus;
   ffprobe: HealthToolStatus;
   whisper: { available: boolean };
-  models: { tiny: boolean; base: boolean; small: boolean };
+  models: {
+    tiny: boolean;
+    base: boolean;
+    small: boolean;
+    'large-v3-q5_0': boolean;
+    'large-v3': boolean;
+  };
   download_dir: string | null;
 }
 

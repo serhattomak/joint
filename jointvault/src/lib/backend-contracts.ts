@@ -19,7 +19,9 @@ const isModelFlags = (value: unknown): boolean =>
   isRecord(value) &&
   isBoolean(value.tiny) &&
   isBoolean(value.base) &&
-  isBoolean(value.small);
+  isBoolean(value.small) &&
+  isBoolean(value['large-v3-q5_0']) &&
+  isBoolean(value['large-v3']);
 
 export const isHealthReport = (value: unknown): value is HealthReport =>
   isRecord(value) &&

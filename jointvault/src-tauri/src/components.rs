@@ -57,7 +57,7 @@ pub enum ComponentSource {
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Dest {
     Components,
-    /// Modeller (`.bin`/`.gguf`): whisper tiny/base/small ve Qwen/BGE. Veri
+    /// Modeller (`.bin`/`.gguf`): whisper tiny/base/small/large-v3 ve Qwen/BGE. Veri
     /// dosyasıdır, çalıştırılmaz — tür kararı `Kind` ile verilir.
     Models,
     /// AI motoru (llama-server + CUDA DLL'leri).
@@ -331,6 +331,24 @@ const WHISPER_MODEL_SMALL_SHA256: &str =
 const WHISPER_MODEL_SMALL_BYTES: u64 = 465 * MIB;
 const WHISPER_MODEL_SMALL_MB: u32 = 465;
 
+// Türkçe kalite için büyük modeller (pin tablosu: HF `tree?expand=true` LFS `oid`).
+// Boyutlar ham bayt olarak yazılır: MB'a yuvarlamak disk kapısını yanıltırdı.
+const WHISPER_MODEL_LARGE_V3_Q5_FILE: &str = "ggml-large-v3-q5_0.bin";
+const WHISPER_MODEL_LARGE_V3_Q5_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin";
+const WHISPER_MODEL_LARGE_V3_Q5_SHA256: &str =
+    "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1";
+const WHISPER_MODEL_LARGE_V3_Q5_BYTES: u64 = 1_081_140_203;
+const WHISPER_MODEL_LARGE_V3_Q5_MB: u32 = 1031;
+
+const WHISPER_MODEL_LARGE_V3_FILE: &str = "ggml-large-v3.bin";
+const WHISPER_MODEL_LARGE_V3_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin";
+const WHISPER_MODEL_LARGE_V3_SHA256: &str =
+    "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2";
+const WHISPER_MODEL_LARGE_V3_BYTES: u64 = 3_095_033_483;
+const WHISPER_MODEL_LARGE_V3_MB: u32 = 2951;
+
 // --- llama.cpp motoru + CUDA çalışma zamanı (7c-3) ---
 //
 // İki AYRI arşivdir ve ortak bundle VERİLMEZ: biri `llama-server.exe` + CPU/CUDA
@@ -597,6 +615,48 @@ const SPECS: &[Spec] = &[
             disk_required_bytes: WHISPER_MODEL_SMALL_BYTES,
             payload: PayloadRule::Raw {
                 file_name: WHISPER_MODEL_SMALL_FILE,
+            },
+        }),
+        post_install: None,
+    },
+    Spec {
+        id: "whisper-model-large-v3-q5_0",
+        label: "Whisper modeli (large-v3, hızlı)",
+        approx_mb: WHISPER_MODEL_LARGE_V3_Q5_MB,
+        dest: Dest::Models,
+        kind: Kind::Asset,
+        downloaded_file: WHISPER_MODEL_LARGE_V3_Q5_FILE,
+        sidecar: None,
+        version_arg: ASSET_VERSION_ARG,
+        download: Some(DownloadSpec {
+            bundle: "whisper-model-large-v3-q5_0",
+            url: WHISPER_MODEL_LARGE_V3_Q5_URL,
+            sha256: WHISPER_MODEL_LARGE_V3_Q5_SHA256,
+            expected_bytes: WHISPER_MODEL_LARGE_V3_Q5_BYTES,
+            disk_required_bytes: WHISPER_MODEL_LARGE_V3_Q5_BYTES,
+            payload: PayloadRule::Raw {
+                file_name: WHISPER_MODEL_LARGE_V3_Q5_FILE,
+            },
+        }),
+        post_install: None,
+    },
+    Spec {
+        id: "whisper-model-large-v3",
+        label: "Whisper modeli (large-v3, yüksek doğruluk)",
+        approx_mb: WHISPER_MODEL_LARGE_V3_MB,
+        dest: Dest::Models,
+        kind: Kind::Asset,
+        downloaded_file: WHISPER_MODEL_LARGE_V3_FILE,
+        sidecar: None,
+        version_arg: ASSET_VERSION_ARG,
+        download: Some(DownloadSpec {
+            bundle: "whisper-model-large-v3",
+            url: WHISPER_MODEL_LARGE_V3_URL,
+            sha256: WHISPER_MODEL_LARGE_V3_SHA256,
+            expected_bytes: WHISPER_MODEL_LARGE_V3_BYTES,
+            disk_required_bytes: WHISPER_MODEL_LARGE_V3_BYTES,
+            payload: PayloadRule::Raw {
+                file_name: WHISPER_MODEL_LARGE_V3_FILE,
             },
         }),
         post_install: None,
@@ -966,6 +1026,8 @@ pub fn missing_message(id: &str) -> String {
         "whisper-model-tiny" => "Whisper 'tiny' modeli kurulu değil. Hızlı taslak transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "whisper-model-base" => "Whisper 'base' modeli kurulu değil. Dengeli hız/doğruluk için kullanılan transkript modelidir; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "whisper-model-small" => "Whisper 'small' modeli kurulu değil. Daha yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "whisper-model-large-v3-q5_0" => "Whisper 'large-v3' (hızlı) modeli kurulu değil. Türkçe için yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "whisper-model-large-v3" => "Whisper 'large-v3' modeli kurulu değil. En yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "llama-engine" => "llama-server motoru kurulu değil. Yerel sohbet, özetleme ve etiketleme bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "llama-cudart" => "CUDA çalışma zamanı kütüphaneleri (cudart/cublas) kurulu değil. llama-server'ın GPU'da çalışması bunlara bağlıdır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "ai-model-llm" => "Qwen 2.5 14B sohbet modeli kurulu değil. Yerel sohbet ve özetleme bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
@@ -1145,6 +1207,8 @@ mod tests {
         "whisper-model-tiny",
         "whisper-model-base",
         "whisper-model-small",
+        "whisper-model-large-v3-q5_0",
+        "whisper-model-large-v3",
         "llama-engine",
         "llama-cudart",
         "ai-model-llm",
@@ -1160,6 +1224,8 @@ mod tests {
         "whisper-model-tiny",
         "whisper-model-base",
         "whisper-model-small",
+        "whisper-model-large-v3-q5_0",
+        "whisper-model-large-v3",
         "llama-engine",
         "llama-cudart",
         "ai-model-llm",
@@ -1171,6 +1237,8 @@ mod tests {
         "whisper-model-tiny",
         "whisper-model-base",
         "whisper-model-small",
+        "whisper-model-large-v3-q5_0",
+        "whisper-model-large-v3",
         "llama-cudart",
         "ai-model-llm",
         "ai-model-embed",
@@ -1486,6 +1554,8 @@ mod tests {
             ("whisper-model-tiny", Dest::Models, Kind::Asset),
             ("whisper-model-base", Dest::Models, Kind::Asset),
             ("whisper-model-small", Dest::Models, Kind::Asset),
+            ("whisper-model-large-v3-q5_0", Dest::Models, Kind::Asset),
+            ("whisper-model-large-v3", Dest::Models, Kind::Asset),
             ("llama-engine", Dest::Binaries, Kind::Binary),
             // cudart bir DLL kümesidir: çalıştırılamaz → Asset (bkz. spec yorumu).
             ("llama-cudart", Dest::Binaries, Kind::Asset),
@@ -1648,6 +1718,8 @@ mod tests {
             ("whisper-model-tiny", WHISPER_MODEL_TINY_FILE),
             ("whisper-model-base", WHISPER_MODEL_BASE_FILE),
             ("whisper-model-small", WHISPER_MODEL_SMALL_FILE),
+            ("whisper-model-large-v3-q5_0", WHISPER_MODEL_LARGE_V3_Q5_FILE),
+            ("whisper-model-large-v3", WHISPER_MODEL_LARGE_V3_FILE),
             ("ai-model-llm", AI_MODEL_LLM_FILE),
             ("ai-model-embed", AI_MODEL_EMBED_FILE),
         ];
