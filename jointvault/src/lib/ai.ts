@@ -36,6 +36,7 @@ import {
   setTagsForItem,
 } from './db/client';
 import type { HybridSearchResult, Item } from './db/types';
+import { buildCategoryDigest } from './notebook';
 import { invalidateVectorIndex } from './vector-cache';
 import {
   matchTaxonomyInText,
@@ -261,6 +262,18 @@ export async function suggestTags(itemText: string, existingTags: string[]): Pro
 
 export async function summarizeText(text: string): Promise<string> {
   return invoke<string>('ai_summarize', { payload: { text } });
+}
+
+/**
+ * Defter sayfa özeti: kategori kayıtlarının tam metinlerinden malzeme kur
+ * (buildCategoryDigest, 8000 karakter), llama-server'a tek istemle gönder.
+ * İstem copy sabittir — spec tek kaynaktır.
+ */
+export async function summarizeCategory(categoryName: string, texts: string[]): Promise<string> {
+  const digest = buildCategoryDigest(texts);
+  return summarizeText(
+    `Aşağıdaki kayıtların ortak malzemesini 300-600 kelime Türkçe özetle; kaynak linki yazma. Kategori: ${categoryName}\n\n${digest}`,
+  );
 }
 
 /**
