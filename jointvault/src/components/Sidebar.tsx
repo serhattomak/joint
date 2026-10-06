@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   BarChart3,
+  BookMarked,
   Clapperboard,
   Download,
   FolderKanban,
@@ -12,7 +13,7 @@ import {
 } from 'lucide-react';
 import { getAiStatus, useAiWarmupStatus } from '@/lib/ai';
 
-export type SidebarView = 'all' | 'sync' | 'downloads' | 'collections' | 'converter' | 'toolbox' | 'stats' | 'ai' | 'settings';
+export type SidebarView = 'all' | 'notebook' | 'sync' | 'downloads' | 'collections' | 'converter' | 'toolbox' | 'stats' | 'ai' | 'settings';
 
 interface SidebarProps {
   view: SidebarView;
@@ -60,6 +61,7 @@ function useNavEntries(props: SidebarProps): NavEntry[] {
   return [
     { key: 'all', label: 'Tümü', icon: <LayoutGrid />, active: homeActive, run: props.onHome, group: 'arşiv' },
     viewBtn('collections', <FolderKanban />, 'Koleksiyonlar', 'arşiv'),
+    viewBtn('notebook', <BookMarked />, 'Defter', 'arşiv'),
     viewBtn('downloads', <Download />, 'İndirme Yöneticisi', 'araclar'),
     viewBtn('sync', <RefreshCw />, 'Eşitleme', 'araclar'),
     viewBtn('converter', <Clapperboard />, 'Dönüştürücü', 'araclar'),

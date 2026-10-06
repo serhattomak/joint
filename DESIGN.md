@@ -532,7 +532,7 @@ Koordinatlar `jointvault/` köküne göredir.
 - **Arşiv:** `src/components/ItemGrid.tsx` (ızgara, büyük başlık, sekmeler, sayfalama) ·
   `src/components/RuleStrip.tsx` (Filtrele paneli) · `src/components/ItemViews.tsx`
   (`ItemCardView`, `ItemRowView`, `Stamp`, `DownloadControl`, `ActionButtons`).
-- **Tam-sayfa yüzeyler:** `CollectionsView` · `DownloadsView` · `SyncView` · `StatsView` ·
+- **Tam-sayfa yüzeyler:** `CollectionsView` · `NotebookView` · `DownloadsView` · `SyncView` · `StatsView` ·
   `ToolboxHub` (+ `MergeTool`/`SilenceTool`/`GifTool`/`SubtitleTool`/`DuplicatesView`) ·
   `ConverterStudio` · `SettingsView`.
 - **Yardımcılar:** `lib/nav-history.ts` (geri/ileri) · `lib/use-drag-dismiss.ts` (çekip-kapat) ·

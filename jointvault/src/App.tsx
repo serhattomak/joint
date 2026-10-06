@@ -20,6 +20,7 @@ import { MediaPlayerModal } from '@/components/MediaPlayerModal';
 import { MergeTool } from '@/components/MergeTool';
 import { GifTool } from '@/components/GifTool';
 import { CollectionsView } from '@/components/CollectionsView';
+import { NotebookView } from '@/components/NotebookView';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
 import { AiAssistantView } from '@/components/AiAssistantView';
 import { SyncView } from '@/components/SyncView';
@@ -74,6 +75,7 @@ function App() {
   const [toolboxOnly, setToolboxOnly] = useState(false);
   const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates' | null>(null);
   const [statsOnly, setStatsOnly] = useState(false);
+  const [notebookOnly, setNotebookOnly] = useState(false);
   const [aiOnly, setAiOnly] = useState(false);
   // AI açık/kapalı TEK karar noktasından okunur; `null` = henüz bilinmiyor.
   // Bilinmeyen durumda yüzeyler yanıltıcı "kapalı" göstermez (fail-closed
@@ -216,7 +218,7 @@ function App() {
     };
   }, [settingsOnly]);
 
-  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly && !downloadedOnly && !syncOnly;
+  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly && !downloadedOnly && !syncOnly && !notebookOnly;
 
   const showAll = (): void => {
     setPlatform('all');
@@ -234,6 +236,7 @@ function App() {
     setSyncOnly(false);
     setSettingsOnly(false);
     setCollectionsOnly(false);
+    setNotebookOnly(false);
   };
 
   const openAi = (): void => {
@@ -300,6 +303,11 @@ function App() {
   const openStats = (): void => {
     showAll();
     setStatsOnly(true);
+  };
+
+  const openNotebook = (): void => {
+    showAll();
+    setNotebookOnly(true);
   };
 
   const goFavorites = (): void => {
@@ -380,6 +388,7 @@ function App() {
     setSyncOnly(false);
     setSettingsOnly(false);
     setCollectionsOnly(false);
+    setNotebookOnly(false);
   };
   const pickPlatform = (p: string): void => {
     setPlatform(p);
@@ -413,9 +422,11 @@ function App() {
               ? 'toolbox'
               : statsOnly
                 ? 'stats'
-                : downloadedOnly
-                  ? 'downloads'
-                  : 'all';
+                : notebookOnly
+                  ? 'notebook'
+                  : downloadedOnly
+                    ? 'downloads'
+                    : 'all';
 
   const [hist, setHist] = useState<NavHistory<SidebarView>>(() => ({ stack: ['all'], index: 0 }));
 
@@ -435,6 +446,7 @@ function App() {
     else if (d === 'stats') openStats();
     else if (d === 'ai') openAi();
     else if (d === 'settings') openSettings();
+    else if (d === 'notebook') openNotebook();
     else showAll();
   };
 
@@ -467,6 +479,7 @@ function App() {
       else if (v === 'sync') openSync();
       else if (v === 'settings') openSettings();
       else if (v === 'collections') openCollections();
+      else if (v === 'notebook') openNotebook();
       else if (v === 'downloads') goDownloads();
       else if (v === 'converter') openConverter();
       else if (v === 'toolbox') openToolbox();
@@ -641,6 +654,13 @@ function App() {
                 <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
                   <StatsView refreshKey={refreshKey} />
                 </Suspense>
+              ) : notebookOnly ? (
+                <div className="min-w-0 flex-1">
+                  <NotebookView
+                    refreshKey={refreshKey}
+                    onOpenItem={(item) => openRecord(item, 'detail')}
+                  />
+                </div>
               ) : converterOnly ? (
                 <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
               ) : toolboxTool === 'duplicates' ? (
