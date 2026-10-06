@@ -21,6 +21,7 @@ import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { SettingRow } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { Stamp } from '@/components/ui/stamp';
 import { Switch } from '@/components/ui/switch';
@@ -67,6 +68,7 @@ import {
   type AiGpuInfo,
   type AiStatus,
 } from '@/lib/ai';
+import { analyzeMissing } from '@/lib/analysis';
 import type { ComponentStatus } from '@/lib/components';
 
 export type SettingsTab = 'view' | 'downloads' | 'speech' | 'ai' | 'diagnostics' | 'extension' | 'backup' | 'components';
@@ -453,7 +455,14 @@ export function SettingsView(props: SettingsViewProps) {
   const [organizeBusy, setOrganizeBusy] = useState(false);
   const [organizeProgress, setOrganizeProgress] = useState<{ current: number; total: number; title: string } | null>(null);
   const [organizeResult, setOrganizeResult] = useState<string | null>(null);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<{ done: number; total: number } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const analysisAbortRef = useRef<AbortController | null>(null);
   const [tagThreshold, setTagThreshold] = useState(() => readTagThreshold());
+
+  // Sıradaki öğe sınırında durur; görünüm kapanırsa iş kalmasın.
+  useEffect(() => () => analysisAbortRef.current?.abort(), []);
 
   const handleThresholdChange = (v: string): void => {
     setTagThreshold(Number(v));
@@ -532,6 +541,32 @@ export function SettingsView(props: SettingsViewProps) {
     } finally {
       setOrganizeBusy(false);
       setOrganizeProgress(null);
+    }
+  };
+
+  const runAnalyzeMissing = async () => {
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
+    setAnalysisBusy(true);
+    setAnalysisResult(null);
+    setAnalysisProgress(null);
+    try {
+      const res = await analyzeMissing(
+        (done, total) => setAnalysisProgress({ done, total }),
+        controller.signal,
+      );
+      const parts = [`${res.processed} analiz edildi`];
+      if (res.skipped > 0) parts.push(`${res.skipped} atlandı`);
+      if (res.failed > 0) parts.push(`${res.failed} başarısız`);
+      setAnalysisResult(`${controller.signal.aborted ? 'İptal edildi · ' : ''}${parts.join(' · ')}`);
+      // Arşiv görünümü indeks tazelenince yeniden yüklenir.
+      window.dispatchEvent(new CustomEvent('vault-items-updated'));
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      analysisAbortRef.current = null;
+      setAnalysisBusy(false);
+      setAnalysisProgress(null);
     }
   };
 
@@ -1094,6 +1129,42 @@ export function SettingsView(props: SettingsViewProps) {
                         size="sm"
                         className="w-24"
                       />
+                    </SettingRow>
+
+                    <SettingRow
+                      label="Analiz Edilmemişleri Analiz Et"
+                      hint={
+                        <>
+                          {analysisProgress
+                            ? `${analysisProgress.done} / ${analysisProgress.total} analiz ediliyor…`
+                            : 'İndirilmiş ama içeriği analiz edilmemiş kayıtları sırayla tarar; transkript, özet, konu ve varsa tarif çıkarır.'}
+                          {analysisResult && (
+                            <span className="mt-1 block font-medium text-emerald-400">✓ {analysisResult}</span>
+                          )}
+                        </>
+                      }
+                    >
+                      {analysisBusy ? (
+                        <>
+                          <Progress
+                            value={analysisProgress && analysisProgress.total > 0 ? (analysisProgress.done / analysisProgress.total) * 100 : 0}
+                            className="w-28"
+                            label="Toplu analiz ilerlemesi"
+                          />
+                          <Button variant="outline" size="sm" onClick={() => analysisAbortRef.current?.abort()}>
+                            İptal
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void runAnalyzeMissing()}
+                          disabled={!aiEnabled || !aiStatus?.llm_ready}
+                        >
+                          Analiz Et
+                        </Button>
+                      )}
                     </SettingRow>
 
                     <SettingRow

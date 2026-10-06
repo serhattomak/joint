@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { mapAnalysisResponse, shouldSkipAnalysis } from './analysis';
+import { mapAnalysisResponse, shouldSkipAnalysis, summarizeBatch } from './analysis';
+
+describe('summarizeBatch', () => {
+  it('sonuçları sayar', () => {
+    expect(summarizeBatch(['processed', 'failed', 'skipped', 'processed'])).toEqual({
+      processed: 2, failed: 1, skipped: 1,
+    });
+  });
+  it('boş → sıfırlar', () => {
+    expect(summarizeBatch([])).toEqual({ processed: 0, failed: 0, skipped: 0 });
+  });
+});
 
 describe('shouldSkipAnalysis', () => {
   it('force yoksa done/partial atlanır; force ile atlanmaz', () => {

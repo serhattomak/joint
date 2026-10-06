@@ -12,7 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { applyCategorization, getAiStatus, isAiEnabled, readTagThreshold, refreshItemIndex } from './ai';
 import { getItem, listCategories, listTags } from './db/client';
-import { getItemAnalysis, upsertItemAnalysis } from './db/item_analysis';
+import { getItemAnalysis, listItemIdsNeedingAnalysis, upsertItemAnalysis } from './db/item_analysis';
 import type { RecipeText } from './db/types';
 import { resolveCategories, resolveTags } from './taxonomy';
 
@@ -190,6 +190,59 @@ export async function analyzeItem(
     await upsertItemAnalysis({ ...base, status: 'error', error_message: message }).catch(() => {});
     return { ok: false, error: message, jobId };
   }
+}
+
+/** Toplu analiz sonucu sınıfları. */
+export type BatchOutcome = 'processed' | 'failed' | 'skipped';
+
+/** Sonuç dizisini sayar. SAF. */
+export function summarizeBatch(outcomes: BatchOutcome[]): {
+  processed: number;
+  failed: number;
+  skipped: number;
+} {
+  let processed = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const o of outcomes) {
+    if (o === 'processed') processed++;
+    else if (o === 'failed') failed++;
+    else skipped++;
+  }
+  return { processed, failed, skipped };
+}
+
+/**
+ * Analiz bekleyen TÜM indirilmiş kayıtları SERİ olarak analiz eder.
+ *
+ * `listItemIdsNeedingAnalysis()` kuyruğu tek turda alınır; kuyruk ilerledikçe
+ * yeniden keşfedilmez. Her öğenin başında `signal?.aborted` kontrol edilir:
+ * iptal, devam eden `analyzeItem` bitince (asenkron sınır) durur. Zaten
+ * `done`/`partial` olan öğeler yeniden denenmez, `skipped` sayılır.
+ */
+export async function analyzeMissing(
+  onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal,
+): Promise<{ processed: number; failed: number; skipped: number }> {
+  const ids = await listItemIdsNeedingAnalysis();
+  const outcomes: BatchOutcome[] = [];
+
+  for (const id of ids) {
+    if (signal?.aborted) break;
+
+    const existing = await getItemAnalysis(id);
+    if (shouldSkipAnalysis(existing, false)) {
+      outcomes.push('skipped');
+      onProgress?.(outcomes.length, ids.length);
+      continue;
+    }
+
+    const res = await analyzeItem(id);
+    outcomes.push(res.ok ? 'processed' : 'failed');
+    onProgress?.(outcomes.length, ids.length);
+  }
+
+  return summarizeBatch(outcomes);
 }
 
 /** Tek `analyze-progress` aboneliği; unmount'ta dinleyiciyi bırakır. */
