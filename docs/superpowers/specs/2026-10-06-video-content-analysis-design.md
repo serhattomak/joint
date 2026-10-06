@@ -69,6 +69,12 @@ Bu özellik **iki fazda** teslim edilir: **Faz 1 metin-only** (hızlı değer, T
 - `whisper.rs::valid_model` (`whisper.rs:36`) yeni id'leri tanır; `models_dir` çözümü aynı kalır.
 - Ayarlar → Bileşenler'de mevcut model indirme UI'ı üzerinden gelir; ayrı UI yok.
 
+**Hız (ölçüm sonrası eklendi):** Whisper'ın CPU derlemesi `-t 4` ile çalışıyordu; 57 sn'lik bir videoda `large-v3` **83,7 sn** sürüyordu. Eklenenler:
+- **Opsiyonel CUDA motoru** (`whisper-cuda`, `whisper-cublas-12.4.0-bin-x64.zip`, ~423 MB, ayrı klasör `components/whisper-cuda`): kuruluysa + NVIDIA GPU varsa tercih edilir, yoksa CPU motoruna düşülür (fail-safe). GPU'da **7,9 sn** (ölçüldü, ~10×).
+- **`-fa` (flash attention)** yalnız CUDA yolunda: GPU decoder'ı ~4× hızlandırır (22,9 → 7,9 sn).
+- **`-t` = makine çekirdek sayısı** (sabit 4 değil): CPU yolunda 84 → 46 sn (bedava).
+- **Aşama zamanlaması:** `analyze_media` dönüşüne `timings_ms` ({chat_ready, transcript, extract, total}) eklendi; frontend konsola yazar. Whisper dışı süreyi ölçüp hedeflemek için.
+
 ### 4.2 Kaynak seçimi: altyazı önceliği
 
 `analyze.rs` içinde tek karar noktası:
