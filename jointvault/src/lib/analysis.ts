@@ -173,11 +173,13 @@ export async function analyzeItem(
       analyzed_at: new Date().toISOString(),
     });
 
+    // Yan etkiler `done` satırı yazıldıktan SONRA çalışır: buradaki bir hata
+    // (taksonomi/indeks yazımı) pahalı analizi ASLA ezmez. Başarısızlık
+    // yutulur; analiz yine `ok:true` döner.
     if (aiStatus.auto_apply_tags && (cats.names.length > 0 || tags.length > 0)) {
-      await applyCategorization(itemId, cats.names, tags);
+      await applyCategorization(itemId, cats.names, tags).catch(() => {});
     }
-
-    await refreshItemIndex(itemId);
+    await refreshItemIndex(itemId).catch(() => {});
     return { ok: true, partial: false };
   } catch (err) {
     const message =
