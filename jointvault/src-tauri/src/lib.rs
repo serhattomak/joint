@@ -22,6 +22,7 @@ mod turbo_download;
 mod sync;
 mod scraper;
 mod hardware;
+mod similarity;
 
 use tauri::Manager;
 
@@ -47,6 +48,7 @@ pub fn run() {
       pairing::get_pairing_token,
       pairing::regenerate_pairing_token,
       settings::get_download_dir,
+      similarity::dedupe_candidates,
     settings::app_data_path,
     backup::database_path,
     backup::backups_path,
