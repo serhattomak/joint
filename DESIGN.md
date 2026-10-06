@@ -515,8 +515,9 @@ Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük 
 | Tek bir kayıtlı öğe (post/video/makale) | **Kayıt** |
 | Yerel medyayı işleyen araçlar bölümü | **Araçlar** |
 | Yerel yapay zekâ sohbeti | **Asistan** |
+| Kategorilere göre derlenmiş okunabilir derlem | **Defter** |
 
-"Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz.
+"Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz. Defter birimleri: kategori başına bir **sayfa**; ikinci bir eşanlamlı ("bölüm", "kale") girmez.
 
 ## Primitives (koddaki sözlük — yeniden icat etme)
 

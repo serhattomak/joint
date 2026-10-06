@@ -14,7 +14,7 @@ Kullanım sahnesi: masaüstü (Windows), varsayılan 1280×800 pencere, sık sı
 
 ## Product Purpose
 
-JointVault kişisel medya arşividir: linkleri tek tek veya toplu kaydeder, tarayıcı eklentisiyle X/Instagram/YouTube'dan içe aktarır, yt-dlp ile indirir, ffmpeg ile dönüştürür/kırpar/altyazılar, yinelenenleri bulur ve hepsini koleksiyon/kategori/etiket ile düzenler. Amaç, dağınık platform kayıtlarını kaybolmayan, aranabilir, üzerinde iş yapılabilir tek bir yerel arşive dönüştürmek.
+JointVault kişisel medya arşividir: linkleri tek tek veya toplu kaydeder, tarayıcı eklentisiyle X/Instagram/YouTube'dan içe aktarır, yt-dlp ile indirir, ffmpeg ile dönüştürür/kırpar/altyazılar, yinelenenleri bulur ve hepsini koleksiyon/kategori/etiket ile düzenler. Amaç, dağınık platform kayıtlarını kaybolmayan, aranabilir, üzerinde iş yapılabilir tek bir yerel arşive dönüştürmek. Arşivin üstünde kategori başına okunabilir bir **İçerik Defteri** derlenir: kayıtların tam metinleri, görselleri ve linkleri defter sayfaları gibi tek yerde toplanır.
 
 Başarı ölçütü (kullanıcı tarafından onaylandı):
 1. Bir şeyi kaydetmek tek hareket olur — gözle aranmaz.
@@ -68,6 +68,7 @@ Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük 
 | Tek bir kayıtlı öğe (post/video/makale) | **Kayıt** |
 | Yerel medyayı işleyen araçlar bölümü | **Araçlar** |
 | Yerel yapay zekâ sohbeti | **Asistan** |
+| Kategorilere göre derlenmiş okunabilir derlem | **Defter** |
 
 "Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz.
 
