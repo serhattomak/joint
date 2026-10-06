@@ -37,6 +37,8 @@ export interface AnalyzeResult {
   ok: boolean;
   error?: string;
   partial?: boolean;
+  /** Bu çağrıya ait iş kimliği (çağıran ürettiyse aynen geri döner). */
+  jobId?: string;
 }
 
 export interface AnalyzeProgressEvent {
@@ -90,7 +92,7 @@ export function mapAnalysisResponse(resp: AnalyzeResponse): {
  */
 export async function analyzeItem(
   itemId: string,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; jobId?: string },
 ): Promise<AnalyzeResult> {
   const force = opts?.force ?? false;
 
@@ -126,7 +128,7 @@ export async function analyzeItem(
     analyzed_at: null,
   };
 
-  const jobId = crypto.randomUUID();
+  const jobId = opts?.jobId ?? crypto.randomUUID();
   try {
     await upsertItemAnalysis({ ...base, status: 'running' });
 
@@ -180,13 +182,13 @@ export async function analyzeItem(
       await applyCategorization(itemId, cats.names, tags).catch(() => {});
     }
     await refreshItemIndex(itemId).catch(() => {});
-    return { ok: true, partial: false };
+    return { ok: true, partial: false, jobId };
   } catch (err) {
     const message =
       typeof err === 'string' ? err : err instanceof Error ? err.message : 'Analiz başarısız.';
     // Hata durumunu yaz; bu yazının kendisi patlarsa çağıranı yine de kırmayız.
     await upsertItemAnalysis({ ...base, status: 'error', error_message: message }).catch(() => {});
-    return { ok: false, error: message };
+    return { ok: false, error: message, jobId };
   }
 }
 

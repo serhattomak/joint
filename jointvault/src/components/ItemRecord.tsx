@@ -232,12 +232,10 @@ export function ItemRecord({
   );
 
   // İçerik analizi ilerlemesi — yalnızca bu kayıttan başlatılan iş yansıtılır.
-  // `analyzeItem` jobId'yi içeride üretir ve döndürmez; bu yüzden başlatma
-  // anından sonra gelen ilk jobId sahiplenilir, farklı işler yok sayılır.
+  // jobId UI'da üretilip `analyzeItem`'a geçirilir; olaylar invoke bitmeden
+  // akabildiği için eşleşme kimliğe göre yapılır, olay sırasına göre değil.
   useAnalyzeProgress((e) => {
-    if (!analyzing) return;
-    if (!activeJobIdRef.current) activeJobIdRef.current = e.jobId;
-    else if (activeJobIdRef.current !== e.jobId) return;
+    if (e.jobId !== activeJobIdRef.current) return;
     setAnalyzeProgress(e);
   });
 
@@ -331,13 +329,15 @@ export function ItemRecord({
 
   // İçerik analizini başlat/yenile; bitince kalıcı sonucu yeniden oku.
   const runAnalysis = async (force: boolean): Promise<void> => {
+    // Kimlik ÇAĞIRANDA üretilir: ilk ilerleme olayı `invoke` dönmeden gelebilir.
+    const jobId = crypto.randomUUID();
+    activeJobIdRef.current = jobId;
     setAnalyzing(true);
     setAnalyzeProgress(null);
     setAnalyzeError(null);
     setRecipeCopied(false);
-    activeJobIdRef.current = null;
     try {
-      const res = await analyzeItem(item.id, { force });
+      const res = await analyzeItem(item.id, { force, jobId });
       if (!res.ok) setAnalyzeError(res.error ?? 'Analiz başarısız.');
     } catch (e) {
       setAnalyzeError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Analiz başarısız.');
