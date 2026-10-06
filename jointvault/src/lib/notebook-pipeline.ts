@@ -1,5 +1,21 @@
 import type { Item } from './db/types';
 import { planItemMerge, type MergePatch } from './notebook';
+import {
+  getAllChunksWithEmbeddings,
+  listItems,
+  listItemsMissingCategory,
+  listItemsWithoutArticle,
+  mergeItems,
+} from './db/client';
+import {
+  batchCategorizeItems,
+  getAiStatus,
+  isAiEnabled,
+  refreshItemIndex,
+} from './ai';
+import { batchScrapeItems } from './scraper';
+import { base64ToVector } from './chunker';
+import { findSimilarGroups, meanVector } from './similarity';
 
 /**
  * "Defteri Hazırla" orkestrasyonu. Kaba bağımlılık yok: tüm dış etkiler
@@ -61,6 +77,9 @@ export interface DupeGroup {
   targetId: string;
   victimIds: string[];
   patch: MergePatch;
+  /** Onay tablosu için okunur başlıklar. */
+  targetTitle: string;
+  victimTitles: string[];
 }
 
 export interface NotebookDeps {
@@ -159,11 +178,14 @@ export async function runNotebookPipeline(
     groups: groupIdx.map((members) => {
       const members2 = members.map((i) => embedded[i]);
       const target = [...members2].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
-      const patch = planItemMerge(target, members2.filter((it) => it.id !== target.id));
+      const rest = members2.filter((it) => it.id !== target.id);
+      const patch = planItemMerge(target, rest);
       return {
         targetId: target.id,
         victimIds: [...patch.victimIds],
         patch: { ...patch, victimIds: [...patch.victimIds] },
+        targetTitle: target.title ?? target.url,
+        victimTitles: rest.map((it) => it.title ?? it.url),
       };
     }),
   };
@@ -190,4 +212,52 @@ export async function applyMerges(
     }
   }
   return { merged, failedGroups };
+}
+
+/* --- gerçek deps fabrikası (SettingsView bağlanır) --- */
+
+export function makeNotebookDeps(): NotebookDeps {
+  return {
+    listBackfill: () => listItemsWithoutArticle(),
+    listMissingCategory: () => listItemsMissingCategory(),
+    scrape: (items, onProgress) => batchScrapeItems(items, onProgress, 500),
+    isAi: async () => {
+      try {
+        return isAiEnabled(await getAiStatus());
+      } catch {
+        return false;
+      }
+    },
+    categorize: (items, onProgress) => batchCategorizeItems(items, { onProgress }),
+    vectors: async () => {
+      const [items, chunks] = await Promise.all([listItems(), getAllChunksWithEmbeddings()]);
+      const byItem = new Map<string, Float32Array[]>();
+      for (const chunk of chunks) {
+        if (!chunk.embedding) continue;
+        try {
+          const list = byItem.get(chunk.item_id) ?? [];
+          list.push(base64ToVector(chunk.embedding));
+          byItem.set(chunk.item_id, list);
+        } catch {
+          // bozuk embedding satırı atlanır (vector-cache deseni)
+        }
+      }
+      const vectors = new Map<string, Float32Array>();
+      for (const [id, list] of byItem) {
+        const mean = meanVector(list);
+        if (mean.length > 0) vectors.set(id, mean);
+      }
+      return { items, vectors };
+    },
+    findGroups: findSimilarGroups,
+    merge: (targetId, victimIds, patch) =>
+      mergeItems(targetId, victimIds, {
+        note: patch.note,
+        favorite: patch.favorite,
+        title: patch.title,
+        thumbnail: patch.thumbnail,
+        created_at: patch.created_at,
+      }),
+    refresh: refreshItemIndex,
+  };
 }

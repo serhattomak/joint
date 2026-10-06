@@ -145,8 +145,8 @@ describe('runNotebookPipeline', () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('db kilitli'));
     const targets = [
-      { targetId: 'a', victimIds: ['b'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['b'] } },
-      { targetId: 'c', victimIds: ['d'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['d'] } },
+      { targetId: 'a', victimIds: ['b'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['b'] }, targetTitle: 'A', victimTitles: ['B'] },
+      { targetId: 'c', victimIds: ['d'], patch: { note: '', favorite: false, title: null, thumbnail: null, created_at: '2026-01-01T00:00:00Z', victimIds: ['d'] }, targetTitle: 'C', victimTitles: ['D'] },
     ];
     const app = await applyMerges(targets, deps);
     expect(app.merged).toBe(1);
