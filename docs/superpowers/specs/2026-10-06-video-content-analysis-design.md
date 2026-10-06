@@ -96,7 +96,7 @@ Rust komutu `analyze_media` (payload: `item_id, input_path, url, title, platform
 5. JSON string döndür: { analysis, transcript_source, transcript_path, model_versions }.
 ```
 
-TS `analyzeItem(itemId, { force })`:
+TS `analyzeItem(itemId, { force, jobId })`:
 
 ```
 1. AI kapalı / local_path yok → fail-closed hata.
