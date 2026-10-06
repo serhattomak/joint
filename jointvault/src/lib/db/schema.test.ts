@@ -64,6 +64,7 @@ describe('initDb şema yolu', () => {
       'categories',
       'collections',
       'downloads',
+      'item_analysis',
       'item_articles',
       'item_categories',
       'item_chunks',
@@ -81,6 +82,7 @@ describe('initDb şema yolu', () => {
       'idx_downloads_category',
       'idx_downloads_created_at',
       'idx_downloads_status',
+      'idx_item_analysis_status',
       'idx_item_categories_cat',
       'idx_item_tags_tag',
       'idx_items_collection',
@@ -99,6 +101,6 @@ describe('initDb şema yolu', () => {
     const statementCount = splitSqlStatements(SCHEMA_SQL).length;
 
     // Assert
-    expect(statementCount).toBe(23);
+    expect(statementCount).toBe(25);
   });
 });

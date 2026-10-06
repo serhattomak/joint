@@ -92,6 +92,33 @@ export const MIGRATIONS: Migration[] = [
       )`,
     ],
   },
+  {
+    version: 6,
+    description: 'içerik analizi kayıtları',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS item_analysis (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL UNIQUE REFERENCES items(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        contains_recipe INTEGER,
+        confidence REAL,
+        language TEXT,
+        summary TEXT,
+        recipe_json TEXT,
+        topics_json TEXT,
+        keywords_json TEXT,
+        visual_notes_json TEXT,
+        transcript_source TEXT,
+        transcript_path TEXT,
+        model_versions_json TEXT,
+        error_message TEXT,
+        analyzed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_item_analysis_status ON item_analysis(status)`,
+    ],
+  },
 ];
 
 /** Sürümü `current` olan bir arşivden sonra uygulanacak göçleri sırayla döndürür. */

@@ -72,6 +72,36 @@ export interface ScrapedMedia {
   caption?: string | null;
 }
 
+export type AnalysisStatus = 'pending' | 'running' | 'done' | 'partial' | 'error';
+
+export interface RecipeText {
+  title: string;
+  ingredients: string[];
+  steps: string[];
+  notes: string;
+}
+
+export interface ItemAnalysis {
+  id: string;
+  item_id: string;
+  status: AnalysisStatus;
+  contains_recipe: boolean | null;
+  confidence: number | null;
+  language: string | null;
+  summary: string | null;
+  recipe: RecipeText | null;
+  topics: string[];
+  keywords: string[];
+  visual_notes: string[] | null;
+  transcript_source: string | null;
+  transcript_path: string | null;
+  model_versions: Record<string, string> | null;
+  error_message: string | null;
+  analyzed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ItemArticle {
   item_id: string;
   title: string | null;
