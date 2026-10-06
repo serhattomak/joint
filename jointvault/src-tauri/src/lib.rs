@@ -14,6 +14,7 @@ mod silence;
 mod tray;
 mod whisper;
 mod ai;
+mod analyze;
 mod backup;
 mod components;
 mod component_download;

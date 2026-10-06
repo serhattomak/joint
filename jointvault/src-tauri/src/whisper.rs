@@ -67,8 +67,34 @@ fn model_path(app: &AppHandle, model: &str) -> Result<std::path::PathBuf, String
     Ok(models_dir(app)?.join(model_file_name(model)))
 }
 
+/// Whisper modelleri öncelik sırası: en doğru/kaliteli önce. `analyze.rs` bu sıraya
+/// göre kurulu ilk modeli seçer; arayüz (`lib/analysis.ts::pickWhisperModel`) aynı
+/// sırayı yansıtır. Yeni model eklenirse burası tek yerdir.
+#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
+pub(crate) const WHISPER_MODEL_PRIORITY: &[&str] =
+    &["large-v3-q5_0", "large-v3", "small", "base", "tiny"];
+
+/// Kurulu en iyi whisper modelini seç (yoksa None). Kayıt sorgusu `components`'ten
+/// gelir (`is_installed`); dosya yolunu burada yeniden hesaplamayız (tek kaynak).
+#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
+pub(crate) fn pick_whisper_model(app: &AppHandle) -> Option<&'static str> {
+    WHISPER_MODEL_PRIORITY
+        .iter()
+        .copied()
+        .find(|m| crate::components::is_installed(app, &format!("whisper-model-{m}")))
+}
+
+/// Transkript üretiminin ortak çıktısı. `run_transcribe` bunu döner; `transcribe`
+/// komutu JSON'a `preview` ekleyerek çevirir, `analyze::acquire_transcript` ise
+/// SRT yolunu doğrudan kullanır. Böylece iki tüketici aynı çekirdeği paylaşır.
+#[derive(Clone, Debug)]
+pub(crate) struct TranscriptOut {
+    pub srt_path: String,
+    pub language: String,
+}
+
 // Kaynağın yanına <stem>-transkript.srt (transkript çıktısı, arşive yazılmaz).
-fn transcript_path(input: &str) -> String {
+pub(crate) fn transcript_path(input: &str) -> String {
     let i = input.rfind(['/', '\\']);
     let (dir, base) = match i {
         Some(p) => (&input[..p], &input[p + 1..]),
@@ -221,22 +247,28 @@ async fn run_ffmpeg_simple(app: &AppHandle, args: Vec<String>) -> Result<(), Str
     Err("ffmpeg ended without an exit status".to_string())
 }
 
-#[tauri::command]
-pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String> {
-    let input = get_str(&payload, "input_path")?;
-    let job_id = get_str(&payload, "job_id")?;
-    let model = get_str(&payload, "model")?;
-    let language = get_str(&payload, "language")?;
-    if !valid_model(&model) {
+/// Transkript çekirdeği: doğrulama + ffmpeg→WAV + whisper-cli→SRT + hedefe kopya.
+///
+/// Kuyruk kilidi (`download::QUEUE`) BURADA ALINMAZ: tokio mutex yeniden-girilemez
+/// olduğundan `transcribe` komutu kilidi alıp buraya girer, `analyze_media` de aynı
+/// disiplini uygular. İçeride kilit alınsaydı ikinci komut kilitlenirdi.
+pub(crate) async fn run_transcribe(
+    app: &AppHandle,
+    input: &str,
+    model: &str,
+    language: &str,
+    job_id: &str,
+) -> Result<TranscriptOut, String> {
+    if !valid_model(model) {
         return Err(VALID_MODEL_MSG.to_string());
     }
-    let lang = match language.as_str() {
+    let lang = match language {
         "auto" => "auto",
         "tr" => "tr",
         "en" => "en",
         _ => return Err("dil \"auto\", \"tr\" ya da \"en\" olmalı.".to_string()),
     };
-    let model_file = model_path(&app, &model)?;
+    let model_file = model_path(app, model)?;
     if !model_file.exists() {
         return Err(format!(
             "Whisper {model} modeli indirilmedi. Ayarlar → Konuşma bölümünden indir."
@@ -246,18 +278,16 @@ pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String
     // BILESEN_EKSIK:<id> sinyali döner. Sinyalin ikinci satırı okunabilir Türkçe
     // cümleyi taşır; arayüz (7c-2) öneki soyar. whisper önce sorulur ki transkript
     // yolu eksik motorda net sinyal versin.
-    let whisper = crate::components::require_tool(&app, "whisper")?;
-    crate::components::require_tool(&app, "ffmpeg")?;
-    // Tekli kuyruk (A13): CPU donmasın.
-    let _guard = crate::download::QUEUE.lock().await;
-    emit_whisper_progress(&app, &job_id, 0.0);
+    let whisper = crate::components::require_tool(app, "whisper")?;
+    crate::components::require_tool(app, "ffmpeg")?;
+    emit_whisper_progress(app, job_id, 0.0);
 
     let tmp = std::env::temp_dir();
     let wav_path = tmp.join(format!("jv-whisper-{job_id}.wav"));
     let out_base = tmp.join(format!("jv-whisper-{job_id}-out"));
     let out_base_str = out_base.to_string_lossy().to_string();
     let tmp_srt = format!("{out_base_str}.srt");
-    let final_srt = transcript_path(&input);
+    let final_srt = transcript_path(input);
 
     // (1) whisper-cli 16-bit WAV ister: mp4 doğrudan verilmez.
     let wav_args = vec![
@@ -265,7 +295,7 @@ pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String
         "-err_detect".to_string(),
         "ignore_err".to_string(),
         "-i".to_string(),
-        input.clone(),
+        input.to_string(),
         "-ar".to_string(),
         "16000".to_string(),
         "-ac".to_string(),
@@ -274,11 +304,11 @@ pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String
         "pcm_s16le".to_string(),
         wav_path.to_string_lossy().to_string(),
     ];
-    if let Err(e) = run_ffmpeg_simple(&app, wav_args).await {
+    if let Err(e) = run_ffmpeg_simple(app, wav_args).await {
         let _ = std::fs::remove_file(&wav_path);
         return Err(format!("Ses hazırlanırken hata: {e}"));
     }
-    emit_whisper_progress(&app, &job_id, 10.0);
+    emit_whisper_progress(app, job_id, 10.0);
 
     // (2) whisper.cpp CLI: `-of` uzantısız taban ad ister, çıktı <outbase>.srt olur.
     let wargs = vec![
@@ -336,11 +366,39 @@ pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String
     // Farklı sürücüde rename düşebilir — kopyala + sil.
     std::fs::copy(&tmp_srt, &final_srt).map_err(|e| format!("Altyazı dosyası yazılamadı: {e}"))?;
     let _ = std::fs::remove_file(&tmp_srt);
+    emit_whisper_progress(app, job_id, 100.0);
+    Ok(TranscriptOut {
+        srt_path: final_srt,
+        language: language.to_string(),
+    })
+}
+
+/// SRT'nin ilk 40 satırı (arayüz önizlemesi). `transcribe` komutu kullanır.
+pub(crate) fn srt_preview(srt_path: &str) -> Result<String, String> {
     let content =
-        std::fs::read_to_string(&final_srt).map_err(|e| format!("Altyazı okunamadı: {e}"))?;
-    let preview: String = content.lines().take(40).collect::<Vec<_>>().join("\n");
-    emit_whisper_progress(&app, &job_id, 100.0);
-    Ok(serde_json::json!({"srt_path": final_srt, "preview": preview, "language": language}).to_string())
+        std::fs::read_to_string(srt_path).map_err(|e| format!("Altyazı okunamadı: {e}"))?;
+    Ok(content.lines().take(40).collect::<Vec<_>>().join("\n"))
+}
+
+#[tauri::command]
+pub async fn transcribe(app: AppHandle, payload: Value) -> Result<String, String> {
+    let input = get_str(&payload, "input_path")?;
+    let job_id = get_str(&payload, "job_id")?;
+    let model = get_str(&payload, "model")?;
+    let language = get_str(&payload, "language")?;
+    // Tekli kuyruk (A13): CPU donmasın. Kilit YALNIZCA komut katmanında alınır;
+    // `run_transcribe` yeniden almaz (yeniden-girilemez mutex → kilitlenme).
+    let _guard = crate::download::QUEUE.lock().await;
+    let out = run_transcribe(&app, &input, &model, &language, &job_id).await?;
+    // Dönüş şekli AYNEN korunur: {"srt_path","preview","language"} (frontend
+    // `lib/whisper.ts::isTranscriptData` bunu bekler).
+    let preview = srt_preview(&out.srt_path)?;
+    Ok(serde_json::json!({
+        "srt_path": out.srt_path,
+        "preview": preview,
+        "language": out.language,
+    })
+    .to_string())
 }
 
 #[tauri::command]
@@ -429,20 +487,22 @@ pub async fn embed_subtitle(app: AppHandle, payload: Value) -> Result<String, St
     Err("ffmpeg ended without an exit status".to_string())
 }
 
-#[tauri::command]
-pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, String> {
-    let video = get_str(&payload, "video_path")?;
-    let output = get_str(&payload, "output_srt")?;
-    let job_id = get_str(&payload, "job_id")?;
-    let stream_index = payload
-        .get("stream_index")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+/// Gömülü altyazı akışını SRT'ye çıkar (çekirdek).
+///
+/// `extract_subtitle` komutu ile `analyze::acquire_transcript` bu çekirdeği paylaşır.
+/// Kuyruk kilidi BURADA ALINMAZ (yeniden-girilemez mutex); komut katmanı alır.
+pub(crate) async fn run_extract_subtitle(
+    app: &AppHandle,
+    video: &str,
+    output: &str,
+    stream_index: u64,
+    job_id: &str,
+) -> Result<(), String> {
     let map = format!("0:s:{stream_index}");
 
     // ffmpeg işe başlamadan kayıttan çözülür (indirilenler → gömülü): eksikse ham OS
     // hatası yerine BILESEN_EKSIK:ffmpeg sinyali döner; arayüz kurulum akışını açar.
-    let ffmpeg = crate::components::require_tool(&app, "ffmpeg")?;
+    let ffmpeg = crate::components::require_tool(app, "ffmpeg")?;
 
     // -y first: never block on an overwrite prompt.
     let args: Vec<String> = [
@@ -450,10 +510,10 @@ pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, 
         "-err_detect",
         "ignore_err",
         "-i",
-        video.as_str(),
+        video,
         "-map",
         map.as_str(),
-        output.as_str(),
+        output,
         "-progress",
         "pipe:1",
         "-nostats",
@@ -462,9 +522,8 @@ pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, 
     .map(|s| s.to_string())
     .collect();
 
-    let _guard = crate::download::QUEUE.lock().await;
-    let total_ms = crate::convert::probe_duration_ms(&app, &video).await;
-    emit_whisper_progress(&app, &job_id, 0.0);
+    let total_ms = crate::convert::probe_duration_ms(app, video).await;
+    emit_whisper_progress(app, job_id, 0.0);
 
     let (mut rx, _child) = app
         .shell()
@@ -482,7 +541,7 @@ pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, 
                     if let Some(ms_str) = part.strip_prefix("out_time_ms=") {
                         if let (Some(total), Ok(ms)) = (total_ms, ms_str.trim().parse::<u64>()) {
                             let pct = (ms as f64 / total as f64 * 100.0).clamp(0.0, 100.0);
-                            emit_whisper_progress(&app, &job_id, pct);
+                            emit_whisper_progress(app, job_id, pct);
                         }
                     }
                 }
@@ -493,8 +552,8 @@ pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, 
             CommandEvent::Error(e) => crate::convert::push_capped(&mut last_err, &e),
             CommandEvent::Terminated(payload) => {
                 if payload.code == Some(0) {
-                    emit_whisper_progress(&app, &job_id, 100.0);
-                    return Ok("done".to_string());
+                    emit_whisper_progress(app, job_id, 100.0);
+                    return Ok(());
                 }
                 if last_err.contains("matches no streams")
                     || last_err.contains("Stream map")
@@ -517,4 +576,18 @@ pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, 
         }
     }
     Err("ffmpeg ended without an exit status".to_string())
+}
+
+#[tauri::command]
+pub async fn extract_subtitle(app: AppHandle, payload: Value) -> Result<String, String> {
+    let video = get_str(&payload, "video_path")?;
+    let output = get_str(&payload, "output_srt")?;
+    let job_id = get_str(&payload, "job_id")?;
+    let stream_index = payload
+        .get("stream_index")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let _guard = crate::download::QUEUE.lock().await;
+    run_extract_subtitle(&app, &video, &output, stream_index, &job_id).await?;
+    Ok("done".to_string())
 }

@@ -272,6 +272,99 @@ async fn run_sidecar(
     Err("yt-dlp ended without an exit status".to_string())
 }
 
+/// yt-dlp ile videonun HAZIR altyazısını (varsa) çek: video indirmeden, tr/en
+/// dillerinde, SRT'ye çevirerek. Bulunan tek SRT'nin yolunu döner; altyazı yoksa
+/// `Ok(None)`.
+///
+/// Neden analiz anında? Spec (§4.2) yalnız analiz istendiğinde çeker, indirme
+/// sırasında değil. Best-effort: çağıran (`analyze::acquire_transcript`) hatayı yutar
+/// ve sıradaki katmana düşer.
+#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
+pub(crate) async fn fetch_captions(
+    app: &AppHandle,
+    url: &str,
+    langs: &str,
+    job_id: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    // Girdi doğrulaması: URL bir konum argümanıdır, `-` ile başlayamaz (injection).
+    validate_media_url(url)?;
+    let yt_dlp = crate::components::require_tool(app, "yt-dlp")?;
+    let dir = std::env::temp_dir().join(format!("jv-analyze-{job_id}-subs"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // `--convert-subs srt` ffmpeg ister; yt-dlp düz adlı `ffmpeg.exe` arar.
+    let tools = ensure_ffmpeg_tools(app, &dir)?;
+    let args: Vec<String> = vec![
+        "--skip-download".to_string(),
+        "--write-subs".to_string(),
+        "--write-auto-subs".to_string(),
+        "--sub-langs".to_string(),
+        langs.to_string(),
+        "--convert-subs".to_string(),
+        "srt".to_string(),
+        "--no-playlist".to_string(),
+        "--ffmpeg-location".to_string(),
+        tools.to_string_lossy().replace('\\', "/"),
+        "-P".to_string(),
+        dir.to_string_lossy().replace('\\', "/"),
+        "-o".to_string(),
+        "%(title).100s [%(id)s].%(ext)s".to_string(),
+        "--".to_string(),
+        url.to_string(),
+    ];
+    let (mut rx, _child) = app
+        .shell()
+        .command(yt_dlp.to_string_lossy().to_string())
+        .args(args)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let mut last_err = String::new();
+    let mut exit_ok = false;
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stderr(line) => {
+                push_capped(&mut last_err, &String::from_utf8_lossy(&line));
+            }
+            CommandEvent::Error(e) => push_capped(&mut last_err, &e),
+            CommandEvent::Terminated(p) => {
+                exit_ok = p.code == Some(0);
+                break;
+            }
+            _ => {}
+        }
+    }
+    // Çıkış kodu 0 olsa da altyazı olmayabilir: sonuç dosyasına bak.
+    if let Some(found) = find_srt(&dir) {
+        let dest = std::env::temp_dir().join(format!("jv-analyze-{job_id}-caps.srt"));
+        std::fs::copy(&found, &dest).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_dir_all(&dir);
+        return Ok(Some(dest));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    if exit_ok {
+        Ok(None)
+    } else if last_err.trim().is_empty() {
+        Err("yt-dlp altyazı indirmesi başarısız".to_string())
+    } else {
+        Err(last_err)
+    }
+}
+
+/// Dizindeki ilk `.srt` dosyası (yt-dlp çıktısı lang ekli olabilir: `..tr.srt`).
+#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
+fn find_srt(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            p.is_file()
+                && p.extension()
+                    .map(|e| e.eq_ignore_ascii_case("srt"))
+                    .unwrap_or(false)
+        })
+}
+
 #[derive(Clone, serde::Serialize)]
 pub struct FormatOption {
     pub id: String,
