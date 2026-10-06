@@ -62,6 +62,10 @@ pub enum Dest {
     Models,
     /// AI motoru (llama-server + CUDA DLL'leri).
     Binaries,
+    /// Whisper'ın CUDA (GPU) motoru — ayrı alt klasör (`components/whisper-cuda`).
+    /// CPU motoruyla AYNI dosya adlarını (`whisper.exe`, `ggml.dll`, …) taşıdığı
+    /// için aynı dizine çıkarılamaz; ikisi birbirini ezerdi.
+    ComponentsCuda,
 }
 
 /// Bileşenin türü. "Çalıştırılamıyor" hükmü YALNIZCA buradan türer.
@@ -303,6 +307,40 @@ const WHISPER_ENGINE_WANTED: &[&str] = &[
     "ggml-cpu.dll",
 ];
 const WHISPER_ENGINE_APPROX_MB: u32 = 4;
+
+// Whisper'ın CUDA (GPU) motoru — opsiyonel. CPU motoruyla aynı dosya adlarını
+// taşır; bu yüzden AYRI klasöre (`components/whisper-cuda`) kurulur. Kendi CUDA
+// çalışma zamanını (cublas/cudart/nvrtc) içinde getirir; llama-cudart ile
+// paylaşılmaz (ABI sürümü motora özeldir). GPU'da `-fa` (flash attention) ile
+// transkript CPU'ya göre ~10x hızlıdır (ölçüldü).
+const WHISPER_CUDA_BUNDLE: &str = "whisper-cuda";
+const WHISPER_CUDA_URL: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/v1.7.6/whisper-cublas-12.4.0-bin-x64.zip";
+const WHISPER_CUDA_SHA256: &str =
+    "3fc4d3ebd9a678313de50c04d9e59c43117ae190f0cb7bff602d4aeefc4efe3d";
+/// Arşiv `Release/whisper-cli.exe` getirir; çalışma-anı adı `whisper.exe` olmalıdır.
+const WHISPER_CUDA_ARCHIVE_EXE: &str = "whisper-cli.exe";
+const WHISPER_CUDA_FILE: &str = "whisper.exe";
+const WHISPER_CUDA_ARCHIVE_BYTES: u64 = 443_253_884;
+/// Tepe disk: `.part` arşiv (423 MB) + açılan içerik (~600 MB) bir an birlikte.
+const WHISPER_CUDA_PEAK_BYTES: u64 = 1_600 * MIB;
+/// Tek arşiv girdisi üst sınırı: en büyük girdi `cublasLt64_12.dll` (~452 MB).
+const WHISPER_CUDA_ENTRY_CAP_BYTES: u64 = 600 * MIB;
+const WHISPER_CUDA_DIR_NAME: &str = "whisper-cuda";
+const WHISPER_CUDA_WANTED: &[&str] = &[
+    WHISPER_CUDA_ARCHIVE_EXE,
+    "whisper.dll",
+    "ggml.dll",
+    "ggml-base.dll",
+    "ggml-cpu.dll",
+    "ggml-cuda.dll",
+    "cublas64_12.dll",
+    "cublasLt64_12.dll",
+    "cudart64_12.dll",
+    "nvrtc64_120_0.dll",
+    "nvrtc-builtins64_124.dll",
+    "nvblas64_12.dll",
+];
+const WHISPER_CUDA_APPROX_MB: u32 = 423;
 
 // whisper modelleri: VERİ dosyasıdır (`Asset`), hedef `jointvault-models`. Düz
 // dosyada tepe disk = indirilenin kendisidir: `.part` doğrulamadan sonra aynı
@@ -557,6 +595,31 @@ const SPECS: &[Spec] = &[
         }),
     },
     Spec {
+        id: "whisper-cuda",
+        label: "Whisper motoru (CUDA / GPU)",
+        approx_mb: WHISPER_CUDA_APPROX_MB,
+        dest: Dest::ComponentsCuda,
+        kind: Kind::Binary,
+        downloaded_file: WHISPER_CUDA_FILE,
+        sidecar: Some("whisper-cuda"),
+        version_arg: "--help",
+        download: Some(DownloadSpec {
+            bundle: WHISPER_CUDA_BUNDLE,
+            url: WHISPER_CUDA_URL,
+            sha256: WHISPER_CUDA_SHA256,
+            expected_bytes: WHISPER_CUDA_ARCHIVE_BYTES,
+            disk_required_bytes: WHISPER_CUDA_PEAK_BYTES,
+            payload: PayloadRule::Zip {
+                wanted: WHISPER_CUDA_WANTED,
+                max_entry_bytes: WHISPER_CUDA_ENTRY_CAP_BYTES,
+            },
+        }),
+        post_install: Some(PostInstall::Rename {
+            from: WHISPER_CUDA_ARCHIVE_EXE,
+            to: WHISPER_CUDA_FILE,
+        }),
+    },
+    Spec {
         id: "whisper-model-tiny",
         label: "Whisper modeli (tiny)",
         approx_mb: WHISPER_MODEL_TINY_MB,
@@ -776,6 +839,7 @@ pub fn components_dir(app: &AppHandle) -> Result<PathBuf, String> {
 pub fn dest_dir(app: &AppHandle, dest: Dest) -> Result<PathBuf, String> {
     match dest {
         Dest::Components => components_dir(app),
+        Dest::ComponentsCuda => Ok(components_dir(app)?.join(WHISPER_CUDA_DIR_NAME)),
         Dest::Models => app_data_subdir(app, MODELS_DIR_NAME, "Model klasörü açılamadı"),
         Dest::Binaries => app_data_subdir(app, BINARIES_DIR_NAME, "Binary klasörü açılamadı"),
     }
@@ -1023,6 +1087,7 @@ pub fn missing_message(id: &str) -> String {
         // 7c-3: whisper artık Bileşenler'den kurulabilir; mesaj tek yöneticiyi
         // gösterir (Ayarlar → Konuşma bölümü de çalışmaya devam eder).
         "whisper" => "Whisper motoru kurulu değil. Altyazı işlemleri bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "whisper-cuda" => "Whisper CUDA (GPU) motoru kurulu değil. Transkripti CPU'ya göre ~10 kat hızlandırır (NVIDIA GPU gerekir); Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "whisper-model-tiny" => "Whisper 'tiny' modeli kurulu değil. Hızlı taslak transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "whisper-model-base" => "Whisper 'base' modeli kurulu değil. Dengeli hız/doğruluk için kullanılan transkript modelidir; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "whisper-model-small" => "Whisper 'small' modeli kurulu değil. Daha yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
@@ -1204,6 +1269,7 @@ mod tests {
         "ffprobe",
         "yt-dlp",
         "whisper",
+        "whisper-cuda",
         "whisper-model-tiny",
         "whisper-model-base",
         "whisper-model-small",
@@ -1226,6 +1292,7 @@ mod tests {
         "whisper-model-small",
         "whisper-model-large-v3-q5_0",
         "whisper-model-large-v3",
+        "whisper-cuda",
         "llama-engine",
         "llama-cudart",
         "ai-model-llm",
@@ -1470,12 +1537,25 @@ mod tests {
             Some(PostInstall::Rename { to, .. }) => assert_eq!(to, whisper.downloaded_file),
             None => panic!("whisper kancası olmalı"),
         }
-        // Kanca yalnızca whisper motorundadır; diğer TÜM bileşenlerde yoktur.
+        // Kanca yalnızca whisper motorlarında (CPU + CUDA) vardır; diğerlerinde yoktur.
         for spec in SPECS {
-            if spec.id == "whisper" {
+            if spec.id == "whisper" || spec.id == "whisper-cuda" {
                 continue;
             }
             assert_eq!(spec.post_install, None, "{}: beklenmeyen kanca", spec.id);
+        }
+        // CUDA motoru da aynı kancayı taşır (arşiv `Release/whisper-cli.exe`).
+        let cuda = spec_for("whisper-cuda").expect("whisper-cuda kayıtlı olmalı");
+        assert_eq!(
+            cuda.post_install,
+            Some(PostInstall::Rename {
+                from: "whisper-cli.exe",
+                to: "whisper.exe",
+            })
+        );
+        match cuda.post_install {
+            Some(PostInstall::Rename { to, .. }) => assert_eq!(to, cuda.downloaded_file),
+            None => panic!("whisper-cuda kancası olmalı"),
         }
     }
 
@@ -1556,6 +1636,7 @@ mod tests {
             ("whisper-model-small", Dest::Models, Kind::Asset),
             ("whisper-model-large-v3-q5_0", Dest::Models, Kind::Asset),
             ("whisper-model-large-v3", Dest::Models, Kind::Asset),
+            ("whisper-cuda", Dest::ComponentsCuda, Kind::Binary),
             ("llama-engine", Dest::Binaries, Kind::Binary),
             // cudart bir DLL kümesidir: çalıştırılamaz → Asset (bkz. spec yorumu).
             ("llama-cudart", Dest::Binaries, Kind::Asset),

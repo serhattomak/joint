@@ -229,6 +229,10 @@ const MISSING_COMPONENT_FALLBACKS = new Map<string, string>([
     'Whisper motoru kurulu değil. Altyazı işlemleri bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
   ],
   [
+    'whisper-cuda',
+    'Whisper CUDA (GPU) motoru kurulu değil. Transkripti CPU’ya göre ~10 kat hızlandırır (NVIDIA GPU gerekir); Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
     'whisper-model-tiny',
     "Whisper 'tiny' modeli kurulu değil. Hızlı taslak transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.",
   ],

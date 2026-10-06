@@ -483,16 +483,22 @@ pub async fn analyze_media(app: AppHandle, payload: Value) -> Result<String, Str
         .filter(|s| !s.is_empty())
         .unwrap_or("auto");
 
+    // Aşama zamanlaması (tanı): sürenin nereye gittiğini ölçmek için.
+    let t_start = std::time::Instant::now();
+
     // 1) FAIL-CLOSED: pahalı işten önce AI hazır mı? (sunucu yoksa/ kapalıysa Err)
     crate::ai::ensure_chat_ready(&app).await?;
+    let ms_ready = t_start.elapsed().as_millis();
 
     // 2) Tek ağır iş: kuyruk kilidi burada ve YALNIZCA burada alınır.
     let _guard = crate::download::QUEUE.lock().await;
 
     // 3) Transkript edin (en ucuz kaynaktan başlayan katmanlı üretim).
     emit_analyze_progress(&app, &job_id, "transcript", 0.0);
+    let t_transcript = std::time::Instant::now();
     let (t, source) =
         acquire_transcript(&app, &input_path, url.as_deref(), language, &job_id).await?;
+    let ms_transcript = t_transcript.elapsed().as_millis();
     emit_analyze_progress(&app, &job_id, "transcript", 100.0);
 
     // 4) SRT → düz metin → parçalar.
@@ -506,6 +512,7 @@ pub async fn analyze_media(app: AppHandle, payload: Value) -> Result<String, Str
     // 5) Map: her parça için bir çıkarım çağrısı. `Ok("")`, `Err` veya boş analiz
     //    → parçayı atla (tek bozuk parça tüm işi düşürmez).
     let total = chunks.len();
+    let t_extract = std::time::Instant::now();
     let mut parts: Vec<AnalysisOut> = Vec::new();
     // Son hata, tanı için saklanır: genel "içerik döndürmedi" mesajı yerine
     // gerçek sebep (boş yanıt / ayrıştırma hatası) yüzeye çıkar.
@@ -523,6 +530,7 @@ pub async fn analyze_media(app: AppHandle, payload: Value) -> Result<String, Str
             Err(e) => last_err = Some(e),
         }
     }
+    let ms_extract = t_extract.elapsed().as_millis();
     emit_analyze_progress(&app, &job_id, "extract", 100.0);
 
     // 6) Reduce. Hiç geçerli parça yoksa veya birleşim boşsa → Err (sessiz boş YOK).
@@ -543,11 +551,23 @@ pub async fn analyze_media(app: AppHandle, payload: Value) -> Result<String, Str
         .unwrap_or("bilinmiyor");
     let whisper_model = whisper::pick_whisper_model(&app).unwrap_or("yok");
 
+    let ms_total = t_start.elapsed().as_millis();
+    eprintln!(
+        "[analyze] chat_ready={ms_ready}ms transcript={ms_transcript}ms extract={ms_extract}ms total={ms_total}ms src={} chunks={total}",
+        transcript_source_str(source)
+    );
+
     Ok(serde_json::json!({
         "analysis": merged,
         "transcript_source": transcript_source_str(source),
         "transcript_path": t.srt_path,
         "model_versions": { "llm": llm, "whisper": whisper_model },
+        "timings_ms": {
+            "chat_ready": ms_ready,
+            "transcript": ms_transcript,
+            "extract": ms_extract,
+            "total": ms_total,
+        },
     })
     .to_string())
 }

@@ -36,6 +36,13 @@ export interface AnalyzeResponse {
   transcript_source: string;
   transcript_path: string;
   model_versions: Record<string, string>;
+  /** Aşama zamanlaması (ms) — tanı için; Rust `analyze_media` üretir. */
+  timings_ms?: {
+    chat_ready: number;
+    transcript: number;
+    extract: number;
+    total: number;
+  };
 }
 
 export interface AnalyzeResult {
@@ -183,6 +190,10 @@ export async function analyzeItem(
       },
     });
     const resp = JSON.parse(raw) as AnalyzeResponse;
+    if (resp.timings_ms) {
+      // Aşama süreleri (tanı): devtools konsolunda görünür.
+      console.debug('[analyze] timings_ms', resp.timings_ms);
+    }
     const m = mapAnalysisResponse(resp);
 
     const [allCats, allTags] = await Promise.all([listCategories(), listTags()]);
