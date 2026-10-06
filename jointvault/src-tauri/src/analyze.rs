@@ -160,15 +160,55 @@ pub(crate) async fn acquire_transcript(
 // Tümü SAF (yan etkisiz) fonksiyonlardır: ağ/uygulama durumuna dokunmazlar, bu
 // yüzden tek başına test edilebilirler. HTTP çağrısı `ai::chat_completion`'da.
 
+/// Modelin dizi beklediğimiz alanları bazen TEK bir string olarak döndürmesi
+/// gerçek bir durumdur (Qwen2.5-14B: `"ingredients": "un, şeker"`). `#[serde(default)]`
+/// yalnızca EKSİK alanı kurtarır, yanlış TİPİ kurtarmaz; bu yüzden dizi ve string
+/// ikisini de kabul eden bir çözücü kullanırız.
+fn string_or_vec<'de, D>(de: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        Many(Vec<String>),
+        One(String),
+    }
+    Ok(match OneOrMany::deserialize(de)? {
+        OneOrMany::Many(xs) => xs
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        OneOrMany::One(s) => split_loose(&s),
+    })
+}
+
+/// `string_or_vec` için gevşek bölme: satır, noktalı virgül ve virgül.
+/// `ponytail:` nokta ile cümle bölme YOK; adımlar tek öğede kalabilir, gerekirse
+/// buraya nokta+boşluk kuralı eklenir.
+fn split_loose(s: &str) -> Vec<String> {
+    s.split(|c| matches!(c, '\n' | '\r' | ';' | ','))
+        .map(|seg| {
+            seg.trim()
+                .trim_matches(|c| c == '-' || c == '•' || c == '*')
+                .trim()
+                .to_string()
+        })
+        .filter(|seg| !seg.is_empty())
+        .collect()
+}
+
 /// Modelin döndürdüğü tarif gövdesi. Alanlar `#[serde(default)]` ile eksik
 /// gelebilir (model bazı alanları atlarsa ayrıştırma patlamaz).
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub(crate) struct RecipeText {
     #[serde(default)]
     pub(crate) title: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_vec")]
     pub(crate) ingredients: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_vec")]
     pub(crate) steps: Vec<String>,
     #[serde(default)]
     pub(crate) notes: String,
@@ -188,9 +228,9 @@ pub(crate) struct AnalysisOut {
     pub(crate) title: Option<String>,
     #[serde(default)]
     pub(crate) summary: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_vec")]
     pub(crate) topics: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_vec")]
     pub(crate) keywords: Vec<String>,
     #[serde(default)]
     pub(crate) recipe: Option<RecipeText>,
@@ -217,7 +257,7 @@ pub(crate) fn build_extraction_prompt(title: &str, platform: &str, transcript: &
          KURALLAR:\n\
          - Tüm metin alanları Türkçe olmalı.\n\
          - İçerik tarif değilse \"recipe\": null bırak ve contains_recipe=false yap.\n\
-         - ingredients ve steps düz metin olmalı (madde işareti/numara koyma).\n\
+         - ingredients ve steps bir JSON DİZİSİ olmalı; her öğe tek bir dizge. Köşeli parantez kullan, tek bir uzun string YAZMA.\n\
          - Yalnızca JSON döndür.\n\n\
          Video başlığı: {title}\n\
          Platform: {platform}\n\n\
@@ -467,25 +507,30 @@ pub async fn analyze_media(app: AppHandle, payload: Value) -> Result<String, Str
     //    → parçayı atla (tek bozuk parça tüm işi düşürmez).
     let total = chunks.len();
     let mut parts: Vec<AnalysisOut> = Vec::new();
+    // Son hata, tanı için saklanır: genel "içerik döndürmedi" mesajı yerine
+    // gerçek sebep (boş yanıt / ayrıştırma hatası) yüzeye çıkar.
+    let mut last_err: Option<String> = None;
     for (i, chunk) in chunks.iter().enumerate() {
         emit_analyze_progress(&app, &job_id, "extract", (i as f64 / total as f64) * 100.0);
         let prompt = build_extraction_prompt(title, platform, chunk);
         match crate::ai::chat_completion(&app, EXTRACT_SYSTEM, &prompt, 0.2, 2048).await {
-            Ok(raw) if !raw.trim().is_empty() => {
-                if let Ok(a) = parse_analysis(&raw) {
-                    if !is_analysis_empty(&a) {
-                        parts.push(a);
-                    }
-                }
-            }
-            _ => {}
+            Ok(raw) if !raw.trim().is_empty() => match parse_analysis(&raw) {
+                Ok(a) if !is_analysis_empty(&a) => parts.push(a),
+                Ok(_) => last_err = Some("model boş bir analiz döndürdü".to_string()),
+                Err(e) => last_err = Some(e),
+            },
+            Ok(_) => last_err = Some("model boş yanıt döndürdü".to_string()),
+            Err(e) => last_err = Some(e),
         }
     }
     emit_analyze_progress(&app, &job_id, "extract", 100.0);
 
     // 6) Reduce. Hiç geçerli parça yoksa veya birleşim boşsa → Err (sessiz boş YOK).
     if parts.is_empty() {
-        return Err("Analiz üretilemedi: model geçerli içerik döndürmedi.".to_string());
+        return Err(match last_err {
+            Some(e) => format!("Analiz üretilemedi: {e}"),
+            None => "Analiz üretilemedi: model geçerli içerik döndürmedi.".to_string(),
+        });
     }
     let merged = merge_analysis(parts);
     if is_analysis_empty(&merged) {
@@ -589,5 +634,19 @@ mod tests {
         assert_eq!(transcript_source_str(Embedded), "embedded");
         assert_eq!(transcript_source_str(Captions), "captions");
         assert_eq!(transcript_source_str(Whisper), "whisper");
+    }
+
+    #[test]
+    fn parses_string_typed_recipe_lists() {
+        // Gerçek Qwen2.5-14B çıktısı: ingredients/steps dizi yerine TEK string.
+        let raw = r#"{"contains_recipe":true,"confidence":1.0,"language":"tr","title":"Islak Kek","summary":"Video ıslak kek yapımını anlatır.","topics":["Kek Tarifi","Tatlı"],"keywords":["ıslak kek","fırın"],"recipe":{"title":"Islak Kek","ingredients":"Üç yumurta, bir su bardağı şeker, bir su bardağı süt","steps":"Yumurtaları çırp, sütü ekle, fırında pişir","notes":"Dinlendir."}}"#;
+        let a = parse_analysis(raw).unwrap();
+        assert!(!is_analysis_empty(&a));
+        let r = a.recipe.expect("tarif gelmeli");
+        assert!(r.ingredients.len() >= 3, "ingredients bölünmeli: {:?}", r.ingredients);
+        assert!(r.steps.len() >= 3, "steps bölünmeli: {:?}", r.steps);
+        // Dizi hali de çalışmaya devam eder (regresyon).
+        let arr = r#"{"topics":["A","B"],"keywords":["x"],"recipe":{"ingredients":["un"],"steps":["kar"]}}"#;
+        assert_eq!(parse_analysis(arr).unwrap().topics, vec!["A", "B"]);
     }
 }
