@@ -70,13 +70,11 @@ fn model_path(app: &AppHandle, model: &str) -> Result<std::path::PathBuf, String
 /// Whisper modelleri öncelik sırası: en doğru/kaliteli önce. `analyze.rs` bu sıraya
 /// göre kurulu ilk modeli seçer; arayüz (`lib/analysis.ts::pickWhisperModel`) aynı
 /// sırayı yansıtır. Yeni model eklenirse burası tek yerdir.
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) const WHISPER_MODEL_PRIORITY: &[&str] =
     &["large-v3-q5_0", "large-v3", "small", "base", "tiny"];
 
 /// Kurulu en iyi whisper modelini seç (yoksa None). Kayıt sorgusu `components`'ten
 /// gelir (`is_installed`); dosya yolunu burada yeniden hesaplamayız (tek kaynak).
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) fn pick_whisper_model(app: &AppHandle) -> Option<&'static str> {
     WHISPER_MODEL_PRIORITY
         .iter()

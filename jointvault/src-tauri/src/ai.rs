@@ -709,6 +709,19 @@ async fn ensure_server_running(
     Ok(port)
 }
 
+/// Fail-closed kapısı: pahalı iş (whisper/çıkarım) BAŞLAMADAN önce çağrılır.
+///
+/// `ensure_server_running("chat")` zaten AI kapalıysa `AI_DISABLED_MESSAGE`,
+/// motor/model eksikse ilgili Türkçe hatayı döner. Böylece "AI yok" durumu,
+/// dakikalarca sürebilecek transkript/whisper adımından ÖNCE yakalanır. Aynı
+/// çağrı sohbet sunucusunu da ısıtır; ilk `chat_completion` model yüklemesi
+/// yüzünden beklenmedik şekilde gecikmez.
+///
+/// Kuyruk kilidi (`download::QUEUE`) BURADA ALINMAZ (çağıran komut katmanı alır).
+pub(crate) async fn ensure_chat_ready(app: &AppHandle) -> Result<(), String> {
+    ensure_server_running(app, "chat").await.map(|_| ())
+}
+
 // Uygulama kapanırken süreçleri temizle
 pub fn cleanup_ai_servers() {
     let mut lock = MANAGER.lock().unwrap();
@@ -1119,7 +1132,6 @@ pub async fn ai_suggest_tags(app: AppHandle, payload: Value) -> Result<Vec<Strin
 //
 // Kuyruk kilidi (`download::QUEUE`) BURADA ALINMAZ: yeniden-girilemez mutex
 // çağıran komut katmanına aittir (aynı gerekçe `analyze::acquire_transcript`).
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) async fn chat_completion(
     app: &AppHandle,
     system: &str,

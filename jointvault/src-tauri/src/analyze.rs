@@ -9,11 +9,11 @@
 
 use crate::whisper::{self, TranscriptOut};
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use serde_json::Value;
+use tauri::{AppHandle, Emitter};
 
 /// Transkriptin elde edildiği katman. Sıralama ucuzdan pahalıya doğrudur ve
 /// `choose_transcript_source` bunu sabitler.
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TranscriptSource {
     /// Kaynağın yanında hazır `<stem>-transkript.srt` (bedava).
@@ -27,7 +27,6 @@ pub(crate) enum TranscriptSource {
 }
 
 /// Saf karar: mevcut kaynaklardan en ucuzunu seç. Hiçbiri yoksa `None` (fail-closed).
-#[allow(dead_code)] // T5 bağlayana kadar; sıralama testle kilitli
 pub(crate) fn choose_transcript_source(
     has_existing_srt: bool,
     has_embedded: bool,
@@ -49,7 +48,6 @@ pub(crate) fn choose_transcript_source(
 
 /// Arayüzden "auto"/"tr"/"en" dışında bir değer gelirse whisper'a "auto" ver.
 /// Whisper adımı geçersiz dilde hata verirdi; burada tek yerde normalize edilir.
-#[allow(dead_code)] // T5 bağlayana kadar
 fn normalize_language(language: &str) -> &str {
     match language {
         "tr" | "en" => language,
@@ -60,7 +58,6 @@ fn normalize_language(language: &str) -> &str {
 /// Katmanlı transkript edinme. Seçilen katmandan başlar; o katman üretemezse
 /// (best-effort) sıradaki uygun katmana düşer. Hiçbir kaynak yoksa ya da tüm
 /// uygun katmanlar başarısız olursa `Err`.
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) async fn acquire_transcript(
     app: &AppHandle,
     input_path: &str,
@@ -165,7 +162,6 @@ pub(crate) async fn acquire_transcript(
 
 /// Modelin döndürdüğü tarif gövdesi. Alanlar `#[serde(default)]` ile eksik
 /// gelebilir (model bazı alanları atlarsa ayrıştırma patlamaz).
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub(crate) struct RecipeText {
     #[serde(default)]
@@ -180,7 +176,6 @@ pub(crate) struct RecipeText {
 
 /// Tek bir LLM çağrısının (ya da map-reduce birleşiminin) çıktısı. Eksik alanlar
 /// `#[serde(default)]` sayesinde varsayılana düşer; `recipe` null olabilir.
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub(crate) struct AnalysisOut {
     #[serde(default)]
@@ -203,7 +198,6 @@ pub(crate) struct AnalysisOut {
 
 /// Modele yalnızca JSON döndürmesini söyleyen Türkçe çıkarım prompt'u. Transkript
 /// parçası (map-reduce'ta her parça) doğrudan gömülür; üst katman dilimler.
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) fn build_extraction_prompt(title: &str, platform: &str, transcript: &str) -> String {
     format!(
         "Aşağıdaki video transkriptini analiz et ve içeriği Türkçe olarak çıkar.\n\n\
@@ -233,7 +227,6 @@ pub(crate) fn build_extraction_prompt(title: &str, platform: &str, transcript: &
 
 /// LLM yanıtından JSON'u ayıkla: ilk `{` ile son `}` arasını al, serde ile çöz.
 /// Bozuk/eksik/JSON'suz metin `Err` döner (asla panik yok).
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) fn parse_analysis(raw: &str) -> Result<AnalysisOut, String> {
     let start = raw
         .find('{')
@@ -248,7 +241,6 @@ pub(crate) fn parse_analysis(raw: &str) -> Result<AnalysisOut, String> {
 }
 
 /// İçerik barındırmayan (boş) analiz mi? Boş parçalar birleştirmeye sokulmaz.
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) fn is_analysis_empty(a: &AnalysisOut) -> bool {
     a.summary.trim().is_empty()
         && a.topics.is_empty()
@@ -285,7 +277,6 @@ fn dedupe_cap(items: impl Iterator<Item = String>, cap: usize) -> Vec<String> {
 /// - `topics`/`keywords`: harf duyarsız tekilleştir, sıra koru, cap (6/12)
 /// - `recipe`: ilk `Some` korunur (`ponytail:` basitlik; en güvenli tarifi
 ///   seçmek gerekirse parçaların confidence'ına göre ayıklanır)
-#[allow(dead_code)] // T5 (`analyze_media`) bağlayana kadar
 pub(crate) fn merge_analysis(parts: Vec<AnalysisOut>) -> AnalysisOut {
     let mut out = AnalysisOut::default();
     for p in parts {
@@ -309,6 +300,211 @@ pub(crate) fn merge_analysis(parts: Vec<AnalysisOut>) -> AnalysisOut {
     out.topics = dedupe_cap(out.topics.into_iter(), 6);
     out.keywords = dedupe_cap(out.keywords.into_iter(), 12);
     out
+}
+
+// ---- Orkestrasyon (T5): `analyze_media` komutu ----
+//
+// Tek ağır iş noktasıdır: kuyruk kilidi (`download::QUEUE`) BURADA, en üstte ve
+// tam olarak BİR kez alınır; `acquire_transcript`/`chat_completion` içeriden
+// ALMAZ (yeniden-girilemez mutex → kilitlenme).
+
+/// Parça başına hedef kelime sayısı. ~1500, modele sığan ve tek çağrıda anlamlı
+/// özet çıkaran aralıktır; uzun transkriptler bu boyutta dilimlenir.
+const TRANSCRIPT_CHUNK_WORDS: usize = 1500;
+
+/// Çıkarım sistem istemi: modelin SADECE istenen JSON şemasında yanıt vermesini
+/// sağlar; şemayı `build_extraction_prompt` taşır.
+const EXTRACT_SYSTEM: &str =
+    "Sen video transkriptlerinden yapılandırılmış içerik çıkaran bir asistansın. \
+     Yalnızca istenen JSON şemasında yanıt verirsin; açıklama veya markdown eklemezsin.";
+
+/// `analyze-progress` olay gövdesi: `{ jobId, stage, percent }` (T6 sözleşmesi).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalyzeProgress {
+    job_id: String,
+    stage: &'static str,
+    percent: f64,
+}
+
+fn emit_analyze_progress(app: &AppHandle, job_id: &str, stage: &'static str, percent: f64) {
+    let _ = app.emit(
+        "analyze-progress",
+        AnalyzeProgress {
+            job_id: job_id.to_string(),
+            stage,
+            percent,
+        },
+    );
+}
+
+fn get_str(payload: &Value, key: &str) -> Result<String, String> {
+    payload
+        .get(key)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("Eksik zorunlu parametre: {key}"))
+}
+
+/// `TranscriptSource` → TS sözleşmesindeki kararlı string (T5/T6 arası).
+fn transcript_source_str(s: TranscriptSource) -> &'static str {
+    match s {
+        TranscriptSource::ExistingSrt => "existing_srt",
+        TranscriptSource::Embedded => "embedded",
+        TranscriptSource::Captions => "captions",
+        TranscriptSource::Whisper => "whisper",
+    }
+}
+
+/// SRT gövdesini düz transkript metnine indir (SAF).
+///
+/// Zaman damgası (`-->`) ve cue sıra numarası satırları atılır; kalan cue
+/// satırları `\n` ile KORUNUR (paragraf sınırı alt katmanda bölme tercihine
+/// yarar). Cue içi çok satır boşlukla birleşir.
+/// `ponytail:` salt-sayı satır cue İÇERİĞİ ise de atılır (nadir; LLM için zararsız);
+/// gerekirse "sonraki satır `-->` içeriyorsa at" kuralına sıkılaştırılır.
+fn srt_to_text(srt: &str) -> String {
+    let mut out = String::new();
+    for line in srt.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.contains("-->") || t.parse::<u32>().is_ok() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(t);
+    }
+    out
+}
+
+/// Transkripti ~`max_words` kelimelik parçalara böl (SAF, panik yok).
+///
+/// Paragraf (satır) sınırı önceliklidir; tek başına sınırı aşan dev paragraf
+/// kelime akışıyla kırpılır ki HİÇBİR parça `max_words`'ü aşmasın (model
+/// bağlamını taşırmamak için). `max_words == 0` veya boş metin → boş vektör.
+fn chunk_transcript(text: &str, max_words: usize) -> Vec<String> {
+    if max_words == 0 {
+        return Vec::new();
+    }
+    let mut chunks = Vec::new();
+    let mut cur = String::new();
+    let mut cur_words = 0usize;
+    for para in text.split('\n') {
+        let p = para.trim();
+        if p.is_empty() {
+            continue;
+        }
+        if cur_words > 0 && cur_words + p.split_whitespace().count() > max_words {
+            chunks.push(std::mem::take(&mut cur));
+            cur_words = 0;
+        }
+        for w in p.split_whitespace() {
+            if cur_words == max_words {
+                chunks.push(std::mem::take(&mut cur));
+                cur_words = 0;
+            }
+            if !cur.is_empty() {
+                cur.push(' ');
+            }
+            cur.push_str(w);
+            cur_words += 1;
+        }
+    }
+    if !cur.is_empty() {
+        chunks.push(cur);
+    }
+    chunks
+}
+
+/// Tek video için transkript edin → parçala → LLM ile çıkar → birleştir.
+///
+/// Fail-closed: AI kapalı veya sohbet modeli yoksa pahalı whisper adımından
+/// ÖNCE `Err` döner. Kilit: `QUEUE` yalnız burada, tam bir kez alınır.
+#[tauri::command]
+pub async fn analyze_media(app: AppHandle, payload: Value) -> Result<String, String> {
+    // Zorunlu alanlar (varlık doğrulaması; `item_id` yalnız köken bilgisidir).
+    get_str(&payload, "item_id")?;
+    let input_path = get_str(&payload, "input_path")?;
+    let job_id = get_str(&payload, "job_id")?;
+    let url = payload
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("");
+    let platform = payload
+        .get("platform")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let language = payload
+        .get("language")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("auto");
+
+    // 1) FAIL-CLOSED: pahalı işten önce AI hazır mı? (sunucu yoksa/ kapalıysa Err)
+    crate::ai::ensure_chat_ready(&app).await?;
+
+    // 2) Tek ağır iş: kuyruk kilidi burada ve YALNIZCA burada alınır.
+    let _guard = crate::download::QUEUE.lock().await;
+
+    // 3) Transkript edin (en ucuz kaynaktan başlayan katmanlı üretim).
+    emit_analyze_progress(&app, &job_id, "transcript", 0.0);
+    let (t, source) =
+        acquire_transcript(&app, &input_path, url.as_deref(), language, &job_id).await?;
+    emit_analyze_progress(&app, &job_id, "transcript", 100.0);
+
+    // 4) SRT → düz metin → parçalar.
+    let srt =
+        std::fs::read_to_string(&t.srt_path).map_err(|e| format!("Altyazı okunamadı: {e}"))?;
+    let chunks = chunk_transcript(&srt_to_text(&srt), TRANSCRIPT_CHUNK_WORDS);
+    if chunks.is_empty() {
+        return Err("Transkript boş; analiz edilecek içerik bulunamadı.".to_string());
+    }
+
+    // 5) Map: her parça için bir çıkarım çağrısı. `Ok("")`, `Err` veya boş analiz
+    //    → parçayı atla (tek bozuk parça tüm işi düşürmez).
+    let total = chunks.len();
+    let mut parts: Vec<AnalysisOut> = Vec::new();
+    for (i, chunk) in chunks.iter().enumerate() {
+        emit_analyze_progress(&app, &job_id, "extract", (i as f64 / total as f64) * 100.0);
+        let prompt = build_extraction_prompt(title, platform, chunk);
+        match crate::ai::chat_completion(&app, EXTRACT_SYSTEM, &prompt, 0.2, 2048).await {
+            Ok(raw) if !raw.trim().is_empty() => {
+                if let Ok(a) = parse_analysis(&raw) {
+                    if !is_analysis_empty(&a) {
+                        parts.push(a);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    emit_analyze_progress(&app, &job_id, "extract", 100.0);
+
+    // 6) Reduce. Hiç geçerli parça yoksa veya birleşim boşsa → Err (sessiz boş YOK).
+    if parts.is_empty() {
+        return Err("Analiz üretilemedi: model geçerli içerik döndürmedi.".to_string());
+    }
+    let merged = merge_analysis(parts);
+    if is_analysis_empty(&merged) {
+        return Err("Analiz boş döndü; geçerli içerik çıkarılamadı.".to_string());
+    }
+
+    // 7) model_versions: kayıttan (tek kaynak); sabit dosya adı kopyası YOK.
+    let llm = crate::components::spec_for("ai-model-llm")
+        .map(|s| s.downloaded_file)
+        .unwrap_or("bilinmiyor");
+    let whisper_model = whisper::pick_whisper_model(&app).unwrap_or("yok");
+
+    Ok(serde_json::json!({
+        "analysis": merged,
+        "transcript_source": transcript_source_str(source),
+        "transcript_path": t.srt_path,
+        "model_versions": { "llm": llm, "whisper": whisper_model },
+    })
+    .to_string())
 }
 
 #[cfg(test)]
@@ -359,5 +555,39 @@ mod tests {
     #[test]
     fn empty_detection() {
         assert!(is_analysis_empty(&AnalysisOut::default()));
+    }
+
+    #[test]
+    fn srt_to_text_strips_indices_and_timestamps() {
+        let srt = "1\n00:00:00,000 --> 00:00:02,000\nMerhaba dünya\n\n\
+                   2\n00:00:02,000 --> 00:00:04,000\nİkinci satır\n";
+        assert_eq!(srt_to_text(srt), "Merhaba dünya\nİkinci satır");
+        // Boş/çöp girdi panik değil, boş metin.
+        assert_eq!(srt_to_text("   \n\n"), "");
+    }
+
+    #[test]
+    fn chunk_transcript_respects_paragraphs_and_word_budget() {
+        // Paragraf sınırı öncelikli: sınırı aşacaksa yeni paragrafta kır.
+        assert_eq!(
+            chunk_transcript("a b c\nd e f\ng h i", 4),
+            vec!["a b c", "d e f", "g h i"]
+        );
+        // Dev paragraf kelime akışıyla kırpılır; hiçbir parça sınırı aşmaz.
+        let big = chunk_transcript("1 2 3 4 5 6 7", 3);
+        assert_eq!(big, vec!["1 2 3", "4 5 6", "7"]);
+        assert!(big.iter().all(|c| c.split_whitespace().count() <= 3));
+        // Boş girdi ve sıfır sınır → boş vektör (panik yok).
+        assert!(chunk_transcript("   \n\n", 4).is_empty());
+        assert!(chunk_transcript("x", 0).is_empty());
+    }
+
+    #[test]
+    fn transcript_source_strings_are_stable() {
+        use TranscriptSource::*;
+        assert_eq!(transcript_source_str(ExistingSrt), "existing_srt");
+        assert_eq!(transcript_source_str(Embedded), "embedded");
+        assert_eq!(transcript_source_str(Captions), "captions");
+        assert_eq!(transcript_source_str(Whisper), "whisper");
     }
 }
