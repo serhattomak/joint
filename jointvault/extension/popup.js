@@ -1,10 +1,41 @@
+import { enqueue, pendingCount } from "./outbox.js";
+
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48120/collect";
 const endpointEl = document.getElementById("endpoint");
 const tokenEl = document.getElementById("token");
 const statusEl = document.getElementById("status");
+const statusText = document.getElementById("statusText");
 const permBanner = document.getElementById("permBanner");
 const serverDot = document.getElementById("serverDot");
 const serverStatusText = document.getElementById("serverStatusText");
+const versionChip = document.getElementById("versionChip");
+const pendingChip = document.getElementById("pendingChip");
+const pendingCountEl = document.getElementById("pendingCount");
+
+// outbox.js `chrome`'a bağımlı değil; depolama adaptörü burada verilir.
+const outboxStore = {
+  get: (key) => chrome.storage.local.get(key),
+  set: (values) => chrome.storage.local.set(values),
+};
+
+// Bekleyen kaydı çipte göster; sürüm çipi yerini ona bırakır (tek satır korunur).
+async function refreshPending() {
+  const n = await pendingCount(outboxStore);
+  versionChip.hidden = n > 0;
+  pendingChip.hidden = n === 0;
+  pendingChip.title = n > 0 ? `${n} kayıt aktarım bekliyor` : "";
+  pendingCountEl.textContent = String(n);
+  return n;
+}
+
+// Arka plan aktarıcıyı dürt: uygulama ayaktaysa kuyruk tek partide gider.
+async function flushBacklog() {
+  try {
+    return await chrome.runtime.sendMessage({ type: "jv-flush" });
+  } catch {
+    return { state: "unknown" };
+  }
+}
 
 // Load stored settings
 chrome.storage.local.get(
@@ -13,6 +44,21 @@ chrome.storage.local.get(
     endpointEl.value = cfg.endpoint;
     tokenEl.value = cfg.token;
     checkServerConnection(cfg.endpoint);
+    // Açılışta bekleyeni dene: uygulama kapalıysa kuyruk yerinde kalır.
+    void refreshPending().then(async (before) => {
+      if (before === 0) return before;
+      const res = await flushBacklog();
+      await refreshPending();
+      if (res && res.state === "sent") {
+        statusEl.dataset.state = "ok";
+        statusText.textContent = `Bekleyen ${res.sent} kayıt JointVault'a aktarıldı.`;
+      } else if (res && res.state === "unauthorized") {
+        statusEl.dataset.state = "error";
+        statusText.textContent =
+          "Eşleşme anahtarı geçersiz: bekleyen kayıtlar aktarılamadı. Ayarlar bölümünden anahtarı güncelle.";
+      }
+      return before;
+    });
   }
 );
 
@@ -62,9 +108,7 @@ async function checkServerConnection(endpoint) {
     const url = tab && tab.url ? tab.url : "";
 
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      badgeEl.textContent = "▶";
-      badgeEl.style.color = "#ef4444";
-      badgeEl.style.borderColor = "rgba(239, 68, 68, 0.3)";
+      badgeEl.style.background = "var(--color-src-youtube)";
       if (url.includes("/playlist") || url.includes("list=")) {
         nameEl.textContent = "YouTube - Oynatma Listesi";
         hintEl.textContent = "Topla'ya basarak listeyi JointVault'a aktarın.";
@@ -73,9 +117,7 @@ async function checkServerConnection(endpoint) {
         hintEl.textContent = "Tekil videoyu aşağıdan indirebilir veya playlist açabilirsiniz.";
       }
     } else if (url.includes("instagram.com")) {
-      badgeEl.textContent = "IG";
-      badgeEl.style.color = "#ec4899";
-      badgeEl.style.borderColor = "rgba(236, 72, 153, 0.3)";
+      badgeEl.style.background = "var(--color-src-instagram)";
       if (url.includes("/saved")) {
         nameEl.textContent = "Instagram - Kaydedilenler";
         hintEl.textContent = "Topla'ya basarak tüm kaydedilenleri çekin.";
@@ -84,9 +126,7 @@ async function checkServerConnection(endpoint) {
         hintEl.textContent = "Kaydedilenler sayfasını açıp Topla'ya basın.";
       }
     } else if (url.includes("x.com") || url.includes("twitter.com")) {
-      badgeEl.textContent = "𝕏";
-      badgeEl.style.color = "#f3f4f6";
-      badgeEl.style.borderColor = "rgba(255, 255, 255, 0.25)";
+      badgeEl.style.background = "var(--color-src-x)";
       if (url.includes("/bookmarks") || url.includes("/i/bookmarks")) {
         nameEl.textContent = "X (Twitter) - Yer İmleri";
         hintEl.textContent = "Topla'ya basarak tüm yer imlerini çekin.";
@@ -95,9 +135,7 @@ async function checkServerConnection(endpoint) {
         hintEl.textContent = "Yer imleri sayfasını (/i/bookmarks) açıp Topla'ya basın.";
       }
     } else {
-      badgeEl.textContent = "🌐";
-      badgeEl.style.color = "#9ca3af";
-      badgeEl.style.borderColor = "var(--border)";
+      badgeEl.style.background = "var(--color-src-other)";
       nameEl.textContent = "Desteklenmeyen Sekme";
       hintEl.textContent = "X, Instagram veya YouTube sekmesinde çalışır.";
     }
@@ -137,8 +175,7 @@ async function checkServerConnection(endpoint) {
     }
 
     badgeEl.textContent = "Aktif";
-    badgeEl.style.color = "#34d399";
-    badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+    badgeEl.dataset.tone = "local";
     btn.disabled = false;
     hintEl.textContent = "Bu sayfadaki medya içeriği algılandı. Doğrudan Arşive indirebilirsiniz.";
 
@@ -167,7 +204,7 @@ async function checkServerConnection(endpoint) {
     const token = tokenEl.value.trim();
     btn.disabled = true;
     statusEl.dataset.state = "busy";
-    statusEl.textContent = "İçerik Arşive aktarılıyor…";
+    statusText.textContent = "İçerik Arşive aktarılıyor…";
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const res = await fetch(endpoint, {
@@ -191,10 +228,10 @@ async function checkServerConnection(endpoint) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
       statusEl.dataset.state = "ok";
-      statusEl.textContent = "✅ Başarılı: İçerik Arşive alındı ve indirme başlatıldı!";
+      statusText.textContent = "Başarılı: İçerik Arşive alındı ve indirme başlatıldı!";
     } catch (e) {
       statusEl.dataset.state = "error";
-      statusEl.textContent = "Hata: " + (e && e.message ? e.message : e);
+      statusText.textContent = "Hata: " + (e && e.message ? e.message : e);
     } finally {
       btn.disabled = false;
     }
@@ -209,7 +246,7 @@ document.getElementById("collect").addEventListener("click", async () => {
   chrome.storage.local.set({ endpoint, token });
   btn.disabled = true;
   statusEl.dataset.state = "busy";
-  statusEl.textContent = "Sayfa taranıyor ve kaydırılıyor… (Pencereyi açık tutun)";
+  statusText.textContent = "Sayfa taranıyor ve kaydırılıyor… (Pencereyi açık tutun)";
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -219,7 +256,7 @@ document.getElementById("collect").addEventListener("click", async () => {
     const isYT = tabUrl.includes("youtube.com") || tabUrl.includes("youtu.be");
     if (isYT && !tabUrl.includes("/playlist") && !(tabUrl.includes("/watch") && tabUrl.includes("list="))) {
       statusEl.dataset.state = "error";
-      statusEl.textContent = "Önce bir YouTube playlisti açın (oynatma listesi sayfası ya da listeli izleme).";
+      statusText.textContent = "Önce bir YouTube playlisti açın (oynatma listesi sayfası ya da listeli izleme).";
       return;
     }
 
@@ -240,18 +277,34 @@ document.getElementById("collect").addEventListener("click", async () => {
 
     if (!items.length) {
       statusEl.dataset.state = "error";
-      statusEl.textContent = "Bu sayfada toplanacak kayıt bulunamadı. Lütfen yer imleri veya kaydedilenler sayfasında olduğunuzdan emin olun.";
+      statusText.textContent = "Bu sayfada toplanacak kayıt bulunamadı. Lütfen yer imleri veya kaydedilenler sayfasında olduğunuzdan emin olun.";
       return;
     }
 
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token,
-      },
-      body: JSON.stringify({ items }),
-    });
+    // Uygulama kapalıysa istek hiç ulaşmaz: partiyi kuyruğa al, arka plan aktarıcıya bırak.
+    let res = null;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({ items }),
+      });
+    } catch {
+      res = null;
+    }
+
+    if (!res) {
+      const { added, total, dropped } = await enqueue(outboxStore, items);
+      await refreshPending();
+      statusEl.dataset.state = "info";
+      statusText.textContent =
+        `Arşiv kapalı: ${added} kayıt kuyruğa alındı (${total} bekliyor). Uygulamayı açtığınızda aktarılacak.` +
+        (dropped > 0 ? ` Kuyruk tavanı aşıldı: ${dropped} eski kayıt düşürüldü.` : "");
+      return;
+    }
 
     if (res.status === 401) {
       throw new Error("Yetkilendirme hatası (401). Lütfen Ayarlar kısmından JointVault eşleşme anahtarını girin.");
@@ -262,10 +315,12 @@ document.getElementById("collect").addEventListener("click", async () => {
 
     const accepted = data.accepted != null ? data.accepted : items.length;
     statusEl.dataset.state = "ok";
-    statusEl.textContent = `✅ Başarılı: ${accepted} içerik toplandı ve JointVault'a aktarıldı!`;
+    statusText.textContent = `Başarılı: ${accepted} içerik toplandı ve JointVault'a aktarıldı!`;
+    // Uygulama ayakta: bekleyenleri de boşalt.
+    void flushBacklog().then(refreshPending);
   } catch (e) {
     statusEl.dataset.state = "error";
-    statusEl.textContent = "Hata: " + (e && e.message ? e.message : e);
+    statusText.textContent = "Hata: " + (e && e.message ? e.message : e);
   } finally {
     btn.disabled = false;
   }
@@ -278,12 +333,12 @@ document.getElementById("sync-cookies")?.addEventListener("click", async () => {
   const token = tokenEl.value.trim();
   btn.disabled = true;
   statusEl.dataset.state = "busy";
-  statusEl.textContent = "Oturum çerezleri ayıklanıyor…";
+  statusText.textContent = "Oturum çerezleri ayıklanıyor…";
 
   try {
     if (!chrome.cookies) {
       if (permBanner) permBanner.style.display = "flex";
-      throw new Error("Yeni izinlerin etkinleşmesi için lütfen chrome://extensions sayfasından JointVault eklentisindeki 🔄 (Yenile) butonuna bir kez tıklayın.");
+      throw new Error("Yeni izinlerin etkinleşmesi için lütfen chrome://extensions sayfasından JointVault eklentisindeki Yenile butonuna bir kez tıklayın.");
     }
 
     const targets = [
@@ -333,10 +388,10 @@ document.getElementById("sync-cookies")?.addEventListener("click", async () => {
     }
 
     statusEl.dataset.state = "ok";
-    statusEl.textContent = `✅ Başarılı: ${count} çerez JointVault'a aktarıldı! Artık kilitlenme olmadan doğrudan tarama yapabilirsiniz.`;
+    statusText.textContent = `Başarılı: ${count} çerez JointVault'a aktarıldı! Artık kilitlenme olmadan doğrudan tarama yapabilirsiniz.`;
   } catch (e) {
     statusEl.dataset.state = "error";
-    statusEl.textContent = "Hata: " + (e && e.message ? e.message : e);
+    statusText.textContent = "Hata: " + (e && e.message ? e.message : e);
   } finally {
     btn.disabled = false;
   }

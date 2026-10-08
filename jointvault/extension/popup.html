@@ -4,192 +4,370 @@
   <meta charset="utf-8" />
   <title>JointVault Collector</title>
   <style>
+    /* Yazı tipleri yerelden servis edilir (uygulama ile aynı dosyalar); çalışma anında uzak kaynak yok. */
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: swap;
+      src: url('fonts/inter-latin.woff2') format('woff2');
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: swap;
+      src: url('fonts/inter-latin-ext.woff2') format('woff2');
+      unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    }
+    @font-face {
+      font-family: 'JetBrains Mono';
+      font-style: normal;
+      font-weight: 100 800;
+      font-display: swap;
+      src: url('fonts/jetbrains-mono-latin.woff2') format('woff2');
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+    @font-face {
+      font-family: 'JetBrains Mono';
+      font-style: normal;
+      font-weight: 100 800;
+      font-display: swap;
+      src: url('fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
+      unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    }
+
+    /* Token katmanı: jointvault/src/index.css (@theme) rol adları ve değerleriyle birebir.
+       :root = gündüz, prefers-color-scheme: dark = gece (uygulamanın .dark bloğu). */
     :root {
-      --bg: #0d0f12;
-      --card: #15181f;
-      --card-inner: #1c202a;
-      --border: #262b36;
-      --border-focus: #6366f1;
-      --text: #f3f4f6;
-      --text-muted: #9ca3af;
-      --text-dim: #6b7280;
-      --primary: #4f46e5;
-      --primary-hover: #4338ca;
-      --primary-ink: #ffffff;
-      --success: #10b981;
-      --success-bg: rgba(16, 185, 129, 0.12);
-      --success-border: rgba(16, 185, 129, 0.3);
-      --error: #ef4444;
-      --error-bg: rgba(239, 68, 68, 0.12);
-      --error-border: rgba(239, 68, 68, 0.3);
-      --warning: #f59e0b;
-      --warning-bg: rgba(245, 158, 11, 0.12);
-      --warning-border: rgba(245, 158, 11, 0.3);
+      color-scheme: light;
+
+      --color-background: #f2f2f7;
+      --color-foreground: #1d1d1f;
+      --color-card: #ffffff;
+      --color-muted: #e9e9ee;
+      --color-muted-foreground: #6e6e73;
+      --color-border: #e0e0e5;
+      --color-input: #d1d1d6;
+      --color-primary: #007aff;
+      --color-primary-foreground: #ffffff;
+      --color-secondary: #e9e9ee;
+      --color-secondary-foreground: #1d1d1f;
+      --color-ring: #007aff;
+      --color-popover: #ffffff;
+      --color-popover-foreground: #1d1d1f;
+      --color-toolbar: rgb(242 242 247 / 0.72);
+      --material-blur: blur(24px) saturate(180%);
+
+      /* system* renkleri: durum anlamı taşır, aksan değil. */
+      --color-state-queued: #8e8e93;
+      --color-state-acquired: #34c759;
+      --color-state-error: #ff3b30;
+
+      /* Platform mürekkebi: marka rengi, yalnızca nokta olarak yaşar. */
+      --color-src-instagram: #c33f76;
+      --color-src-tiktok: #1f9c9c;
+      --color-src-x: #5c5a55;
+      --color-src-pinterest: #a52f28;
+      --color-src-youtube: #bc3a30;
+      --color-src-other: #7a776f;
+
+      --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+      --radius-xs: 0.25rem;
+      --radius-sm: 0.375rem;
+      --radius-md: 0.5rem;
+      --radius-lg: 0.625rem;
+      --radius-xl: 0.75rem;
+
+      --shadow-card: 0 1px 2px rgb(0 0 0 / 0.05), 0 1px 1px rgb(0 0 0 / 0.03);
+      --shadow-hover: 0 6px 20px rgb(0 0 0 / 0.1), 0 2px 6px rgb(0 0 0 / 0.05);
+      --shadow-lift: 0 12px 32px rgb(0 0 0 / 0.14), 0 2px 8px rgb(0 0 0 / 0.06);
+
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+
+        --color-background: #1c1c1e;
+        --color-foreground: #ffffff;
+        --color-card: #2c2c2e;
+        --color-muted: #3a3a3c;
+        --color-muted-foreground: rgb(235 235 245 / 0.6);
+        --color-border: #3a3a3c;
+        --color-input: #48484a;
+        --color-primary: #0a84ff;
+        --color-primary-foreground: #ffffff;
+        --color-secondary: #3a3a3c;
+        --color-secondary-foreground: #ffffff;
+        --color-ring: #0a84ff;
+        --color-popover: #2c2c2e;
+        --color-popover-foreground: #ffffff;
+        --color-toolbar: rgb(28 28 30 / 0.72);
+
+        --color-state-queued: #8e8e93;
+        --color-state-acquired: #30d158;
+        --color-state-error: #ff453a;
+
+        --color-src-instagram: #d94f8a;
+        --color-src-tiktok: #35c4c4;
+        --color-src-x: #8f8c83;
+        --color-src-pinterest: #b8352f;
+        --color-src-youtube: #d0443a;
+        --color-src-other: #6f6c65;
+
+        --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 1px rgb(0 0 0 / 0.24);
+        --shadow-hover: 0 8px 24px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
+        --shadow-lift: 0 16px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.35);
+      }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+      :root {
+        --material-blur: none;
+        --color-toolbar: #f2f2f7;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --color-toolbar: #1c1c1e; }
+      }
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent) transparent;
+    }
+
+    /* Sınıflar `display` yazdığı için `hidden` özniteliği tek başına kazanamaz. */
+    [hidden] {
+      display: none !important;
     }
 
     html, body {
       width: 380px;
       min-width: 380px;
       max-width: 380px;
-      margin: 0;
-      padding: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      font-size: 13px;
-      line-height: 1.45;
       overflow-x: hidden;
-      color-scheme: dark;
     }
 
-    .container {
-      padding: 14px 16px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    body {
+      background: var(--color-background);
+      color: var(--color-foreground);
+      font-family: var(--font-sans);
+      font-size: 0.875rem;
+      line-height: 1.5;
+      letter-spacing: -0.006em;
+      font-optical-sizing: auto;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overflow-wrap: break-word;
     }
 
-    /* Header */
-    .header {
+    /* Tek ikon ailesi (lucide) ve tek kalınlık; glif/emoji yok. */
+    svg {
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--color-ring);
+      outline-offset: 1px;
+    }
+
+    [data-num], code {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* --- Araç çubuğu: 52px malzeme bandı; marka solda, durum sağda. --- */
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-bottom: 2px;
+      gap: 10px;
+      height: 52px;
+      padding: 0 16px;
+      background: var(--color-toolbar);
+      -webkit-backdrop-filter: var(--material-blur);
+      backdrop-filter: var(--material-blur);
+      border-bottom: 1px solid var(--color-border);
     }
 
     .brand {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
     }
 
-    .brand-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 6px;
-      background: linear-gradient(135deg, #4f46e5, #7c3aed);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
-    }
-
-    .brand-icon svg {
-      width: 14px;
-      height: 14px;
-      stroke: #ffffff;
-      fill: none;
-      stroke-width: 2.2;
+    .brand-mark {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      color: var(--color-primary);
+      stroke-width: 2.25;
     }
 
     .brand-title {
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      color: var(--text);
+      font-size: 0.875rem;
+      font-weight: 600;
+      letter-spacing: -0.018em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .header-badges {
+    .toolbar-end {
       display: flex;
       align-items: center;
       gap: 6px;
+      flex: 0 0 auto;
     }
 
-    .server-status {
-      display: flex;
+    .status-chip {
+      display: inline-flex;
       align-items: center;
-      gap: 4px;
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 9999px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
+      gap: 5px;
+      height: 20px;
+      padding: 0 8px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-muted);
+      color: var(--color-muted-foreground);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
     }
 
-    .server-dot {
+    .status-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--text-dim);
+      flex-shrink: 0;
+      background: var(--color-state-queued);
     }
 
-    .server-dot.online {
-      background: var(--success);
-      box-shadow: 0 0 6px var(--success);
+    .status-dot.online {
+      background: var(--color-state-acquired);
     }
 
-    .brand-version {
-      font-size: 10px;
-      font-family: ui-monospace, monospace;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: rgba(99, 102, 241, 0.15);
-      color: #818cf8;
-      border: 1px solid rgba(99, 102, 241, 0.25);
+    .version-chip {
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      padding: 0 6px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xs);
+      color: var(--color-muted-foreground);
+      font-size: 0.6875rem;
     }
 
-    /* Warning Banner */
+    /* Bekleyen kayıt çipi: uygulamanın "kuyrukta" damgası dili — Clock3 + sayı (systemGray). */
+    .pending-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 20px;
+      padding: 0 6px;
+      border: 1px solid color-mix(in oklab, var(--color-state-queued) 45%, transparent);
+      border-radius: var(--radius-xs);
+      color: var(--color-state-queued);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .pending-chip svg {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+    }
+
+    /* --- İçerik akışı: gruplar sıkı, ayrım cömert. --- */
+    .content {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 14px 16px 16px;
+    }
+
+    .action {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .hint {
+      font-size: 0.75rem;
+      line-height: 1.4;
+      color: var(--color-muted-foreground);
+    }
+
+    /* --- Uyarı: renk tek başına anlam taşımaz; uyarı metinle ve ikonla yazılır. --- */
     .banner {
       display: none;
       align-items: flex-start;
       gap: 8px;
-      padding: 9px 11px;
-      border-radius: 8px;
-      font-size: 11.5px;
+      padding: 8px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-card);
+      font-size: 0.75rem;
       line-height: 1.4;
     }
 
-    .banner-warning {
-      background: var(--warning-bg);
-      border: 1px solid var(--warning-border);
-      color: #fbbf24;
-    }
-
     .banner-icon {
-      font-size: 14px;
+      width: 14px;
+      height: 14px;
       flex-shrink: 0;
       margin-top: 1px;
+      color: var(--color-muted-foreground);
     }
 
     .banner-text code {
-      background: rgba(0, 0, 0, 0.3);
+      background: var(--color-muted);
       padding: 1px 4px;
-      border-radius: 3px;
-      font-family: monospace;
-      font-size: 11px;
+      border-radius: var(--radius-xs);
+      font-size: 0.6875rem;
     }
 
-    /* Active Tab Context Card */
+    /* --- Kart: tek dil (opak kart, 1px hairline, 12px sürekli köşe). Kart içine kart yok. --- */
+    .card {
+      background: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+    }
+
     .context-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 12px;
       display: flex;
       align-items: center;
       gap: 10px;
+      padding: 10px 12px;
     }
 
-    .platform-badge {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 700;
+    .platform-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
       flex-shrink: 0;
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--color-src-other);
     }
 
     .context-info {
@@ -198,109 +376,123 @@
     }
 
     .context-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      font-size: 0.875rem;
+      font-weight: 500;
     }
 
     .context-hint {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 1px;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      color: var(--color-muted-foreground);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    /* Action Buttons */
+    /* --- Buton: 6px köşe, 36px yükseklik, basış ölçekle iner. --- */
     .btn {
-      width: 100%;
-      border: 0;
-      border-radius: 8px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      padding: 9px 14px;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 7px;
-      transition: all 150ms ease-out;
+      gap: 6px;
+      width: 100%;
+      height: 36px;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: inherit;
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
       user-select: none;
+      transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out),
+        color 150ms var(--ease-out), transform 150ms var(--ease-out), opacity 150ms var(--ease-out);
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .btn:active:not(:disabled) {
+      transform: scale(0.97);
     }
 
     .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+      pointer-events: none;
+      opacity: 0.45;
     }
 
     .btn-primary {
-      background: var(--primary);
-      color: var(--primary-ink);
-      box-shadow: 0 2px 10px rgba(79, 70, 229, 0.25);
+      background: var(--color-primary);
+      color: var(--color-primary-foreground);
     }
 
     .btn-primary:hover:not(:disabled) {
-      background: var(--primary-hover);
-      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+      background: color-mix(in oklab, var(--color-primary) 85%, transparent);
+    }
+
+    .btn-outline {
+      border-color: var(--color-input);
+      background: transparent;
+      color: var(--color-foreground);
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      background: var(--color-muted);
     }
 
     .btn-secondary {
-      background: var(--card);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 12px;
-      font-weight: 500;
-      padding: 8px 12px;
+      background: var(--color-secondary);
+      color: var(--color-secondary-foreground);
     }
 
     .btn-secondary:hover:not(:disabled) {
-      background: var(--card-inner);
-      border-color: #3b4252;
+      background: color-mix(in oklab, var(--color-secondary) 70%, transparent);
     }
 
-    .btn-subtext {
-      font-size: 10.5px;
-      color: var(--text-dim);
-      text-align: center;
-      margin-top: -6px;
-    }
-
-    /* Single Downloader Section */
+    /* --- Tekil indirici kartı. --- */
     .dl-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 11px 12px;
       display: flex;
       flex-direction: column;
-      gap: 9px;
+      gap: 10px;
+      padding: 12px;
     }
 
     .dl-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
     }
 
     .dl-title {
-      font-size: 11.5px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
     }
 
     .dl-badge {
-      font-size: 10px;
-      padding: 1px 6px;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text-dim);
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      padding: 0 6px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xs);
+      background: var(--color-muted);
+      color: var(--color-muted-foreground);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .dl-badge[data-tone="local"] {
+      border-color: color-mix(in oklab, var(--color-state-acquired) 45%, transparent);
+      background: color-mix(in oklab, var(--color-state-acquired) 10%, transparent);
+      color: var(--color-state-acquired);
     }
 
     .dl-controls {
@@ -309,248 +501,310 @@
       gap: 8px;
     }
 
-    .select-wrap {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-
-    .select-wrap label {
-      font-size: 10.5px;
-      color: var(--text-dim);
-      font-weight: 500;
-    }
-
-    select {
-      width: 100%;
-      height: 32px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 12px;
-      padding: 0 8px;
-      outline: none;
-      transition: border-color 150ms;
-    }
-
-    select:focus {
-      border-color: var(--border-focus);
-    }
-
-    select:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .btn-download {
-      background: #272c38;
-      color: var(--text);
-      border: 1px solid #363c4c;
-      padding: 8px 12px;
-      font-size: 12px;
-    }
-
-    .btn-download:hover:not(:disabled) {
-      background: #363c4c;
-      color: #ffffff;
-    }
-
-    .dl-hint {
-      font-size: 11px;
-      color: var(--text-dim);
-      line-height: 1.35;
-    }
-
-    /* Settings Accordion */
-    details {
-      border-top: 1px solid var(--border);
-      padding-top: 10px;
-    }
-
-    summary {
-      cursor: pointer;
-      font-size: 11.5px;
-      color: var(--text-muted);
-      user-select: none;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      outline: none;
-    }
-
-    summary:hover {
-      color: var(--text);
-    }
-
-    .settings-body {
-      margin-top: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
     .field {
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      gap: 4px;
+      min-width: 0;
     }
 
     .field label {
-      font-size: 11px;
-      color: var(--text-muted);
+      font-size: 0.75rem;
+      color: var(--color-muted-foreground);
     }
 
-    input[type="text"], input[type="password"] {
+    .field input {
       width: 100%;
       height: 32px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: var(--card);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 12px;
       padding: 0 10px;
-      outline: none;
-      transition: border-color 150ms;
+      border: 1px solid var(--color-input);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--color-foreground);
+      font: inherit;
+      font-size: 0.875rem;
+      transition: border-color 150ms var(--ease-out);
     }
 
-    input:focus {
-      border-color: var(--border-focus);
+    .field input::placeholder {
+      color: color-mix(in oklab, var(--color-muted-foreground) 85%, transparent);
     }
 
-    /* Status Box */
+    .select-wrap {
+      position: relative;
+    }
+
+    .select-wrap select {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 32px;
+      padding: 0 26px 0 10px;
+      border: 1px solid var(--color-input);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--color-foreground);
+      font: inherit;
+      font-size: 0.875rem;
+      transition: border-color 150ms var(--ease-out);
+    }
+
+    .select-wrap select:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      background: var(--color-muted);
+    }
+
+    .select-caret {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      color: var(--color-muted-foreground);
+      pointer-events: none;
+    }
+
+    /* --- Katlanır ayarlar. --- */
+    .settings {
+      border-top: 1px solid var(--color-border);
+      padding-top: 12px;
+    }
+
+    .settings summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--color-muted-foreground);
+      cursor: pointer;
+      user-select: none;
+      transition: color 150ms var(--ease-out);
+    }
+
+    .settings summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .settings summary:hover {
+      color: var(--color-foreground);
+    }
+
+    .summary-caret {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      transition: transform 200ms var(--ease-out);
+    }
+
+    details[open] .summary-caret {
+      transform: rotate(90deg);
+    }
+
+    .settings-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    /* --- Bildirim: uygulamanın tek geri bildirim kanalı. İkon + sözcük; renk yalnız değil. --- */
     #status {
       display: none;
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-size: 12px;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-popover);
+      color: var(--color-popover-foreground);
+      font-size: 0.875rem;
       line-height: 1.45;
+      box-shadow: var(--shadow-lift);
       word-break: break-word;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
     }
 
+    #status[data-state] {
+      display: flex;
+    }
+
     #status[data-state="ok"] {
-      display: block;
-      background: var(--success-bg);
-      border: 1px solid var(--success-border);
-      color: #34d399;
+      border-color: color-mix(in oklab, var(--color-state-acquired) 50%, transparent);
     }
 
     #status[data-state="error"] {
-      display: block;
-      background: var(--error-bg);
-      border: 1px solid var(--error-border);
-      color: #f87171;
+      border-color: color-mix(in oklab, var(--color-state-error) 50%, transparent);
     }
 
-    #status[data-state="busy"] {
+    #status[data-state="info"] {
+      border-color: color-mix(in oklab, var(--color-state-queued) 50%, transparent);
+    }
+
+    #statusText {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .status-mark {
+      display: flex;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      color: var(--color-muted-foreground);
+    }
+
+    .status-mark svg {
+      display: none;
+      width: 14px;
+      height: 14px;
+    }
+
+    #status[data-state="busy"] .mark-busy,
+    #status[data-state="ok"] .mark-ok,
+    #status[data-state="error"] .mark-error,
+    #status[data-state="info"] .mark-info {
       display: block;
-      background: rgba(99, 102, 241, 0.1);
-      border: 1px solid rgba(99, 102, 241, 0.25);
-      color: #a5b4fc;
+    }
+
+    .mark-busy {
+      animation: jv-spin 1s linear infinite;
+    }
+
+    @keyframes jv-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .btn:active:not(:disabled) {
+        transform: none;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- Header -->
-    <header class="header">
-      <div class="brand">
-        <div class="brand-icon">
-          <svg viewBox="0 0 24 24">
-            <rect x="2" y="3" width="20" height="5" rx="1"/>
-            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
-            <path d="M10 12h4"/>
-          </svg>
-        </div>
-        <h1 class="brand-title">JointVault Collector</h1>
+  <!-- Araç çubuğu: marka + arşiv durumu (uygulamanın 52px malzeme bandı) -->
+  <header class="toolbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2" y="3" width="20" height="5" rx="1"/>
+        <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+        <path d="M10 12h4"/>
+      </svg>
+      <h1 class="brand-title">JointVault</h1>
+    </div>
+    <div class="toolbar-end">
+      <div class="status-chip" id="serverStatus" title="JointVault Masaüstü Durumu">
+        <span class="status-dot" id="serverDot"></span>
+        <span id="serverStatusText">Aranıyor…</span>
       </div>
-      <div class="header-badges">
-        <div class="server-status" id="serverStatus" title="JointVault Masaüstü Durumu">
-          <span class="server-dot" id="serverDot"></span>
-          <span id="serverStatusText">Bağlantı aranıyor…</span>
-        </div>
-        <span class="brand-version">v0.1</span>
-      </div>
-    </header>
+      <span class="version-chip" id="versionChip" data-num>v0.1</span>
+      <span class="pending-chip" id="pendingChip" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span data-num id="pendingCount">0</span>
+      </span>
+    </div>
+  </header>
 
-    <!-- Permission Warning Banner -->
-    <div class="banner banner-warning" id="permBanner">
-      <span class="banner-icon">⚠️</span>
+  <div class="content">
+    <!-- İzin uyarısı -->
+    <div class="banner" id="permBanner">
+      <svg class="banner-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>
+        <path d="M12 9v4"/>
+        <path d="M12 17h.01"/>
+      </svg>
       <div class="banner-text">
-        <strong>İzin Güncellemesi:</strong> Çerez aktarımı için <code>chrome://extensions</code> sayfasından JointVault eklentisindeki 🔄 <strong>Yenile</strong> butonuna bir kez tıklayın.
+        <strong>İzin Güncellemesi:</strong> Çerez aktarımı için <code>chrome://extensions</code> sayfasından JointVault eklentisindeki <strong>Yenile</strong> butonuna bir kez tıklayın.
       </div>
     </div>
 
-    <!-- Active Tab Context Card -->
-    <section class="context-card" id="contextCard">
-      <div class="platform-badge" id="platformBadge">?</div>
+    <!-- Aktif sekme bağlamı -->
+    <section class="card context-card" id="contextCard">
+      <span class="platform-dot" id="platformBadge"></span>
       <div class="context-info">
         <div class="context-title" id="siteName">Sekme kontrol ediliyor…</div>
         <div class="context-hint" id="siteHint">Kaydedilenler sayfasını açıp Topla'ya bas.</div>
       </div>
     </section>
 
-    <!-- Main Collect Action -->
-    <button class="btn btn-primary" id="collect">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
-      <span>Topla (Kaydedilenleri Çek)</span>
-    </button>
-    <p class="btn-subtext">Açık olan sayfadaki tüm kayıtları otomatik kaydırarak Arşive aktarır.</p>
+    <!-- Topla -->
+    <div class="action">
+      <button class="btn btn-primary" id="collect">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>Topla (Kaydedilenleri Çek)</span>
+      </button>
+      <p class="hint">Açık olan sayfadaki tüm kayıtları otomatik kaydırarak Arşive aktarır.</p>
+    </div>
 
-    <!-- Cookie Sync Action -->
-    <button class="btn btn-secondary" id="sync-cookies">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-      </svg>
-      <span>🔑 Çerezleri JointVault'a Aktar</span>
-    </button>
-    <p class="btn-subtext">YouTube, X ve Instagram oturum çerezlerini aktarır (Chrome kilit sorununu çözer).</p>
+    <!-- Çerez aktarımı -->
+    <div class="action">
+      <button class="btn btn-outline" id="sync-cookies">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+        </svg>
+        <span>Çerezleri JointVault'a Aktar</span>
+      </button>
+      <p class="hint">YouTube, X ve Instagram oturum çerezlerini aktarır (Chrome kilit sorununu çözer).</p>
+    </div>
 
-    <!-- Single Video / Media Downloader -->
-    <section class="dl-card" id="dlCard">
+    <!-- Tekil içerik indirici -->
+    <section class="card dl-card" id="dlCard">
       <div class="dl-header">
         <span class="dl-title">Tekil İçerik İndirici</span>
         <span class="dl-badge" id="dlBadge">Hazır</span>
       </div>
 
       <div class="dl-controls">
-        <div class="select-wrap">
+        <div class="field">
           <label for="dl-kind">Format</label>
-          <select id="dl-kind" aria-label="Format">
-            <option value="video">Video (MP4)</option>
-            <option value="audio">Ses (MP3)</option>
-          </select>
+          <div class="select-wrap">
+            <select id="dl-kind" aria-label="Format">
+              <option value="video">Video (MP4)</option>
+              <option value="audio">Ses (MP3)</option>
+            </select>
+            <svg class="select-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
         </div>
-        <div class="select-wrap">
+        <div class="field">
           <label for="dl-quality">Kalite</label>
-          <select id="dl-quality" aria-label="Kalite">
-            <option value="">Algılanıyor…</option>
-          </select>
+          <div class="select-wrap">
+            <select id="dl-quality" aria-label="Kalite">
+              <option value="">Algılanıyor…</option>
+            </select>
+            <svg class="select-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
         </div>
       </div>
 
-      <button class="btn btn-download" id="download" disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
+      <button class="btn btn-secondary" id="download" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
         <span>Bu İçeriği Arşive İndir</span>
       </button>
 
-      <div class="dl-hint" id="dlHint">Tekil tweet, Instagram kaydı veya YouTube videosu sayfasında aktif olur.</div>
+      <div class="hint" id="dlHint">Tekil tweet, Instagram kaydı veya YouTube videosu sayfasında aktif olur.</div>
     </section>
 
-    <!-- Collapsible Settings -->
-    <details>
-      <summary>⚙️ Bağlantı & Eşleşme Ayarları</summary>
+    <!-- Katlanır ayarlar -->
+    <details class="settings">
+      <summary>
+        <svg class="summary-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        <span>Bağlantı &amp; Eşleşme Ayarları</span>
+      </summary>
       <div class="settings-body">
         <div class="field">
           <label for="endpoint">Köprü Adresi</label>
@@ -563,10 +817,20 @@
       </div>
     </details>
 
-    <!-- Live Status / Feedback Area -->
-    <div id="status" role="status"></div>
+    <!-- Canlı durum -->
+    <div id="status" role="status">
+      <span class="status-mark" aria-hidden="true">
+        <svg class="mark-busy" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <svg class="mark-ok" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        <svg class="mark-error" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        <svg class="mark-info" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+        </svg>
+      </span>
+      <span id="statusText"></span>
+    </div>
   </div>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

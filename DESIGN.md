@@ -539,6 +539,8 @@ Koordinatlar `jointvault/` köküne göredir.
   `lib/theme.ts` (tema) · `lib/platform.ts` (platform mürekkebi).
 - **CSS yardımcıları (`index.css`):** `material-rail|toolbar|sheet` · `settings-card` ·
   `record-band` · `cv-card` · `cv-row` · `skeleton-paper` · `scroll-edge-b`.
+- **Eklenti:** `extension/popup.html` bu sözlüğü ve `@theme` token'larını taşır (aynı rol
+  adları, gece/gündüz); ayrı bir tasarım dili kurmaz. Kaynak token değişince orası da güncellenir.
 
 ## Yeni ekran/özellik için kontrol listesi
 

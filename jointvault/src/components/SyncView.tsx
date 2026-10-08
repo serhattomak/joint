@@ -413,7 +413,7 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
             <p className="text-2xs leading-relaxed text-muted-foreground">
               {hasCookies
                 ? 'Aktarılan çerez dosyası başarıyla devrede; Chrome açık olsa bile kilitlenmeden doğrudan X, Instagram ve YouTube taranabilir.'
-                : "Chrome açıkken çerez dosyasını kilitler. Aşmak için: Chrome'daki JointVault Collector eklentisini açıp '🔑 Çerezleri JointVault'a Aktar' butonuna tıklayın veya aşağıdaki 'cookies.txt Yükle' butonu ile dosya seçin."}
+                : "Chrome açıkken çerez dosyasını kilitler. Aşmak için: Chrome'daki JointVault Collector eklentisini açıp 'Çerezleri JointVault'a Aktar' butonuna tıklayın veya aşağıdaki 'cookies.txt Yükle' butonu ile dosya seçin."}
             </p>
           </div>
         </div>

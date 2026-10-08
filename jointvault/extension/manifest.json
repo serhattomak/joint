@@ -3,7 +3,7 @@
   "name": "JointVault Collector",
   "version": "0.1.0",
   "description": "Collect X bookmarks into JointVault for review.",
-  "permissions": ["activeTab", "scripting", "storage", "cookies"],
+  "permissions": ["activeTab", "scripting", "storage", "cookies", "alarms"],
   "host_permissions": [
     "http://127.0.0.1:48120/*",
     "*://*.x.com/*",
@@ -14,5 +14,9 @@
   ],
   "action": {
     "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
   }
 }
