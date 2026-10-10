@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAiEnabled, planCategoryCandidates, planItemCategorization, type AiStatus } from './ai';
+import { isAiEnabled, planCategoryCandidates, planItemCategorization, summarizeBatchAiStats, type AiStatus } from './ai';
 import type { Category } from './db/types';
 import { resolveCategories, validNewCategory } from './taxonomy';
 
@@ -223,3 +223,39 @@ describe('planItemCategorization — AI kapalı deterministik', () => {
     }
   });
 });
+
+/*
+ * Hız ölçümü. Darboğazın çıktı mı bağlam mı olduğunu sayıyla gösterir;
+ * kaldıraç seçimi (çıktıyı kısalt / paralel slot) bu sayıya göre yapılır.
+ */
+describe('summarizeBatchAiStats', () => {
+  it('üretim hızını ÇIKTI tokenından hesaplar (duvar saatini belirleyen)', () => {
+    const r = summarizeBatchAiStats({
+      calls: 4, promptTokens: 9000, completionTokens: 1000, elapsedMs: 10_000,
+    });
+    expect(r.tokPerSec).toBe(100); // 1000 çıktı / 10 sn
+  });
+
+  it('çıktı payını toplam token içinde yüzde olarak verir', () => {
+    const r = summarizeBatchAiStats({
+      calls: 1, promptTokens: 900, completionTokens: 100, elapsedMs: 1000,
+    });
+    expect(r.outputSharePct).toBe(10);
+  });
+
+  it('süre sıfırsa bölmez, 0 döner', () => {
+    const r = summarizeBatchAiStats({
+      calls: 0, promptTokens: 0, completionTokens: 0, elapsedMs: 0,
+    });
+    expect(r.tokPerSec).toBe(0);
+    expect(r.outputSharePct).toBe(0);
+  });
+
+  it('token yoksa pay 0 döner (bölme yok)', () => {
+    const r = summarizeBatchAiStats({
+      calls: 1, promptTokens: 0, completionTokens: 0, elapsedMs: 500,
+    });
+    expect(r.outputSharePct).toBe(0);
+  });
+});
+

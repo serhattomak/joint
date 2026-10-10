@@ -1504,24 +1504,21 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
     }
 
     let prompt = format!(
-        "Aşağıdaki {n} medya kaydını analiz et. Her kayıt için TAM OLARAK 1 kategori ve\n\
-         en fazla 4 etiket belirle.\n\n\
+        "Aşağıdaki {n} medya kaydını analiz et. Her kayıt için TAM OLARAK 1 kategori ve en fazla 4 etiket belirle.\n\n\
          TAKSONOMİ (girinti = seviye; yalnız bu ağaçtaki adlar geçerlidir):\n\
          {cat_tree_str}\n\n\
          KURALLAR (her kayıt için ayrı ayrı uygula):\n\
-         1. Kayda uyan EN DERİN düğümü seç. \"Sütlaç\" tarifi için \"Sütlü Tatlı\" seç (\"Tatlı\" değil).\n\
-         2. Mevcut düğümlerin altına YENİ ara seviye kurma; yalnız kayıt gerçekten gerektiriyorsa öner.\n\
-         3. Hiçbiri uymuyorsa `yeni` alanını doldur: {{\"ust\":\"...\",\"alt\":\"...\"}} — `ust` ağaçta\n\
-            VAR OLAN bir düğüm olmalı; yoksa düğüm önerilmez (uydurma dal yasak).\n\
-         4. ETİKET — son tercih: önce mevcut listeden uygun olanı seç [{existing_tag_str}].\n\
-            Hiçbiri kaydı gerçekten tanımlamıyorsa ETİKET ÜRETME; en fazla 1 yeni etiket ve\n\
-            `yeni_etiket_gerekce` alanına nedenini yaz. Mevcut tam adı kullan, aynı anlama\n\
-            gelen yeni ad KURMA.\n\
-         5. ÖZET ve GÜVEN (confidence 0.0-1.0).\n\n\
-         ÇIKTI FORMATI: SADECE {n} elemanlı geçerli JSON DİZİSİ döndür, markdown yok.\n\
+         1. Kayda uyan EN DERİN düğümü seç (\"Sütlaç\" için \"Sütlü Tatlı\", \"Tatlı\" değil).\n\
+         2. Mevcut düğümlerin altına yeni ara seviye kurma; yalnız kayıt gerçekten gerektiriyorsa öner.\n\
+         3. Hiçbiri uymuyorsa `e` alanını doldur: {{\"ust\":\"<ağaçta VAR OLAN üst>\",\"alt\":\"<yeni alt>\"}}; `k` null kalır.\n\
+         4. ETİKET son tercih: önce mevcutlardan uygun olanı seç [{existing_tag_str}].\n\
+            Hiçbiri kaydı gerçekten tanımlamıyorsa etiket ÜRETME; en fazla 1 yeni etiket `y` alanına, nedenini `g` alanına yaz.\n\n\
+         ÇIKTI: SADECE {n} elemanlı geçerli JSON DİZİSİ döndür, markdown yok.\n\
          Eleman sırası KAYIT 0..{last} ile BİREBİR aynı olmalı.\n\
+         Alanlar: i=sıra no, k=kategori adı (uyan yoksa null), e={{ust,alt}} yeni kategori (yoksa null),\n\
+         t=etiket dizisi, y=yeni etiket (yoksa null), g=yeni etiket gerekçesi (yoksa null), c=güven 0.0-1.0.\n\
          Örnek tek eleman:\n\
-         {{\"index\":0,\"kategori\":\"Sütlü Tatlı\",\"ust\":null,\"yeni\":null,\"tags\":[\"süt\"],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Sütlaç tarifi.\",\"confidence\":0.95}}\n\n\
+         {{\"i\":0,\"k\":\"Sütlü Tatlı\",\"e\":null,\"t\":[\"süt\"],\"y\":null,\"g\":null,\"c\":0.95}}\n\n\
          {records}",
         n = items.len(),
         last = items.len().saturating_sub(1),
@@ -1536,6 +1533,10 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
         .build()
         .map_err(|e| e.to_string())?;
 
+    // Ölçüm: toplu işin darboğazı üretim (çıktı) tokenıdır. Süre + kullanım
+    // sayıları çağırana döner; böylece hız kararları tahminle değil sayıyla
+    // verilir (hangi kaldıraç işe yarıyor: bağlam, paralel slot, batch boyu).
+    let t0 = std::time::Instant::now();
     let resp = client
         .post(&api_url)
         .json(&serde_json::json!({
@@ -1574,9 +1575,14 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
 
     // Yanıt eksik/kısa olursa eksik kayıtlar boş sonuçla doldurulur; çağıran
     // taraf `index` ile eşleştirip sessizce kayıp bırakmaz.
+    // Sıra anahtarı iki şemada da kabul edilir: kısa `i`, uzun `index`.
     let mut out: Vec<Value> = vec![Value::Null; items.len()];
     for entry in parsed {
-        let Some(idx) = entry.get("index").and_then(|v| v.as_u64()) else {
+        let Some(idx) = entry
+            .get("i")
+            .or_else(|| entry.get("index"))
+            .and_then(|v| v.as_u64())
+        else {
             continue;
         };
         if (idx as usize) < out.len() {
@@ -1584,7 +1590,20 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
         }
     }
 
-    Ok(Value::Array(out))
+    let usage = res_json.get("usage");
+    let stats = serde_json::json!({
+        "prompt_tokens": usage
+            .and_then(|u| u.get("prompt_tokens"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        "completion_tokens": usage
+            .and_then(|u| u.get("completion_tokens"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        "elapsed_ms": t0.elapsed().as_millis() as u64,
+    });
+
+    Ok(serde_json::json!({ "entries": out, "stats": stats }))
 }
 
 #[cfg(test)]

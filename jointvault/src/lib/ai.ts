@@ -40,6 +40,7 @@ import type { Category, HybridSearchResult, Item } from './db/types';
 import { buildCategoryDigest } from './notebook';
 import { invalidateVectorIndex } from './vector-cache';
 import {
+  expandBatchEntry,
   matchTaxonomyInText,
   normalizeKey,
   normalizeLlmSuggestion,
@@ -1033,6 +1034,34 @@ export function planItemCategorization(
   return opts.aiOn ? { kind: 'llm' } : { kind: 'skip' };
 }
 
+/** Toplu AI işinin ölçüm toplamı (çağrı başına `ai_categorize_batch` `stats`ı). */
+export interface BatchAiStats {
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  elapsedMs: number;
+}
+
+/**
+ * Ölçümü okunur özete çevirir (SAF).
+ *
+ * `tokPerSec` **üretim** hızıdır — duvar saatini belirleyen budur, çünkü
+ * prompt önek önbelleğinde dururken üretim seri akar.
+ * `outputSharePct` çıktının toplam token içindeki payıdır: yüksekse
+ * iyileştirme çıktıyı kısaltmaktan geçer (batch büyütmek değil).
+ */
+export function summarizeBatchAiStats(s: BatchAiStats): {
+  tokPerSec: number;
+  outputSharePct: number;
+} {
+  const seconds = s.elapsedMs / 1000;
+  const total = s.promptTokens + s.completionTokens;
+  return {
+    tokPerSec: seconds > 0 ? s.completionTokens / seconds : 0,
+    outputSharePct: total > 0 ? (s.completionTokens / total) * 100 : 0,
+  };
+}
+
 /**
  * Seçilen öğeleri Qwen 2.5 ile kategorize edip etiketler.
  *
@@ -1079,6 +1108,10 @@ export async function batchCategorizeItems(
   let deterministic = 0;
   let skipped = 0;
   let replaced = 0;
+
+  // Ölçüm toplamı: hız kararları (bağlam, paralel slot, batch boyu) tahminle
+  // değil sayıyla verilsin.
+  const stats: BatchAiStats = { calls: 0, promptTokens: 0, completionTokens: 0, elapsedMs: 0 };
 
   /** Sonucu uygulanabilir mi diye değerlendirir ve sayacları günceller. */
   const settle = async (it: Item, result: CategorizeAndTagResult): Promise<void> => {
@@ -1170,7 +1203,31 @@ export async function batchCategorizeItems(
       continue;
     }
 
-    const rows = Array.isArray(raw) ? (raw as unknown[]) : [];
+    // Komut `{ entries, stats }` döner; eski düz dizi şekli de kabul edilir
+    // (sürüm uyuşmazlığında iş durmasın).
+    const shaped = raw as { entries?: unknown; stats?: Partial<BatchAiStats> } | null;
+    const rows: unknown[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(shaped?.entries)
+        ? (shaped.entries as unknown[])
+        : [];
+
+    if (shaped && !Array.isArray(raw) && shaped.stats) {
+      const st = shaped.stats;
+      stats.calls += 1;
+      stats.promptTokens += st.promptTokens ?? 0;
+      stats.completionTokens += st.completionTokens ?? 0;
+      stats.elapsedMs += st.elapsedMs ?? 0;
+      const rate = summarizeBatchAiStats(stats);
+      if (options?.onProgress) {
+        // Ölçüm görünür olsun: hız kararı sayıyla verilsin.
+        options.onProgress(
+          Math.min(start + group.length, items.length),
+          items.length,
+          `${rate.tokPerSec.toFixed(1)} tok/s — çıktı payı %${rate.outputSharePct.toFixed(0)}`,
+        );
+      }
+    }
 
     for (let k = 0; k < group.length; k++) {
       const i = group[k];
@@ -1182,7 +1239,9 @@ export async function batchCategorizeItems(
         continue;
       }
 
-      const llm = normalizeLlmSuggestion(entry);
+      // Kısa şema (`i,k,e,t,y,g,c`) kanonik adlara çevrilir; model eski uzun
+      // adlara dönerse de ayrıştırıcı kabul eder (sessiz toplu kayıp olmasın).
+      const llm = normalizeLlmSuggestion(expandBatchEntry(entry));
       const llmValid =
         llm.confidence > 0 ||
         llm.categories.length > 0 ||
@@ -1239,6 +1298,16 @@ export async function batchCategorizeItems(
       });
     }
   }
+
+  // Ölçüm özeti: `tokPerSec` üretim hızı, `outputSharePct` darboğazın çıktı
+  // olup olmadığı. Yüksek pay → çıktıyı kısalt; düşük pay → bağlam/paralellik.
+  const rate = summarizeBatchAiStats(stats);
+  console.info(
+    `[ai] toplu kategorizasyon: ${stats.calls} çağrı, ` +
+      `${stats.promptTokens} girdi + ${stats.completionTokens} çıktı token, ` +
+      `${(stats.elapsedMs / 1000).toFixed(1)} sn, ` +
+      `${rate.tokPerSec.toFixed(1)} tok/s, çıktı payı %${rate.outputSharePct.toFixed(0)}`,
+  );
 
   return { processed, applied, lowConfidence, failed, deterministic, skipped, replaced };
 }

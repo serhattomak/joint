@@ -293,6 +293,38 @@ export function matchTaxonomyInText(
 }
 
 /** Model yanıtındaki alanları güvenle okur; eksik/yanlış tipte çökmez.
+/**
+ * Toplu çağrının KISA çıktı şemasını kanonik alan adlarına çevirir (SAF).
+ *
+ * Neden kısa: toplu üretimde darboğaz **çıktı token sayısıdır** (üretim seri,
+ * prompt önbellekte). `"yeni_etiket_gerekce"` gibi anahtarlar her kayıtta
+ * tekrarlanıp payload'ın çoğunu yiyordu. Kısa anahtar üretimi ~yarıya indirir.
+ *
+ * Neden toleranslı: model eski uzun adlara dönerse kayıt sessizce
+ * kategorisiz kalmasın diye **iki şema da** kabul edilir. Yanlış alan adı =
+ * sessiz toplu kayıp; tolerans bunu bedavaya engeller.
+ *
+ * `summary` batch yolunda hiç okunmadığı için şemadan çıkarıldı; tekil
+ * "AI ile Analiz Et" yolu uzun şemayı kullanmaya devam eder.
+ */
+export function expandBatchEntry(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const r = raw as Record<string, unknown>;
+  const pick = (short: string, long: string): unknown => (r[short] !== undefined ? r[short] : r[long]);
+
+  return {
+    index: pick('i', 'index'),
+    kategori: pick('k', 'kategori'),
+    yeni: pick('e', 'yeni'),
+    tags: pick('t', 'tags'),
+    yeni_etiket: pick('y', 'yeni_etiket'),
+    yeni_etiket_gerekce: pick('g', 'yeni_etiket_gerekce'),
+    confidence: pick('c', 'confidence'),
+  };
+}
+
+/**
+ * Model yanıtındaki alanları güvenle okur; eksik/yanlış tipte çökmez.
  *
  *  Alan adları Türkçedir (`ai.rs` prompt sözleşmesiyle birebir aynı):
  *  `kategori` tek seviye ad, `yeni` ise `{ust, alt}` ile önerilen hiyerarşi. */

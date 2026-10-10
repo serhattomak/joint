@@ -3,6 +3,7 @@ import type { Category } from './db/types';
 import { indentedTaxonomyTree } from './taxonomy-view';
 import {
   collapseToExisting,
+  expandBatchEntry,
   matchExisting,
   matchTaxonomyInText,
   normalizeKey,
@@ -98,6 +99,70 @@ describe('normalizeKey — sembol ve Latin-dışı', () => {
 describe('normalizeTag — boşluk sonrası hash', () => {
   it('baştaki boşluktan sonraki # söker', () => {
     expect(normalizeTag('  #Python')).toBe('python');
+  });
+});
+
+describe('expandBatchEntry — kısa şema, toleranslı ayrıştırıcı', () => {
+  it('kısa anahtarları kanonik adlara çevirir', () => {
+    const out = expandBatchEntry({
+      i: 0, k: 'Sütlü Tatlı', e: null, t: ['süt'], y: null, g: null, c: 0.95,
+    });
+    expect(out).toEqual({
+      index: 0,
+      kategori: 'Sütlü Tatlı',
+      yeni: null,
+      tags: ['süt'],
+      yeni_etiket: null,
+      yeni_etiket_gerekce: null,
+      confidence: 0.95,
+    });
+  });
+
+  it('yeni kategori ve yeni etiket kısa alanlarını taşır', () => {
+    const out = expandBatchEntry({
+      i: 3, k: null, e: { ust: 'Tatlı', alt: 'Muhallebi' }, t: [], y: 'muhallebi', g: 'kaydın konusu', c: 0.8,
+    });
+    expect(out.yeni).toEqual({ ust: 'Tatlı', alt: 'Muhallebi' });
+    expect(out.yeni_etiket).toBe('muhallebi');
+    expect(out.yeni_etiket_gerekce).toBe('kaydın konusu');
+  });
+
+  it('ESKİ uzun adlar da kabul edilir (model geri dönerse kayıt kaybolmaz)', () => {
+    const out = expandBatchEntry({
+      index: 1, kategori: 'Pizza', yeni: null, tags: ['hamur'],
+      yeni_etiket: null, yeni_etiket_gerekce: null, confidence: 0.9,
+    });
+    expect(out).toEqual({
+      index: 1,
+      kategori: 'Pizza',
+      yeni: null,
+      tags: ['hamur'],
+      yeni_etiket: null,
+      yeni_etiket_gerekce: null,
+      confidence: 0.9,
+    });
+  });
+
+  it('karışık şema da çalışır (bir alan kısa, biri uzun)', () => {
+    const out = expandBatchEntry({ i: 2, kategori: 'Rust', t: ['dil'], c: 0.7 });
+    expect(out.index).toBe(2);
+    expect(out.kategori).toBe('Rust');
+    expect(out.tags).toEqual(['dil']);
+    expect(out.confidence).toBe(0.7);
+  });
+
+  it('bozuk/eksik girdide çökmez, alanları tanımsız bırakır', () => {
+    expect(expandBatchEntry(null).kategori).toBeUndefined();
+    expect(expandBatchEntry('metin').index).toBeUndefined();
+    expect(expandBatchEntry({}).tags).toBeUndefined();
+  });
+
+  it('uçtan uca: kısa girdi normalizeLlmSuggestion ile aynı sonucu verir', () => {
+    const short = normalizeLlmSuggestion(expandBatchEntry({ i: 0, k: 'Pizza', t: ['hamur'], c: 0.9 }));
+    const long = normalizeLlmSuggestion({ kategori: 'Pizza', tags: ['hamur'], confidence: 0.9 });
+    expect(short.categories).toEqual(long.categories);
+    expect(short.tags).toEqual(long.tags);
+    expect(short.confidence).toEqual(long.confidence);
   });
 });
 
