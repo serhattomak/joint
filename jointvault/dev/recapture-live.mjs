@@ -20,6 +20,7 @@
  */
 import { chromium } from 'playwright-core';
 import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { endProbe, ensureOutDir } from './lib/browser.mjs';
 
 const OUT = ensureOutDir('live');
