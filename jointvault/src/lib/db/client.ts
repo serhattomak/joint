@@ -1473,7 +1473,12 @@ export async function listNotebookItems(
     `SELECT COUNT(*) as count FROM items i ${join} ${filter}`,
     params,
   );
-  const base = categoryId === null ? 1 : 2;
+  // LIMIT/OFFSET yer tutucuları BAĞLANAN parametre sayısından türetilir:
+  // kategori süzmesindeki `IN (...)` N yer tutucu tüketir; indeksi sabit
+  // yazmak N>=2'de kategori UUID'sini (TEXT) LIMIT'e bağlar ve
+  // SQLITE_MISMATCH (kod 20) verir. Yalnız alt kategorisi olan bir kategori
+  // seçilince tetiklenir; N=1'de sabit indeks tesadüfen doğrudur.
+  const base = params.length + 1;
   const rows = await db.select<
     (ItemRow & {
       content_text: string | null;
