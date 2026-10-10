@@ -8,11 +8,12 @@ import { validateCategoryCreate, validateCategoryMove } from '../taxonomy-tree';
 /*
  * Hiyerarşi YAZMA yolunun SQL'i GERÇEK SQLite üzerinde.
  *
- * client.ts Node'da içe alınamaz (Tauri SQL eklentisi). Bu yüzden üretim SQL'i
- * ve kullanıcıya gösterilen Türkçe metin client.ts KAYNAĞINDAN okunur,
- * kopyalanmaz — kopya zamanla sapar ve testi yalancı yapar. Kapı ise gerçek
- * `validateCategory*` fonksiyonlarıdır. Test, `moveCategory`nin sırasını
- * (önce kapı, sonra UPDATE) ve `updateCategory`nin ad çakışması hatasını çivler.
+ * client.ts Node'da içe alınamaz (Tauri SQL eklentisi). Sapmaya açık iki parça
+ * client.ts KAYNAĞINDAN okunur: `moveCategory`nin UPDATE'i ve kullanıcıya
+ * gösterilen Türkçe metin. Kapı gerçek `validateCategory*` fonksiyonudur.
+ * Test, yazma yollarının sırasını (kapı + guard, sonra yazma) ve ad çakışması
+ * hatasını çivler. Sabit kalan INSERT/UPDATE'ler yalnız burada kurulan yerel
+ * taklidin basit kopyalarıdır; kritik üretim sorgusu kopyalanmaz.
  */
 const clientSource = readFileSync(new URL('./client.ts', import.meta.url), 'utf8');
 
@@ -134,15 +135,22 @@ describe('hiyerarşi yazma yolu — kapı + SQL', () => {
 
   it('client.ts yazma yolları kapıdan geçer (kaynak sırası)', () => {
     // Reddedilen taşımada hiçbir UPDATE üretilmemeli: moveCategory gövdesinde
-    // validateCategoryMove çağrısı, UPDATE'i içeren db.execute'tan önce gelir.
+    // önce kapı çağrısı, sonra kapıyı uygulayan guard, en son UPDATE gelir.
     const moveBody = functionBody('moveCategory');
     const gateAt = moveBody.indexOf('validateCategoryMove(');
     const updateAt = moveBody.indexOf(moveSql());
     expect(gateAt).toBeGreaterThan(-1);
     expect(updateAt).toBeGreaterThan(gateAt);
+    // Guard'ın KENDİSİ de çivili: yalnız çağrı yetmez, `ok` değilse fırlatmalı.
+    expect(moveBody).toMatch(/if \(!gate\.ok\) throw new Error\(gate\.reason!\)/);
 
-    // createCategory de aynı kapıdan geçer (derinlik denetimi).
-    expect(functionBody('createCategory')).toMatch(/validateCategoryCreate\(/);
+    // createCategory: kapı INSERT'ten ÖNCE çalışır (guard da dahil).
+    const createBody = functionBody('createCategory');
+    const createGateAt = createBody.indexOf('validateCategoryCreate(');
+    const insertAt = createBody.indexOf('INSERT INTO categories');
+    expect(createGateAt).toBeGreaterThan(-1);
+    expect(insertAt).toBeGreaterThan(createGateAt);
+    expect(createBody).toMatch(/if \(!gate\.ok\) throw new Error\(gate\.reason!\)/);
   });
 
   it('5. seviyenin altına kategori AÇMAYI reddeder', () => {
