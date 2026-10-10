@@ -9,14 +9,12 @@ import { normalizeKey } from './taxonomy';
 
 /* --- Yeniden yapılandırma planı (tek seferlik, kullanıcı onaylı) --- */
 
-/** Bir kaynak kategorinin gideceği yer. */
+/** Bir kaynak kategorinin gideceği yer: kökten yaprağa hedef yol. */
 export interface RestructMove {
   /** Kaynak adı — girdi listesinde BİREBİR bulunmalı. */
   from: string;
-  /** Hedef alt ad; boşsa kategori kök kalır. */
-  toChild: string;
-  /** Hedef üst ad; `toChild` boşsa yok sayılır. */
-  toParent: string;
+  /** Hedef yol (kökten yaprağa ad listesi); `[]` = kök, kategori yerinde kalır. */
+  path: string[];
 }
 
 export interface RestructPlan {
@@ -65,10 +63,9 @@ export function validateRestructPlan(inputNames: string[], plan: RestructPlan): 
  * LLM'in ham metnini plana çevirir.
  *
  * `moves.from` ve `merges.duplicates` **kaynak** adlardır: girdi listesinde
- * olmalı, kanonik yazımla döner. `toChild`/`toParent`/`merges.canonical` ise
- * **hedef** adlardır — henüz kasada olmayabilirler, çünkü planın amacı tam da
- * onları oluşturmaktır; bu yüzden listeden geçirilmezler, yalnızca boşsa
- * düşürülürler.
+ * olmalı, kanonik yazımla döner. `path`/`merges.canonical` ise **hedef**
+ * adlardır — henüz kasada olmayabilirler, çünkü planın amacı tam da onları
+ * oluşturmaktır; bu yüzden listeden geçirilmezler, yalnızca boşsa düşürülürler.
  *
  * Bozuk JSON, bilinmeyen alan veya eksik eleman çökmez — eleman atlanır.
  */
@@ -104,7 +101,9 @@ export function parseRestructPlan(text: string, known: string[]): RestructPlan {
     const o = m as Record<string, unknown>;
     const from = canon(o.from);
     if (!from) continue;
-    moves.push({ from, toChild: target(o.toChild), toParent: target(o.toParent) });
+    // `path` hedeftir: bilinenlere karşı süzülmez, yalnızca boş eleman atılır.
+    const path = (Array.isArray(o.path) ? o.path : []).map(target).filter((p) => p !== '');
+    moves.push({ from, path });
   }
 
   const merges: RestructPlan['merges'] = [];

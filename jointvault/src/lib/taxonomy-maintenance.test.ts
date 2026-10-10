@@ -123,19 +123,45 @@ describe('parseMergeSuggestions', () => {
 describe('parseRestructPlan', () => {
   const known = ['pizza tarifi', 'pizza yapımı', 'Python', 'Çorba'];
 
-  it('iki seviyeli taşıma planını okur', () => {
+  it('N seviyeli yolu okur', () => {
     const json = JSON.stringify({
-      moves: [{ from: 'pizza tarifi', toParent: 'Yemek', toChild: 'Pizza' }],
+      moves: [{ from: 'pizza tarifi', path: ['Yemek', 'Tatlı', 'Pizza'] }],
       merges: [{ canonical: 'Pizza', duplicates: ['pizza yapımı'] }],
     });
     const plan = parseRestructPlan(json, known);
-    expect(plan.moves[0]).toEqual({ from: 'pizza tarifi', toChild: 'Pizza', toParent: 'Yemek' });
+    expect(plan.moves[0]).toEqual({ from: 'pizza tarifi', path: ['Yemek', 'Tatlı', 'Pizza'] });
     expect(plan.merges[0]).toEqual({ canonical: 'Pizza', duplicates: ['pizza yapımı'] });
+  });
+
+  it('boş yol kök demektir', () => {
+    const plan = parseRestructPlan(
+      JSON.stringify({ moves: [{ from: 'Python', path: [] }] }),
+      ['Python'],
+    );
+    expect(plan.moves[0].path).toEqual([]);
+  });
+
+  it('yol elemanı boşsa düşürülür', () => {
+    const plan = parseRestructPlan(
+      JSON.stringify({ moves: [{ from: 'Python', path: ['Yazılım', '', 'Backend'] }] }),
+      ['Python'],
+    );
+    expect(plan.moves[0].path).toEqual(['Yazılım', 'Backend']);
+  });
+
+  it('yol HEDEF adlardır: girdide olmayan yeni ad süzülmez', () => {
+    // Planın amacı yeni üst/alt adlar AÇMAKTIR; `path` bilinen adlara karşı
+    // süzülürse model "Yazılım" gibi genel bir üst açamaz ve hiyerarşi kurulamaz.
+    const plan = parseRestructPlan(
+      JSON.stringify({ moves: [{ from: 'Python', path: ['Yazılım', 'Backend'] }] }),
+      ['Python'],
+    );
+    expect(plan.moves[0].path).toEqual(['Yazılım', 'Backend']);
   });
 
   it('kaynakta aksan/harf farkını tolere eder (kanonik yazımla döner)', () => {
     const json = JSON.stringify({
-      moves: [{ from: 'Pizza Tarifi', toParent: 'Yemek', toChild: 'Pizza' }],
+      moves: [{ from: 'Pizza Tarifi', path: ['Yemek', 'Pizza'] }],
     });
     // Aksan katlaması doğru: listede "pizza tarifi" var.
     expect(parseRestructPlan(json, known).moves[0].from).toBe('pizza tarifi');
@@ -143,7 +169,7 @@ describe('parseRestructPlan', () => {
 
   it('girdide HİÇ olmayan kaynak adı geçirmez', () => {
     const json = JSON.stringify({
-      moves: [{ from: 'Makarna Tarifi', toParent: 'Yemek', toChild: 'Makarna' }],
+      moves: [{ from: 'Makarna Tarifi', path: ['Yemek', 'Makarna'] }],
     });
     // "Makarna Tarifi" listede yok. Uygulama bunu yeni kategori olarak açıp
     // taşımayı sessizce kaybettirmemeli.
@@ -151,12 +177,12 @@ describe('parseRestructPlan', () => {
   });
 
   it('girdi adını kanonik YAZIMLA döndürür', () => {
-    const json = JSON.stringify({ moves: [{ from: '  PIZZA TARİFİ ', toParent: '', toChild: '' }] });
+    const json = JSON.stringify({ moves: [{ from: '  PIZZA TARİFİ ', path: [] }] });
     expect(parseRestructPlan(json, known).moves[0].from).toBe('pizza tarifi');
   });
 
   it('markdown sarmalı JSON u ayıklar', () => {
-    const wrapped = 'plan:\n```json\n{"moves":[{"from":"Python","toParent":"","toChild":""}]}\n```';
+    const wrapped = 'plan:\n```json\n{"moves":[{"from":"Python","path":[]}]}\n```';
     expect(parseRestructPlan(wrapped, known).moves[0].from).toBe('Python');
   });
 
@@ -178,8 +204,8 @@ describe('validateRestructPlan — onay öncesi kapı', () => {
   it('temiz planı kabul eder', () => {
     const plan = {
       moves: [
-        { from: 'pizza tarifi', toParent: 'Yemek', toChild: 'Pizza' },
-        { from: 'Python', toParent: '', toChild: '' },
+        { from: 'pizza tarifi', path: ['Yemek', 'Pizza'] },
+        { from: 'Python', path: [] },
       ],
       merges: [],
     };
@@ -188,7 +214,7 @@ describe('validateRestructPlan — onay öncesi kapı', () => {
 
   it('girdide olmayan adı yakalar', () => {
     const plan = {
-      moves: [{ from: 'uydurma', toParent: 'X', toChild: 'Y' }],
+      moves: [{ from: 'uydurma', path: ['X', 'Y'] }],
       merges: [],
     };
     const check = validateRestructPlan(known, plan);
@@ -199,8 +225,8 @@ describe('validateRestructPlan — onay öncesi kapı', () => {
   it('aynı kaynağın iki kez atanmasını yakalar', () => {
     const plan = {
       moves: [
-        { from: 'pizza tarifi', toParent: 'Yemek', toChild: 'Pizza' },
-        { from: 'pizza tarifi', toParent: 'Yemek', toChild: 'Pizza Dilimi' },
+        { from: 'pizza tarifi', path: ['Yemek', 'Pizza'] },
+        { from: 'pizza tarifi', path: ['Yemek', 'Pizza Dilimi'] },
       ],
       merges: [],
     };

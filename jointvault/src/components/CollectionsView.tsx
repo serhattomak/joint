@@ -313,9 +313,13 @@ export function CollectionsView({
     setRestructBusy(true);
     try {
       await createBackup(await getDb());
-      await applyRestructPlan(restructPlan);
+      const { skipped } = await applyRestructPlan(restructPlan);
       setRestructPlan(null);
-      setNotice('Taksonomi iki seviyeye indirgendi.');
+      setNotice(
+        skipped.length > 0
+          ? `Taksonomi hiyerarşiye dönüştürüldü; ${skipped.length} taşıma en fazla seviye aşıldığı için atlandı.`
+          : 'Taksonomi hiyerarşiye dönüştürüldü.',
+      );
       window.dispatchEvent(new CustomEvent('vault-items-updated'));
       await loadData();
     } catch (e) {
@@ -1202,13 +1206,13 @@ export function CollectionsView({
                   )}
 
                   {restructPlan.moves
-                    .filter((m) => m.toChild)
+                    .filter((m) => m.path.length > 0)
                     .map((m, i) => (
                       <p key={i} className="text-sm">
                         <span className="text-muted-foreground line-through">{m.from}</span>
                         <span className="mx-1.5 text-muted-foreground">→</span>
                         <Badge variant="secondary" className="font-medium">
-                          {m.toParent} › {m.toChild}
+                          {m.path.join(' › ')}
                         </Badge>
                       </p>
                     ))}
@@ -1302,7 +1306,7 @@ export function CollectionsView({
         description={
           restructPlan
             ? `${restructPlan.merges.length} birleştirme ve ` +
-              `${restructPlan.moves.filter((m) => m.toChild).length} hiyerarşi ataması uygulanacak. ` +
+              `${restructPlan.moves.filter((m) => m.path.length > 0).length} hiyerarşi ataması uygulanacak. ` +
               'İşlem geri alınamaz; önce yedek alınır.'
             : ''
         }

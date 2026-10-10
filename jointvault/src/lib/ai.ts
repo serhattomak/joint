@@ -58,6 +58,7 @@ import {
   validateMergeGroups,
 } from './taxonomy-maintenance';
 import { indentedTaxonomyTree } from './taxonomy-view';
+import { MAX_DEPTH } from './taxonomy-tree';
 import {
   buildHistoryWindow,
   mergeQueryPayload,
@@ -1223,9 +1224,9 @@ export async function batchCategorizeItems(
 }
 
 /**
- * Mevcut düz kategorileri iki seviyeli taksonomiye indirgemek için LLM planı
- * üretir. **Yalnızca önerir** — hiçbir şey yazmaz. Kullanıcı planı görüp
- * onaylayınca `applyRestructPlan` çalışır.
+ * Mevcut düz kategorileri en fazla `MAX_DEPTH` seviyeli taksonomiye yerleştirmek
+ * için LLM planı üretir. **Yalnızca önerir** — hiçbir şey yazmaz. Kullanıcı
+ * planı görüp onaylayınca `applyRestructPlan` çalışır.
  */
 export async function restructurePlan(
   names: string[],
@@ -1240,19 +1241,21 @@ export async function restructurePlan(
   const system =
     'Sen bir taksonomi düzenleme asistanısın. Yalnızca geçerli bir JSON nesnesi döndür; başka metin yazma.';
   const prompt =
-    'Aşağıdaki kategori adlarını İKİ SEVİYELİ bir taksonomiye indirge.\n' +
+    `Aşağıdaki kategori adlarını en fazla ${MAX_DEPTH} seviyeli bir taksonomiye yerleştir.\n` +
     'KURALLAR:\n' +
     '1. "moves": listedeki HER ad için tam bir girdi ver.\n' +
-    '2. Aynı kavramı taşıyan ayrı adları BİRLEŞTİR: "pizza tarifi" ve "pizza yapımı"\n' +
-    '   ayrı kalmasın, ikisi de alt "Pizza"ya gitsin.\n' +
-    '3. Üst seviye GENEL (Yemek, Teknoloji, Sanat); alt seviye SOMUT (Pizza, Rust, Fotoğraf).\n' +
-    '4. Kök kalması gerekenlerde toChild boş string bırak.\n' +
-    '5. YENİ ad uydurma — yalnızca listede geçen adları kullan.\n' +
+    '2. Her taşımanın "path" alanı kökten yaprağa ad dizisidir; aynı kavramı\n' +
+    '   taşıyan adları AYNI yola yönlendir: "pizza tarifi" ve "pizza yapımı"\n' +
+    '   ayrı kalmasın, ikisi de ["Yemek","Tatlı","Pizza"] yoluna gitsin.\n' +
+    '3. Yolun ilk parçası GENEL (Yemek, Teknoloji, Sanat); sonrakiler SOMUT (Pizza, Rust, Fotoğraf).\n' +
+    '4. Kök kalması gerekenlerde "path" boş dizi olsun.\n' +
+    '5. "from" YALNIZCA listede geçen bir ad olmalı; "path" parçaları hedeftir,\n' +
+    '   gerekirse genel bir üst adı sen oluşturabilirsin.\n' +
     '6. "merges": aynı kavramı taşıyan ad grupları (kanonik + katlananlar).\n\n' +
     `Kategori adları: ${names.join(', ')}\n\n` +
     'Yanıt biçimi (yalnız JSON):\n' +
-    '{"moves":[{"from":"pizza tarifi","toParent":"Yemek","toChild":"Pizza"},' +
-    '{"from":"Python","toParent":"","toChild":""}],"merges":' +
+    '{"moves":[{"from":"pizza tarifi","path":["Yemek","Tatlı","Pizza"]},' +
+    '{"from":"Python","path":[]}],"merges":' +
     '[{"canonical":"Pizza","duplicates":["pizza tarifi","pizza yapımı"]}]}';
 
   try {
@@ -1269,15 +1272,16 @@ export async function restructurePlan(
 
 /**
  * Onaylanan planı uygular: kategorileri hiyerarşiye taşır ve yinelenenleri
- * birleştirir.
+ * birleştirir. Atlanan kaynak adlarını döner (yol `MAX_DEPTH`'i aşarsa taşıma
+ * yazılmaz).
  *
- * Sıra önemli: **önce birleştir** (kayıtlar hedefe taşınır), sonra `parent_id`
- * ata. Aksi halde birleştirilen adın altındaki kayıtlar yaşayan bir üst
- * adına bağlanamaz.
+ * Sıra önemli: **önce birleştir** (kayıtlar hedefe taşınır), sonra yolu aç.
+ * Aksi halde birleştirilen adın altındaki kayıtlar yaşayan bir üst adına
+ * bağlanamaz.
  *
  * Geri alınabilir değildir; bu yüzden çağırmadan önce kullanıcı onayı zorunlu.
  */
-export async function applyRestructPlan(plan: RestructPlan): Promise<void> {
+export async function applyRestructPlan(plan: RestructPlan): Promise<{ skipped: string[] }> {
   // 1. Yinelenenleri kanonik adın altında birleştir.
   for (const m of plan.merges) {
     const canonicalRow = await getOrCreateCategory(m.canonical);
@@ -1289,16 +1293,26 @@ export async function applyRestructPlan(plan: RestructPlan): Promise<void> {
     if (dupIds.length > 0) await mergeCategories(canonicalRow.id, dupIds);
   }
 
-  // 2. Hiyerarşiyi kur: `from` adı taşındıysa güncelle, kalanlar kök kalır.
+  // 2. Hedef yolu kökten yaprağa sırayla aç; kayıtları en derine taşı.
+  //    Boş yol = kök: kaynağın hedefi yok, yerinde kalır (silinmez).
+  const skipped: string[] = [];
   for (const move of plan.moves) {
-    if (!move.toChild) continue;
-    const parent = await getOrCreateCategory(move.toParent);
-    const child = await getOrCreateCategory(move.toChild, null, parent.id);
+    if (move.path.length === 0) continue;
+    if (move.path.length > MAX_DEPTH) {
+      skipped.push(move.from);
+      continue;
+    }
+    let targetId: string | null = null;
+    for (const name of move.path) {
+      const row = await getOrCreateCategory(name, null, targetId);
+      targetId = row.id;
+    }
     const source = await getOrCreateCategory(move.from);
-    if (source.id === child.id) continue;
-    // `from` da bir kaynak adıysa kanonik alt ad olur: kayıtlarını taşı.
-    await mergeCategories(child.id, [source.id]);
+    // path boş değil → döngü en az bir kez döndü, `targetId` doludur.
+    if (!targetId || targetId === source.id) continue;
+    await mergeCategories(targetId, [source.id]);
   }
+  return { skipped };
 }
 
 /**
