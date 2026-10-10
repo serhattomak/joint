@@ -5,6 +5,7 @@ import {
   Bookmark,
   Check,
   FolderKanban,
+  Move,
   Pencil,
   Plus,
   Search,
@@ -38,6 +39,7 @@ import {
   listTagsWithCounts,
   mergeCategories,
   mergeTags,
+  moveCategory,
   purgeTaxonomy,
   removeCategory,
   removeCollection,
@@ -50,6 +52,9 @@ import {
   type TagWithCount,
 } from '@/lib/db/client';
 import { createBackup } from '@/lib/db/backup';
+import { CategoryTree } from '@/components/CategoryTree';
+import { Popover, PopoverContent, PopoverGroupLabel, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
+import { categoryTreeOf, filterTree, type CategoryTreeNode } from '@/lib/taxonomy-view';
 import { duplicateGroups } from '@/lib/taxonomy-maintenance';
 import { applyRestructPlan, restructurePlan, suggestTaxonomyMerges } from '@/lib/ai';
 import { validateRestructPlan, type RestructPlan } from '@/lib/taxonomy-maintenance';
@@ -85,6 +90,22 @@ const DELETE_CONFIRM_TEXT: Record<DeleteKind, { title: string; description: stri
     description: 'Etiket tüm kayıtlardan temizlenir; kayıtlarınız silinmez.',
   },
 };
+
+/*
+ * Ağacı derinlikle birlikte ön-sıralı düz listeye açar. Kartlar ağaç
+ * girintisini (`depth`) buradan alır; ayrı bir çizim sözlüğü açılmaz.
+ */
+function flattenTree(
+  nodes: CategoryTreeNode[],
+  depth = 0,
+  out: { node: CategoryTreeNode; depth: number }[] = [],
+): { node: CategoryTreeNode; depth: number }[] {
+  for (const node of nodes) {
+    out.push({ node, depth });
+    flattenTree(node.children, depth + 1, out);
+  }
+  return out;
+}
 
 export function CollectionsView({
   onClose,
@@ -210,6 +231,10 @@ export function CollectionsView({
   const [restructBusy, setRestructBusy] = useState(false);
   const [confirmRestruct, setConfirmRestruct] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Taşıma: hedef üst seçiciyi açık tutan kategori ve seçici araması.
+  const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
+  const [moveSearch, setMoveSearch] = useState('');
 
   // Toplu taksonomi temizliği (sıfırdan başlatmak için)
   const [confirmPurge, setConfirmPurge] = useState<{
@@ -383,18 +408,41 @@ export function CollectionsView({
     await loadData();
   };
 
+  /*
+   * Taşıma, hiyerarşiyi değiştiren tek yazma yolu `moveCategory` üzerinden
+   * gider. Kapı reddederse hata fırlatır: gerekçe `notice`e yazılır, veri
+   * değişmediği için liste olduğu gibi kalır (yeniden yüklemeye gerek yok).
+   */
+  const handleMoveCategory = async (id: string, parentId: string | null): Promise<void> => {
+    setMoveTargetId(null);
+    setMoveSearch('');
+    setNotice(null);
+    try {
+      await moveCategory(id, parentId);
+      window.dispatchEvent(new CustomEvent('vault-items-updated'));
+      await loadData();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   // Filtrelenmiş listeler
   const query = searchFilter.trim().toLowerCase();
 
   const filteredCollections = collections.filter((c) =>
     query ? c.name.toLowerCase().includes(query) : true,
   );
-  const filteredCategories = categories.filter((c) =>
-    query ? c.name.toLowerCase().includes(query) : true,
-  );
   const filteredTags = tags.filter((t) =>
     query ? t.name.toLowerCase().includes(query) : true,
   );
+
+  // Kategoriler ağaç olarak çizilir; arama ataları korur (CategoryTree ile aynı).
+  const categoryTree = categoryTreeOf(categories);
+  const visibleCategoryTree = query
+    ? filterTree(categoryTree, searchFilter.trim().toLocaleLowerCase('tr'))
+    : categoryTree;
+  const flatCategories = flattenTree(visibleCategoryTree);
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
 
   return (
     <PageSurface
@@ -676,10 +724,20 @@ export function CollectionsView({
             </Button>
           </div>
 
-          {/* Kategori Kartları Grid */}
+          {/* Taşıma hataları burada görünür olur; gerekçe yutulmaz. */}
+          {notice && (
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+            >
+              {notice}
+            </p>
+          )}
+
+          {/* Kategoriler — girintili ağaç; aynı CategoryTree görsel dili. */}
           {loading ? (
             <p className="py-12 text-center text-sm text-muted-foreground">Kategoriler yükleniyor…</p>
-          ) : filteredCategories.length === 0 ? (
+          ) : flatCategories.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-12 text-center">
               <Bookmark className="mx-auto mb-3 size-8 text-muted-foreground/60" />
               <p className="text-sm font-medium">Henüz bir kategori bulunamadı</p>
@@ -688,14 +746,17 @@ export function CollectionsView({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredCategories.map((cat) => {
+            <div className="flex flex-col gap-3">
+              {flatCategories.map(({ node, depth }) => {
+                const cat = categoryById.get(node.id);
+                if (!cat) return null;
                 const isEditing = editingItem?.kind === 'category' && editingItem.id === cat.id;
 
                 return (
                   <div
                     key={cat.id}
                     className="settings-card flex items-center justify-between gap-3 p-3.5 transition hover:border-primary/40"
+                    style={{ marginLeft: depth * 16 }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -743,6 +804,49 @@ export function CollectionsView({
                             Gör
                           </Button>
                         )}
+                        <Popover
+                          open={moveTargetId === cat.id}
+                          onOpenChange={(open) => {
+                            setMoveTargetId(open ? cat.id : null);
+                            if (!open) setMoveSearch('');
+                          }}
+                        >
+                          <PopoverTrigger
+                            render={
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-7 text-muted-foreground hover:text-foreground"
+                                title="Taşı"
+                              />
+                            }
+                          >
+                            <Move className="size-3" />
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64 p-0">
+                            <PopoverTitle>Kategoriyi taşı</PopoverTitle>
+                            <div className="p-1.5">
+                              <Input
+                                value={moveSearch}
+                                onChange={(e) => setMoveSearch(e.target.value)}
+                                placeholder="Yeni üst ara…"
+                                className="h-7 text-xs"
+                                autoFocus
+                              />
+                            </div>
+                            <PopoverGroupLabel>Yeni üst</PopoverGroupLabel>
+                            {/* Kapı geçersiz hedefi reddeder; gerekçe yukarıda görünür. */}
+                            <div className="flex max-h-64 min-h-0 flex-col">
+                              <CategoryTree
+                                nodes={categoryTree}
+                                selectedId={cat.parent_id ?? 'all'}
+                                onSelect={(id) => void handleMoveCategory(cat.id, id === 'all' ? null : id)}
+                                search={moveSearch}
+                                emptyLabel="Kök (üst yok)"
+                              />
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                         <Button
                           size="icon"
                           variant="ghost"

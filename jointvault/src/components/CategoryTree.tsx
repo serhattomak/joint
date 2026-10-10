@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from 'cn';
-import { expandedForSearch } from '@/lib/taxonomy-view';
+import { expandedForSearch, filterTree } from '@/lib/taxonomy-view';
 import type { CategoryTreeNode } from '@/lib/taxonomy-view';
 
 /*
@@ -39,21 +39,6 @@ export function OptionRow({
       {children}
     </button>
   );
-}
-
-/**
- * Arama süzgeci: eşleşen düğümü ve eşleşmeye giden atalarını korur.
- * Eşleşen düğümün eşleşmeyen torunları düşer (iki seviyeli eski davranışla aynı).
- */
-function filterTree(nodes: CategoryTreeNode[], needle: string): CategoryTreeNode[] {
-  const out: CategoryTreeNode[] = [];
-  for (const node of nodes) {
-    const children = filterTree(node.children, needle);
-    if (children.length > 0 || node.name.toLocaleLowerCase('tr').includes(needle)) {
-      out.push({ ...node, children });
-    }
-  }
-  return out;
 }
 
 interface CategoryTreeProps {

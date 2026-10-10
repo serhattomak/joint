@@ -72,6 +72,22 @@ export function expandedForSearch(nodes: CategoryTreeNode[], needle: string): Se
 }
 
 /**
+ * Arama süzgeci: eşleşen düğümü ve eşleşmeye giden atalarını korur.
+ * Eşleşen düğümün eşleşmeyen torunları düşer (iki seviyeli eski davranışla aynı).
+ * `needle` zaten küçük harfe çevrilmiş olmalıdır.
+ */
+export function filterTree(nodes: CategoryTreeNode[], needle: string): CategoryTreeNode[] {
+  const out: CategoryTreeNode[] = [];
+  for (const node of nodes) {
+    const children = filterTree(node.children, needle);
+    if (children.length > 0 || node.name.toLocaleLowerCase('tr').includes(needle)) {
+      out.push({ ...node, children });
+    }
+  }
+  return out;
+}
+
+/**
  * Yol listesini girintili ağaca çevirir (prompt biçimi; SAF).
  *
  * Her yol `derinlik × 2 boşluk` ile yazılır. Girdi yolları herhangi bir sırada
