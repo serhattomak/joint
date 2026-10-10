@@ -7,6 +7,7 @@ import { createBackupWith, runDailyBackupIfDue } from './backup';
 import { MIGRATIONS, runMigrations, type MigrationExecutor } from './migrations';
 import { buildMergeBlob } from './merge-sql';
 import { getVectorIndex, invalidateVectorIndex } from '../vector-cache';
+import { MAX_DEPTH } from '../taxonomy-tree';
 
 /*
  * Veritabanı yolu.
@@ -533,17 +534,30 @@ export async function listCategoryTree(): Promise<CategoryNode[]> {
 }
 
 /**
- * Üst seviye seçildiğinde altları da kapsanır: verilen id kökse onun
- * tüm çocuklarının id'sini de döndürür. Filtre zinciri tek yerden buradan
+ * Kategori filtresinin SQL'i; test bu dizgeyi client.ts'ten birebir okur
+ * (bkz. category-filter-sql.test.ts), kopya sapmasın diye.
+ *
+ * `sub` seçilen kategoriyi kök alır ve TÜM torunlarını N seviye toplar.
+ * `depth < ${MAX_DEPTH}` savunmacıdır: kapı döngüyü yazarken engeller ama
+ * elle yazılmış bozuk veride sorgu kendini sınırlar (aksi halde asılır).
+ */
+const CATEGORY_FILTER_IDS_SQL = `WITH RECURSIVE sub(id, depth) AS (
+  SELECT id, 1 FROM categories WHERE id = $1
+  UNION ALL
+  SELECT c.id, s.depth + 1 FROM categories c JOIN sub s ON c.parent_id = s.id
+  WHERE s.depth < ${MAX_DEPTH}
+)
+SELECT id FROM sub`;
+
+/**
+ * Üst seviye seçildiğinde TÜM torunları kapsanır: verilen id'nin kendisi ve
+ * altındaki her seviyenin id'si döner. Filtre zinciri tek yerden buradan
  * geçer (bkz. `listItemsPage`).
  */
 export async function resolveCategoryFilterIds(categoryId: string): Promise<string[]> {
   if (categoryId === 'all') return [];
   const db = await getDb();
-  const rows = await db.select<{ id: string }[]>(
-    'SELECT id FROM categories WHERE id = $1 OR parent_id = $1',
-    [categoryId],
-  );
+  const rows = await db.select<{ id: string }[]>(CATEGORY_FILTER_IDS_SQL, [categoryId]);
   // Hiyerarşi öncesi arşivde kökün altı olmayabilir; o durumda seçilen id
   // sorguya hiç girmemesin diye satır bulunamazsa id'yi kendisi döndürürüz.
   return rows.length > 0 ? rows.map((r) => r.id) : [categoryId];
