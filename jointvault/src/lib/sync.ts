@@ -183,7 +183,7 @@ export async function processDownloadedItemWithAi(
       const catResult = await categorizeAndTagItem(item);
       const hasSuggestions = catResult.categories.length > 0 || catResult.tags.length > 0;
       if (hasSuggestions && shouldApplySuggestion(catResult, true)) {
-        await applyCategorization(itemId, catResult.categories, catResult.tags);
+        await applyCategorization(itemId, catResult.categories, catResult.tags, catResult.newCategory);
         aiCategorized = true;
       }
     }

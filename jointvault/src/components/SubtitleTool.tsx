@@ -77,6 +77,7 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
     categories?: string[];
     tags?: string[];
     itemId?: string;
+    newCategory?: { parent: string; child: string } | null;
   } | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const installer = useComponentInstaller();
@@ -199,7 +200,7 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
             const catResult = await categorizeAndTagItem(item);
             const hasSuggestions = catResult.categories.length > 0 || catResult.tags.length > 0;
             if (hasSuggestions && shouldApplySuggestion(catResult, !!aiStat.auto_apply_tags)) {
-              await applyCategorization(itemId, catResult.categories, catResult.tags);
+              await applyCategorization(itemId, catResult.categories, catResult.tags, catResult.newCategory);
               setAiNotice({
                 message: `Otomatik uygulandı: ${catResult.categories.join(', ')} / ${catResult.tags.map((t) => '#' + t).join(' ')}`,
                 status: 'applied',
@@ -211,6 +212,7 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
                 categories: catResult.categories,
                 tags: catResult.tags,
                 itemId,
+                newCategory: catResult.newCategory,
               });
             }
           }
@@ -419,9 +421,9 @@ export function SubtitleTool({ refreshKey, onDone, onClose }: SubtitleToolProps)
                             size="sm"
                             className="h-6 px-2 text-3xs font-medium"
                             onClick={async () => {
-                              const { itemId, categories, tags } = aiNotice;
+                              const { itemId, categories, tags, newCategory } = aiNotice;
                               if (!itemId || !categories) return;
-                              await applyCategorization(itemId, categories, tags || []);
+                              await applyCategorization(itemId, categories, tags || [], newCategory);
                               setAiNotice({
                                 message: 'Kategoriler ve etiketler arşive başarıyla uygulandı.',
                                 status: 'applied',
