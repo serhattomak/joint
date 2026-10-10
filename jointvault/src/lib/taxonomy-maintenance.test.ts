@@ -3,6 +3,8 @@ import {
   duplicateGroups,
   parseMergeSuggestions,
   parseRestructPlan,
+  preferCanonical,
+  turkishScore,
   validateRestructPlan,
 } from './taxonomy-maintenance';
 
@@ -19,6 +21,58 @@ describe('duplicateGroups', () => {
 
   it('yinelenen yoksa boş döner', () => {
     expect(duplicateGroups([{ name: 'A' }, { name: 'B' }])).toEqual([]);
+  });
+});
+
+describe('preferCanonical', () => {
+  it('Türkçe imlâ kullanım sayısından ÜSTÜNDÜR', () => {
+    // Kullanıcının asıl örneği: 200 kayıtta "Yazilim", 2 kayıtta "Yazılım".
+    expect(
+      preferCanonical([
+        { name: 'Yazilim', count: 200 },
+        { name: 'Yazılım', count: 2 },
+      ]),
+    ).toBe('Yazılım');
+  });
+
+  it('imlâ eşitse düzgün harf durumu kazanır', () => {
+    expect(preferCanonical([{ name: 'yazilim', count: 9 }, { name: 'Yazilim', count: 1 }])).toBe(
+      'Yazilim',
+    );
+  });
+
+  it('imlâ ve harf durumu eşitse kullanım sayısı kazanır', () => {
+    // Aynı normalizeKey, aynı turkishScore (0), aynı harf durumu → sayı belirler.
+    expect(
+      preferCanonical([
+        { name: 'Yapay Zeka', count: 1 },
+        { name: 'Yapay-Zeka', count: 5 },
+      ]),
+    ).toBe('Yapay-Zeka');
+  });
+
+  it('HER ŞEY eşitse sonuç DETERMİNİSTİK (girdi sırasından bağımsız)', () => {
+    const a = [
+      { name: 'Aaa', count: 2 },
+      { name: 'Aaa ', count: 2 },
+    ];
+    expect(preferCanonical(a)).toBe(preferCanonical([...a].reverse()));
+  });
+
+  it('turkishScore Türkçeye özgü harfleri sayar', () => {
+    expect(turkishScore('Yazılım')).toBe(2);
+    expect(turkishScore('Yazilim')).toBe(0);
+    expect(turkishScore('ÇÖĞÜŞİI')).toBe(7);
+  });
+});
+
+describe('duplicateGroups — imlâ', () => {
+  it('"Yazilim"/"Yazılım"ı gruplar, kanonik "Yazılım"', () => {
+    const g = duplicateGroups([
+      { name: 'Yazilim', count: 200 },
+      { name: 'Yazılım', count: 2 },
+    ]);
+    expect(g).toEqual([{ canonical: 'Yazılım', duplicates: ['Yazilim'] }]);
   });
 });
 

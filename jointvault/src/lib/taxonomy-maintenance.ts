@@ -127,8 +127,56 @@ export interface DuplicateGroup {
 }
 
 /**
- * Aynı `normalizeKey`'e düşen adları gruplar. Kanonik = en yüksek `count`
- * (eşitlikte en kısa ad, yoksa ilk). Yalnızca >1 üyeli gruplar döner.
+ * Türkçeye özgü harfler: aksanlı küçük/büyük sesliler ile noktalı/noktasız `i`
+ * çifti. Noktasız büyük `I` de sayılır — Türkçede `ı`'nın büyüğüdür.
+ */
+const TURKISH_LETTERS = /[ıİIşŞğĞüÜöÖçÇ]/g;
+
+/**
+ * Adda Türkçeye özgü harf sayısı: "Yazılım" = 2, "Yazilim" = 0.
+ *
+ * Neden önemli: kullanıcı `Yazilim`'ı 200 kayıtta, `Yazılım`'ı 2 kayıtta
+ * kullanıyor olabilir; birleştirmede **doğru Türkçe yazım** kazanmalı.
+ */
+export function turkishScore(name: string): number {
+  return (name.match(TURKISH_LETTERS) ?? []).length;
+}
+
+/** Düzgün harf durumu: ne tümü küçük, ne tümü büyük. Harfsizse düzgün değil. */
+function isProperCased(name: string): boolean {
+  const letters = name.replace(/[^\p{L}]/gu, '');
+  if (!letters) return false;
+  return (
+    letters !== letters.toLocaleLowerCase('tr-TR') &&
+    letters !== letters.toLocaleUpperCase('tr-TR')
+  );
+}
+
+/**
+ * Bir grup içindeki yazım varyantlarından kanonik olanı seçer.
+ *
+ * Sıra (yüksek öncelik önce): imlâ (`turkishScore` ↓) → düzgün harf durumu ↓ →
+ * kullanım sayısı ↓ → ad (↑). Son anahtar `ad`'dır: tam eşitlikte bile sonuç
+ * **belirlidir**, girdi sırasına bağlı kalmaz.
+ *
+ * Boş dizide çağıran hatasıdır; sessizce `''` döndürmek yanlış ad yazar.
+ */
+export function preferCanonical(candidates: { name: string; count?: number }[]): string {
+  if (candidates.length === 0) throw new Error('preferCanonical: aday listesi boş olamaz');
+
+  const proper = (n: string): number => (isProperCased(n) ? 1 : 0);
+  return [...candidates].sort(
+    (a, b) =>
+      turkishScore(b.name) - turkishScore(a.name) ||
+      proper(b.name) - proper(a.name) ||
+      (b.count ?? 0) - (a.count ?? 0) ||
+      (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+  )[0].name;
+}
+
+/**
+ * Aynı `normalizeKey`'e düşen adları gruplar. Kanonik = `preferCanonical`
+ * (imlâ > harf durumu > kullanım > ad). Yalnızca >1 üyeli gruplar döner.
  */
 export function duplicateGroups(
   entries: { name: string; count?: number }[],
@@ -145,15 +193,10 @@ export function duplicateGroups(
   const out: DuplicateGroup[] = [];
   for (const list of groups.values()) {
     if (list.length < 2) continue;
-    const canonical = [...list].sort((a, b) => {
-      const ca = a.count ?? 0;
-      const cb = b.count ?? 0;
-      if (cb !== ca) return cb - ca;
-      return a.name.length - b.name.length;
-    })[0];
+    const canonical = preferCanonical(list);
     out.push({
-      canonical: canonical.name,
-      duplicates: list.filter((x) => x !== canonical).map((x) => x.name),
+      canonical,
+      duplicates: list.map((x) => x.name).filter((n) => n !== canonical),
     });
   }
   return out;
