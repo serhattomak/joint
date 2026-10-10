@@ -1,4 +1,4 @@
-import type { Item } from './db/types';
+import type { Category, Item } from './db/types';
 import { parseArticleImages, parseArticleVideos } from './scraper';
 
 /**
@@ -7,6 +7,34 @@ import { parseArticleImages, parseArticleVideos } from './scraper';
  */
 
 const httpUrl = (s: string): boolean => /^https?:\/\//i.test(s);
+
+/**
+ * Defter sayfasının kapsamı: seçilen kategori + TÜM torunları (kendisi dahil).
+ *
+ * Kayıt yaprak olmayan düğüme de bağlanabildiği için "Tatlı" sayfası kendi
+ * doğrudan kayıtlarını VE "Sütlü Tatlı"nınkileri göstermeli. SQL tarafı aynı
+ * kuralı `resolveCategoryFilterIds` ile uygular; bu, onun saf eşidir.
+ * `seen` kümesi bozuk `parent_id` döngüsünde asılmayı önler.
+ */
+export function notebookPageIds(categories: Category[], selectedId: string): string[] {
+  const childrenOf = new Map<string, string[]>();
+  for (const c of categories) {
+    if (!c.parent_id) continue;
+    const list = childrenOf.get(c.parent_id) ?? [];
+    list.push(c.id);
+    childrenOf.set(c.parent_id, list);
+  }
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const walk = (id: string): void => {
+    if (seen.has(id)) return; // bozuk `parent_id` döngüsü burada kesilir
+    seen.add(id);
+    ids.push(id);
+    for (const child of childrenOf.get(id) ?? []) walk(child);
+  };
+  walk(selectedId);
+  return ids;
+}
 
 /** Makale içinden http(s) bağlantıları: md linkleri + görsel/video url'leri. */
 export function extractLinks(

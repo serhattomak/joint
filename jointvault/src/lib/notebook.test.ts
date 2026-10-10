@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Item } from './db/types';
+import type { Category, Item } from './db/types';
 import {
   buildCategoryDigest,
   buildNumericSummary,
   extractLinks,
+  notebookPageIds,
   planItemMerge,
   sortNotebookItems,
 } from './notebook';
@@ -26,6 +27,34 @@ const item = (over: Partial<Item>): Item => ({
   converted_path: null,
   ...over,
 }) as Item;
+
+const cat = (id: string, name: string, parent_id: string | null = null): Category => ({
+  id,
+  name,
+  parent_id,
+  user_id: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+});
+
+describe('notebookPageIds', () => {
+  it('YAPRAK OLMAYAN düğümün sayfası kendisini VE torunlarını kapsar', () => {
+    // "Tatlı"ya doğrudan bağlı kayıt da, "Sütlü Tatlı" kayıtları da görünür.
+    const cats = [cat('1', 'Yemek'), cat('2', 'Tatlı', '1'), cat('3', 'Sütlü Tatlı', '2')];
+    expect(notebookPageIds(cats, '2').sort()).toEqual(['2', '3']);
+  });
+
+  it('yaprak düğümün sayfası yalnız kendisi', () => {
+    const cats = [cat('1', 'Yemek'), cat('2', 'Tatlı', '1')];
+    expect(notebookPageIds(cats, '2')).toEqual(['2']);
+  });
+
+  it('bozuk parent_id döngüsünde asılmaz', () => {
+    // 2 → 3 → 2: normalde sonsuz döngü; `seen` kümesi keser.
+    const cats = [cat('2', 'A', '3'), cat('3', 'B', '2')];
+    expect(notebookPageIds(cats, '2').sort()).toEqual(['2', '3']);
+  });
+});
 
 describe('extractLinks', () => {
   it('markdown linkleri sırasıyla çıkarır ve tekilliştirir', () => {

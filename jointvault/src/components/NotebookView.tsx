@@ -14,6 +14,8 @@ import { getAiStatus, isAiEnabled, summarizeCategory } from '@/lib/ai';
 import { parseArticleImages } from '@/lib/scraper';
 import { buildNumericSummary, extractLinks } from '@/lib/notebook';
 import { openExternal } from '@/lib/external';
+import { categoryTreeOf } from '@/lib/taxonomy-view';
+import { CategoryTree } from '@/components/CategoryTree';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -156,49 +158,31 @@ export function NotebookView({ refreshKey = 0, onOpenItem, onOpenSettings }: Not
 
   return (
     <div className="flex h-full min-w-0 flex-1">
-      {/* Sol: kategori listesi */}
-      <aside className="w-56 shrink-0 overflow-y-auto border-r border-border/60 py-8 pl-6 pr-3">
+      {/* Sol: kategori ağacı — üst düğümün sayfası altlarını da kapsar. */}
+      <aside className="flex w-56 shrink-0 flex-col border-r border-border/60 py-8 pl-6 pr-3">
         {error && loadState === 'error' ? (
           <p className="text-sm text-red-400">{error}</p>
         ) : categories === null ? (
           <div className="skeleton-paper h-5 w-36" />
         ) : (
-          <nav className="flex flex-col gap-0.5" aria-label="Defter sayfaları">
-            <button
-              type="button"
-              aria-current={selected === null ? 'true' : undefined}
-              onClick={() => setSelected(null)}
-              className={`flex items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm ${
-                selected === null
-                  ? 'bg-card font-medium text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="truncate">Sınıflandırılmamış</span>
-              <span className="text-3xs tabular-nums text-muted-foreground">{uncategorizedCount}</span>
-            </button>
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                aria-current={selected === c.id ? 'true' : undefined}
-                onClick={() => setSelected(c.id)}
-                className={`flex items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm ${
-                  selected === c.id
-                    ? 'bg-card font-medium text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <span className="truncate">{c.name}</span>
-                <span className="text-3xs tabular-nums text-muted-foreground">{c.count}</span>
-              </button>
-            ))}
+          <div role="navigation" aria-label="Defter sayfaları" className="flex min-h-0 flex-1 flex-col">
+            <CategoryTree
+              nodes={categoryTreeOf(categories)}
+              selectedId={selected ?? 'all'}
+              onSelect={(id) => setSelected(id === 'all' ? null : id)}
+              search=""
+              emptyLabel={
+                uncategorizedCount > 0
+                  ? `Sınıflandırılmamış (${uncategorizedCount})`
+                  : 'Sınıflandırılmamış'
+              }
+            />
             {categories.length === 0 && uncategorizedCount === 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
                 Kategori yok — Ayarlar → AI'dan "Defteri Hazırla" ile arşivi düzenleyin.
               </p>
             )}
-          </nav>
+          </div>
         )}
       </aside>
 
