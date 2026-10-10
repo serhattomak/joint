@@ -7,7 +7,7 @@ import { createBackupWith, runDailyBackupIfDue } from './backup';
 import { MIGRATIONS, runMigrations, type MigrationExecutor } from './migrations';
 import { buildMergeBlob } from './merge-sql';
 import { getVectorIndex, invalidateVectorIndex } from '../vector-cache';
-import { MAX_DEPTH } from '../taxonomy-tree';
+import { MAX_DEPTH, validateCategoryCreate, validateCategoryMove } from '../taxonomy-tree';
 
 /*
  * Veritabanı yolu.
@@ -491,6 +491,9 @@ export async function createCategory(
   parent_id: string | null = null,
 ): Promise<Category> {
   const db = await getDb();
+  /* Yazmadan önce kapı: derinliği aşan bir üstün altına kategori açılamaz. */
+  const gate = validateCategoryCreate(await listCategories(), parent_id);
+  if (!gate.ok) throw new Error(gate.reason!);
   const row: Category = {
     id: crypto.randomUUID(),
     name,
@@ -565,9 +568,37 @@ export async function resolveCategoryFilterIds(categoryId: string): Promise<stri
 
 export async function updateCategory(id: string, name: string): Promise<Category> {
   const db = await getDb();
-  await db.execute('UPDATE categories SET name = $1, updated_at = $2 WHERE id = $3', [name, now(), id]);
+  try {
+    await db.execute('UPDATE categories SET name = $1, updated_at = $2 WHERE id = $3', [name, now(), id]);
+  } catch (error) {
+    /* Ad hiyerarşiden bağımsız UNIQUE. Ham SQLite hatası yerine kullanıcının
+       anlayacağı cümleyi ver; diğer hatalar aynen yükselir. */
+    const message = error instanceof Error ? error.message : String(error);
+    if (/UNIQUE constraint failed/i.test(message)) {
+      throw new Error('Bu adda bir kategori zaten var.');
+    }
+    throw error;
+  }
   const [row] = await db.select<Category[]>('SELECT * FROM categories WHERE id = $1', [id]);
   return row;
+}
+
+/**
+ * Kategoriyi yeni bir üste taşır; hiyerarşiyi değiştiren TEK yazma yolu.
+ *
+ * Kapı geçilmeden UPDATE'e dokunulmaz: reddedilen taşıma veriyi değiştirmez.
+ * `parentId` null ise kategori köke taşınır. Reddedilirse kapının Türkçe
+ * gerekçesiyle fırlatır.
+ */
+export async function moveCategory(id: string, parentId: string | null): Promise<void> {
+  const db = await getDb();
+  const gate = validateCategoryMove(await listCategories(), id, parentId);
+  if (!gate.ok) throw new Error(gate.reason!);
+  await db.execute('UPDATE categories SET parent_id = $1, updated_at = $2 WHERE id = $3', [
+    parentId,
+    now(),
+    id,
+  ]);
 }
 
 export async function removeCategory(id: string): Promise<void> {
