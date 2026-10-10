@@ -62,7 +62,24 @@ describe('preferCanonical', () => {
   it('turkishScore Türkçeye özgü harfleri sayar', () => {
     expect(turkishScore('Yazılım')).toBe(2);
     expect(turkishScore('Yazilim')).toBe(0);
-    expect(turkishScore('ÇÖĞÜŞİI')).toBe(7);
+    expect(turkishScore('ÇÖĞÜŞİ')).toBe(6);
+  });
+
+  it('ASCII I sayılmaz: yanlış imlâ doğru olandan skor ALMAZ', () => {
+    // "İstanbul" (doğru, noktalı İ) 1; "Istanbul" (ASCII'ye kaçmış) 0 olmalı.
+    // İkisi eşit skor alırsa kanonik seçim kullanım sayısına düşer ve
+    // 200 kayıtlı yanlış yazım kazanır — düzeltmeye çalıştığımız hata.
+    expect(turkishScore('İstanbul')).toBeGreaterThan(turkishScore('Istanbul'));
+    expect(turkishScore('Istanbul')).toBe(0);
+  });
+
+  it('çok kullanılan ASCII yazım, az kullanılan doğru imlâyı YENMEZ', () => {
+    expect(
+      preferCanonical([
+        { name: 'Istanbul', count: 200 },
+        { name: 'İstanbul', count: 2 },
+      ]),
+    ).toBe('İstanbul');
   });
 });
 

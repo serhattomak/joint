@@ -127,10 +127,11 @@ export interface DuplicateGroup {
 }
 
 /**
- * Türkçeye özgü harfler: aksanlı küçük/büyük sesliler ile noktalı/noktasız `i`
- * çifti. Noktasız büyük `I` de sayılır — Türkçede `ı`'nın büyüğüdür.
+ * Türkçeye özgü harfler — noktasız `ı`/noktalı `İ` çifti dâhil. ASCII `I`
+ * (U+0049) **bilerek dışarıda**: `İstanbul` 1, ASCII'ye kaçmış `Istanbul` 0
+ * almalı ki yanlış imlâ, çok kullanılıyor diye doğru olanı yenmesin.
  */
-const TURKISH_LETTERS = /[ıİIşŞğĞüÜöÖçÇ]/g;
+const TURKISH_LETTERS = /[ıİşŞğĞüÜöÖçÇ]/g;
 
 /**
  * Adda Türkçeye özgü harf sayısı: "Yazılım" = 2, "Yazilim" = 0.
