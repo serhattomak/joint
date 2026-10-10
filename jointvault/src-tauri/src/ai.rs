@@ -734,12 +734,20 @@ async fn ensure_server_running(
         .arg("-c")
         .arg(if slot_type == "chat" { "8192" } else { "4096" });
 
+    // `-b`/`-ub`: llama.cpp varsayılanı `-b 2048`; bundan UZUN prompt'lar
+    // "input is too large to process" ile REDDEDİLİR ve o çağrının tüm kayıtları
+    // kaybolur. Sohbet prompt'u (yönerge + taksonomi + etiket listesi + kayıtlar)
+    // taksonomi/etiket büyüdükçe 2048'i aşıyor — logda 4160 token ile reddedilen
+    // bir çağrı görüldü. `-ub` hesaplama arabelleğini belirlediği için ölçülü.
+    let (batch, ubatch) = if slot_type == "chat" {
+        ("4096", "1024")
+    } else {
+        ("2048", "2048")
+    };
+    cmd.arg("-b").arg(batch).arg("-ub").arg(ubatch);
+
     if slot_type == "embed" {
-        cmd.arg("--embedding")
-            .arg("-b")
-            .arg("2048")
-            .arg("-ub")
-            .arg("2048");
+        cmd.arg("--embedding");
     }
 
     #[cfg(windows)]
@@ -1549,7 +1557,12 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
                 },
                 { "role": "user", "content": prompt }
             ],
-            "temperature": 0.2
+            "temperature": 0.2,
+            // Üretim tavanı: normalde kayıt başına ~30 token (8 kayıtta ~240).
+            // Tavan olmadan sunucu varsayılanına (2048) kadar kaçabiliyor; logda
+            // tek bir çağrının 26 sn sürdüğü görüldü. Tavan batch boyuyla
+            // ölçeklenir; kayıt başına 80 token bolca pay bırakır.
+            "max_tokens": (items.len() as u64) * 80 + 64
         }))
         .send()
         .await
