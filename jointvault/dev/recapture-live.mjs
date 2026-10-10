@@ -3,7 +3,7 @@
  *
  * Bitirme incelemesindeki tek açık kanıt boşluğunu kapatır: kabuk, atom katmanı ve
  * geçici düzeltmeler sentetik veriyle doğrulandı; gerçek SQL satırlarıyla hiç
- * yakalanmadı. Bu betik GERÇEK kasaya bağlanıp ekranı yeniden çeker.
+ * yakalanmadı. Bu betik GERÇEK arşive bağlanıp ekranı yeniden çeker.
  *
  * Neden Playwright tarayıcı başlatmıyor: uygulama bir Tauri/WebView2 penceresinde
  * çalışır. WebView2, Chromium uzaktan hata ayıklama portunu destekler; bu yüzden
@@ -15,21 +15,16 @@
  *
  * Betik kanıt üretmeyi REDDEDER:
  *   - 9222'ye bağlanamazsa ne yapılacağını söyler ve çıkar,
- *   - kasa boşsa (0 fiş) dosya yazmaz, çünkü boş arşivin fotoğrafı kanıt değildir,
+ *   - arşiv boşsa (0 kayıt) dosya yazmaz, çünkü boş arşivin fotoğrafı kanıt değildir,
  *   - her rasterin yanına provenance kaydı yazar (kaç gerçek satır, hangi URL, ne zaman).
  */
 import { chromium } from 'playwright-core';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-import { endProbe } from './lib/browser.mjs';
+import { writeFileSync } from 'node:fs';
+import { endProbe, ensureOutDir } from './lib/browser.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = resolve(HERE, '../../.impeccable/review');
+const OUT = ensureOutDir('live');
 const CDP = process.env.JV_CDP ?? 'http://127.0.0.1:9222';
-const APP = 'http://localhost:5173';
-
-mkdirSync(OUT, { recursive: true });
+const APP = process.env.JV_BASE_URL ?? 'http://localhost:5173';
 
 function die(msg) {
   console.error(`\n${msg}\n`);
@@ -84,11 +79,11 @@ try {
   /* tur yoksa sorun değil */
 }
 
-/* Kural şeridindeki toplam fiş sayısı — boş kasa kapısı. */
+/* Kural şeridindeki toplam kayıt sayısı — boş arşiv kapısı. */
 const readTotal = () =>
   page.evaluate(() => {
     for (const el of document.querySelectorAll('[data-num]')) {
-      const m = (el.textContent ?? '').match(/([\d.,\s]+)\s*fiş/);
+      const m = (el.textContent ?? '').match(/([\d.,\s]+)\s*kayıt/);
       if (m) return Number(m[1].replace(/[^\d]/g, ''));
     }
     return null;
@@ -100,7 +95,7 @@ const rows = await page.locator('.cv-row').count();
 
 if (total === null) {
   die(
-    'Kural şeridindeki fiş sayısı okunamadı.\n' +
+    'Kural şeridindeki kayıt sayısı okunamadı.\n' +
       '  Arşiv görünümünde (Tümü) olduğundan emin ol; kanıt o ekrandan alınır.',
   );
 }
@@ -128,7 +123,7 @@ async function shoot(name, viewport) {
   console.log(`  yazıldı: ${name}.png`);
 }
 
-console.log(`kasa: ${total} fiş · ekranda ${cards} kart / ${rows} satır`);
+console.log(`arşiv: ${total} kayıt · ekranda ${cards} kart / ${rows} satır`);
 console.log('çekiliyor:');
 await shoot('live-desktop');
 await shoot('live-mobile', { width: 390, height: 844 });
@@ -146,7 +141,7 @@ const manifest = {
 };
 writeFileSync(resolve(OUT, 'live-manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
 
-console.log(`\nprovenance: live-manifest.json (${total} gerçek fiş)`);
+console.log(`\nprovenance: live-manifest.json (${total} gerçek kayıt)`);
 console.log('kanıt boşluğu kapandı.');
 /* `browser.close()` YOK: bağlanılan tarayıcıda uygulama penceresini kapatır. */
 endProbe(0);

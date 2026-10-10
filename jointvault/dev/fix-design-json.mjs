@@ -16,13 +16,14 @@
  * İDEMPOTENT: onarılmış dosyada ikinci çalıştırma 0 değişiklik bildirir.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const TARGET =
-  process.argv.find((a) => a.endsWith('.json')) ?? resolve(HERE, '../../.impeccable/design.json');
+const TARGET = process.argv.find((a) => a.endsWith('.json'));
 const WRITE = process.argv.includes('--write');
+
+if (!TARGET) {
+  console.error('Kullanım: node dev/fix-design-json.mjs <design.json> [--write]');
+  process.exit(2);
+}
 
 /* CP1252: 0x80-0x9F aralığı latin1'den farklıdır ve mojibake bu karakterleri
    (akıllı tırnak, uzun tire, euro) içerir — latin1 tek başına yetmez. */

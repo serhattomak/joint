@@ -1,3 +1,4 @@
+# --- Yerel üretim/önbellek: repoda tutulmaz ---
 .tmp/
 node_modules/
 dist/
@@ -5,25 +6,23 @@ target/
 *.db
 *.local
 
-# graft's local graph cache — regenerable, not committed (run `graft build`).
+# graft yerel graf önbelleği — yeniden üretilebilir (`graft build`), commit edilmez.
 /graft/
+
+# --- Ajan/araç yerel ayarları: makineye özgü ---
 .ignore
 .mcp.json
 AGENTS.md
-.gitignore
 opencode.json
 GEMINI.md
-.gitignore
-.claude/settings.json
-.gitignore
-.claude/helpers/graft-statusline.cjs
-.claude/helpers/graft-hooks.cjs
-.claude/skills/graft/SKILL.md
-.cursor/hooks.json
-.gitignore
-.cursor/mcp.json
-.cursor/hooks/graft-hooks.cjs
-.gitignore
-.cursor/rules/graft.mdc
-.gitignore
-.gemini/settings.json
+.claude/
+.cursor/
+.gemini/
+.kilo/
+.superpowers/
+
+# --- Üretilen inceleme/kanıt artefaktları ---
+# Tasarım incelemesi çıktıları ve ajan spec/plan'ları geliştirme sırasında üretilir
+# (görseller, raporlar, planlar); repoda tutulmaz. Kanıt betikleri dev/out'a yazar.
+.impeccable/
+docs/superpowers/

@@ -37,9 +37,9 @@ node dev/recapture-live.mjs
 
 | Dosya | İçerik |
 |---|---|
-| `.impeccable/review/live-desktop.png` | Arşiv görünümü, gerçek satırlarla, tam sayfa |
-| `.impeccable/review/live-mobile.png` | Aynı ekran, 390×844 |
-| `.impeccable/review/live-manifest.json` | Provenance: kaç gerçek fiş, kaç kart/satır, URL, UA, zaman |
+| `dev/out/live/live-desktop.png` | Arşiv görünümü, gerçek satırlarla, tam sayfa |
+| `dev/out/live/live-mobile.png` | Aynı ekran, 390×844 |
+| `dev/out/live/live-manifest.json` | Provenance: kaç gerçek kayıt, kaç kart/satır, URL, UA, zaman |
 
 ## Betiğin kasıtlı kapıları
 
