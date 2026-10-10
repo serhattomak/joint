@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -6,12 +6,15 @@ import {
   CornerDownLeft,
   LayoutGrid,
   Link2,
+  Loader2,
   PanelLeft,
   Plus,
   RefreshCw,
   Rows3,
   Search,
+  Sigma,
   Sparkles,
+  TriangleAlert,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,8 +22,10 @@ import { Input } from '@/components/ui/input';
 import { WindowControls } from '@/components/ui/window-controls';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useNotice } from '@/components/ui/notice';
+import { answerStructuralQuery, type StructuralAnswer, type VaultQuery } from '@/lib/ai-context';
 import { createItem, removeItem, updateItem } from '@/lib/db/client';
-import { PLATFORM_META, detectPlatform, fetchPreview } from '@/lib/platform';
+import { describeError } from '@/lib/errors';
+import { PLATFORM_META, detectPlatform, fetchPreview, type Platform } from '@/lib/platform';
 import { scrapeAndStoreArticle } from '@/lib/scraper';
 
 /*
@@ -44,6 +49,24 @@ export function looksLikeUrl(raw: string): boolean {
   return /^[\w-]+(\.[\w-]{2,})+(\/[\w\-./?%#&=+]*)?$/.test(v);
 }
 
+/**
+ * Yapısal cevabın filtresini tek satırda anlatır. Sözlük mevcut terimlerdir
+ * (platform adı, kategori, `#etiket`, favori, yerel, son N gün) — ikinci bir
+ * arama/sorgu dili açılmaz.
+ */
+function describeStructuralAnswer(q: VaultQuery): string {
+  const parts: string[] = [];
+  if (q.platform) parts.push(PLATFORM_META[q.platform as Platform]?.label ?? q.platform);
+  if (q.category) parts.push(q.category);
+  if (q.tag) parts.push(`#${q.tag}`);
+  if (q.favorite === true) parts.push('favori');
+  if (q.favorite === false) parts.push('favori olmayan');
+  if (q.downloaded === true) parts.push('yerel');
+  if (q.downloaded === false) parts.push('indirilmemiş');
+  if (q.sinceDays) parts.push(`son ${q.sinceDays} gün`);
+  return parts.join(' · ');
+}
+
 interface ToolbarProps {
   /** Boş dize: çubuk kayıt modunda, arşiv filtrelenmez. */
   onQuery: (query: string) => void;
@@ -52,9 +75,13 @@ interface ToolbarProps {
   semantic?: boolean;
   onSemanticToggle?: () => void;
   onOpenSync?: () => void;
-  /** AI etkin mi? Yalnızca kesin `false` iken dürüst "kapalı" durumu gösterilir. */
+  /** AI etkin mi? Yalnızca kesin `false` iken anlamsal kontrol gizlenir. */
   aiEnabled?: boolean;
-  /** AI kapalıyken Ayarlar → Yapay Zekâ'ya götürür (ölü düğme yok). */
+  /**
+   * Kullanılmıyor: AI kapalıyken anlamsal kontrol çizilmez (Ölü-Kontrol-Yok),
+   * Ayarlar yönlendirmesi ItemGrid'in boş durumunda yaşar. Çağıranların
+   * sözleşmesi bozulmasın diye tipte durur.
+   */
   onOpenAiSettings?: () => void;
   /** Arşiv görünümündeyken geçilir; görünüm segmenti yalnızca o zaman çizilir. */
   view?: 'grid' | 'rows';
@@ -101,7 +128,6 @@ export function Toolbar({
   onSemanticToggle,
   onOpenSync,
   aiEnabled,
-  onOpenAiSettings,
   view,
   onViewChange,
   sidebarOpen,
@@ -115,9 +141,53 @@ export function Toolbar({
   const [busy, setBusy] = useState(false);
   const notice = useNotice();
 
+  /* AI kapalıyken yapısal sorular DETERMİNİSTİK yanıtlanır (Ölü-Kontrol-Yok):
+     arama alanının altında, aynı yüzeyde kesin sonuç açılır. AI açıkken bu
+     panel hiç doğmaz — mevcut FTS/anlamsal davranış aynen sürer. */
+  const [answer, setAnswer] = useState<StructuralAnswer | null>(null);
+  const [answerLoading, setAnswerLoading] = useState(false);
+  const [answerError, setAnswerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (aiEnabled !== false) {
+      setAnswer(null);
+      setAnswerLoading(false);
+      setAnswerError(null);
+      return;
+    }
+    const q = value.trim();
+    if (!q || looksLikeUrl(q)) {
+      setAnswer(null);
+      setAnswerLoading(false);
+      setAnswerError(null);
+      return;
+    }
+    let live = true;
+    const t = window.setTimeout(() => {
+      setAnswerLoading(true);
+      void answerStructuralQuery(q)
+        .then((res) => {
+          if (!live) return;
+          setAnswer(res); // null: yapısal sinyal yok → panel çizilmez, arama sürer.
+          setAnswerLoading(false);
+        })
+        .catch((e: unknown) => {
+          if (!live) return;
+          setAnswerError(describeError(e, 'Arşiv taranamadı.'));
+          setAnswer(null);
+          setAnswerLoading(false);
+        });
+    }, 250);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [value, aiEnabled]);
+
   const trimmed = value.trim();
   const capture = looksLikeUrl(trimmed);
   const platform = capture ? detectPlatform(trimmed) : null;
+  const answerSummary = answer ? describeStructuralAnswer(answer.query) : '';
 
   const handleChange = (next: string): void => {
     setValue(next);
@@ -242,6 +312,64 @@ export function Toolbar({
               <kbd className="rounded-xs border border-border px-1 py-px">K</kbd>
             </span>
           )}
+
+          {/* Yapısal cevap: arama alanının altında, aynı yüzeyde. AI kapalıyken
+              deterministik sonuç; mevcut primitiflerle (badge + satır) çizilir. */}
+          {!capture && (answer || answerLoading || answerError) && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="material-sheet animate-rise absolute top-[calc(100%+0.375rem)] left-0 z-50 flex w-full flex-col gap-1.5 rounded-xl border border-border p-2 shadow-lift"
+            >
+              {answerError ? (
+                <span className="flex items-center gap-2 px-1 py-0.5 text-xs text-destructive">
+                  <TriangleAlert className="size-3.5 shrink-0" aria-hidden /> {answerError}
+                </span>
+              ) : answer ? (
+                <>
+                  <div className="flex items-center gap-2 px-1">
+                    <Badge variant="outline" className="gap-1.5" title="AI'sız — arşivden deterministik sonuç">
+                      <Sigma aria-hidden /> Kesin
+                    </Badge>
+                    {answerSummary && (
+                      <span className="min-w-0 truncate text-2xs text-muted-foreground">
+                        {answerSummary}
+                      </span>
+                    )}
+                    <span className="ml-auto shrink-0 text-xs font-medium" data-num>
+                      {answer.count} kayıt
+                    </span>
+                  </div>
+                  {answer.items.length > 0 && (
+                    <div className="flex flex-col border-t border-border/60 pt-1.5">
+                      {answer.items.slice(0, 5).map((it) => (
+                        <div key={it.id} className="flex items-center justify-between gap-2 px-1 py-0.5">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <Badge variant="outline" className="px-1 py-0">
+                              {PLATFORM_META[it.platform as Platform]?.label ?? it.platform}
+                            </Badge>
+                            <span className="truncate text-xs">{it.title || it.url}</span>
+                          </div>
+                          <span className="shrink-0 text-2xs text-muted-foreground" data-num>
+                            {it.createdAt.slice(0, 10)}
+                          </span>
+                        </div>
+                      ))}
+                      {answer.count > answer.items.length && (
+                        <span className="px-1 pt-0.5 text-2xs text-muted-foreground">
+                          +{answer.count - answer.items.length} kayıt daha
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <span className="flex items-center gap-2 px-1 py-0.5 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden /> Arşiv taranıyor…
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {capture ? (
@@ -261,39 +389,23 @@ export function Toolbar({
           </span>
         ) : (
           <div className="flex shrink-0 items-center gap-1.5">
-            {onSemanticToggle &&
-              (aiEnabled === false ? (
-                // AI kapalıyken anlamsal arama ÇALIŞAMAZ: yanıltıcı bir aç/kapa
-                // düğmesi yerine doğrudan Ayarlar → Yapay Zekâ'ya götüren gerçek
-                // bir düğme gösterilir. Yönlendirme yoksa düğme hiç çizilmez.
-                onOpenAiSettings ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={onOpenAiSettings}
-                    className="h-7 gap-1 px-2 text-2xs text-muted-foreground"
-                    title="AI kapalı — anlamsal aramayı Ayarlar > Yapay Zekâ'dan etkinleştir"
-                  >
-                    <Sparkles className="size-3 text-muted-foreground" />
-                    <span className="hidden md:inline">AI kapalı — Ayarlar'dan aç</span>
-                  </Button>
-                ) : null
-              ) : (
-                <Button
-                  type="button"
-                  variant={semantic ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={onSemanticToggle}
-                  className="h-7 gap-1 px-2 text-2xs"
-                  title={semantic ? 'Anlamsal Arama Devrede (BGE-M3 + FTS5)' : 'Anlamsal Arama Moduna Geç'}
-                >
-                  <Sparkles className={`size-3 ${semantic ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <span className={semantic ? 'font-medium text-foreground' : 'text-muted-foreground'}>
-                    Anlamsal
-                  </span>
-                </Button>
-              ))}
+            {/* AI kapalıyken anlamsal arama ÇALIŞAMAZ: ölü kontrol çizilmez,
+                düğme gizlenir (DESIGN · Ölü-Kontrol-Yok). */}
+            {onSemanticToggle && aiEnabled !== false && (
+              <Button
+                type="button"
+                variant={semantic ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={onSemanticToggle}
+                className="h-7 gap-1 px-2 text-2xs"
+                title={semantic ? 'Anlamsal Arama Devrede (BGE-M3 + FTS5)' : 'Anlamsal Arama Moduna Geç'}
+              >
+                <Sparkles className={`size-3 ${semantic ? 'text-primary' : 'text-muted-foreground'}`} />
+                <span className={semantic ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+                  Anlamsal
+                </span>
+              </Button>
+            )}
             {onOpenSync && (
               <Button
                 type="button"

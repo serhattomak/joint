@@ -47,6 +47,20 @@ Rakip bir ürünün dürüstçe kopyalayamayacağı mekanizma: **kaydetme, indir
 - Masaüstü çalışma zamanı: pencere varsayılan 1280×800, yeniden boyutlandırılabilir, tanımlı minimum yok. Dar pencere (≈640px) gerçek bir kullanım durumudur; bugün `md` altında sol menü tamamen kayboluyor ve yerine hiçbir gezinme gelmiyor.
 - Performans bütçesi bağlayıcı: 1000+ öğelik arşiv. Sayfalama SQL'de (LIMIT/OFFSET), kart/satır için `content-visibility: auto`, arama 250ms debounce, İstatistikler lazy. Bu kazanımlar korunur.
 - Çevrimdışı: font ve görsel varlıklar yerelden servis edilir; çalışma anında uzak kaynak çekilmez.
+- **Yerel AI opsiyoneldir ve donanıma uyar.** Tek anahtar; temiz kurulum kapalı başlar. AI
+  kapalıyken **Asistan sohbeti ve hiyerarşi planı dışındaki her özellik deterministik
+  çalışır**: tam-metin arama, kural tabanlı kategori eşleme, sayısal defter özeti, yinelenen/boş
+  taksonomi temizliği. Motor **Vulkan** build'idir (tek küçük indirme; GPU'suz makinede CPU
+  backend'e düşer); GPU hızlanması bugün yalnızca **NVIDIA**'da (AMD/Intel şimdilik CPU'da);
+  **CUDA** yalnızca NVIDIA'da azami hız için ayrı opsiyondur.
+  İndirme **yalnızca kullanıcı AI'a katılınca** yapılır; installer'a gömülmez.
+- **Donanım tabanı:** çekirdek **8 GB RAM · GPU'suz · 4 çekirdek · ~10 GB boş disk** makinede
+  çalışır; yalnızca WebView2 + gömülü yt-dlp gerekir. ffmpeg ilk kurulumda **sihirbazdan tek
+  tıkla** indirilir (Ayarlar'ı aramaya gerek yok).
+- **Model seçimi:** sohbet için **3B/7B/14B** (Q4) sabit hat + **serbest GGUF** dosyası
+  ("doğrulanmadı" damgası taşır); gömme **BGE-M3**, whisper **base** varsayılan. Öneri
+  ilk-kurulum sihirbazında **donanıma (RAM/GPU) göre** verilir; seçim kalıcıdır. Embedding'ler
+  AI kapalıyken korunur; yeniden gömme yalnızca gömme modeli değişince yapılır.
 - Dokunulmazlar: tüm özellikler, akışlar, Türkçe metinler, klavye kısayolları ve IPC/veri akışları korunur. Ek izinler: modal kullanımını azaltmak, etiket ve boş/hata durum metinlerini iyileştirmek (anlam ve vaat değişmez).
 - Mevcut görsel dil (sıcak krem kâğıt `#faf7f1` + Georgia serif display + kiremit aksan `#9a3412`) **terk edilecek dünya** olarak kayda geçti; korunacak marka mirası değil.
 

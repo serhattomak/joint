@@ -175,14 +175,9 @@ export async function runNotebookPipeline(
     return report;
   }
 
-  // Adım 2 — kategorilendirme + etiketleme (AI)
-  if (!(await deps.isAi())) {
-    report.categorize = { aiOff: true };
-    report.dedupe = { missingEmbedding: 0, groups: [], aiOff: true };
-    onProgress(2, 1, 1, 'AI kapalı — kategorilendirme atlandı');
-    onProgress(3, 1, 1, 'AI kapalı — tekrar taraması atlandı');
-    return report;
-  }
+  // Adım 2 — kategorilendirme + etiketleme.
+  // Kural tabanlı (deterministik) tur AI'sız da koşar; LLM yalnızca boşluğu kapatır.
+  const aiOn = await deps.isAi();
   const missing = await deps.listMissingCategory();
   if (missing.length > 0) {
     report.categorize = await deps.categorize(missing, (current, total) =>
@@ -206,7 +201,13 @@ export async function runNotebookPipeline(
     return report;
   }
 
-  // Adım 3 — tekrar tespiti (embedding)
+  // Adım 3 — tekrar tespiti (embedding). Yalnızca AI açıkken (vektör gerekir).
+  if (!aiOn) {
+    report.dedupe = { missingEmbedding: 0, groups: [], aiOff: true };
+    onProgress(3, 1, 1, 'AI kapalı — tekrar taraması atlandı');
+    return report;
+  }
+
   const { items, vectors, authors } = await deps.vectors();
   const embedded = items.filter((it) => vectors.has(it.id));
   const missingEmbedding = items.length - embedded.length;

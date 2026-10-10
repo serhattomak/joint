@@ -1,4 +1,4 @@
-// Donanım tespiti: GPU adı ve (varsa) GERÇEK VRAM.
+// Donanım tespiti: GPU adı, (varsa) GERÇEK VRAM ve toplam sistem RAM'i.
 //
 // SORUN: Uygulama bugüne kadar "RTX 5070 Ti" adını ve "99 katman" offload'unu
 // SABİT yazıyordu. İkisi birlikte yanlıştır: başka bir GPU'da kullanıcıya yanlış
@@ -17,13 +17,19 @@
 // kullanıcıya yalan söyler hem de offload kararını bozar. Bu yüzden WMI'dan
 // yalnızca AD alınır, VRAM ASLA.
 //
+// RAM NEDEN BURADA? Toplam sistem RAM'i, sihirbazın donanıma göre model kademesi
+// ÖNERMESİ için gerekir (karar `ai.rs`'te verilir). Kaynak WMI
+// `Win32_ComputerSystem.TotalPhysicalMemory`'dir: alan BAYT cinsinden tam sayıdır
+// ve MiB'e çevrilir ki VRAM ve model boyutlarıyla aynı birimde karşılaştırılabilsin.
+// Tespit başarısızsa dürüstçe `None` döner — uydurma sayı YOK.
+//
 // NEDEN ÖNBELLEK (OnceLock)? Her tespit bir süreç başlatır (`nvidia-smi` veya
 // PowerShell); bu yavaştır. Durum komutu sık çağrıldığı için sonuç süreç başına
 // BİR kez hesaplanır ve sonra bellekten okunur. Böylece hem tekrarlı süreç
 // başlatma hem de her çağrıda titreyen (tutarsız) bir durum önlenir.
 //
 // NEDEN YENİ CRATE YOK? Tespit yan bir iştir; `std::process::Command` yeterlidir.
-#![allow(dead_code)] // Modül subtask 04'te `ai_status`'a bağlanana kadar crate içinden çağrılmıyor (components.rs'teki desenle aynı).
+#![allow(dead_code)] // Bazı pub yardımcılar (as_str/is_known/has_vram) şu an yalnızca testlerce kullanılır; tespit artık `ai_status`'a bağlıdır (components.rs'teki desenle aynı).
 
 use std::sync::OnceLock;
 
@@ -275,6 +281,69 @@ pub fn parse_wmi_name(output: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+// --- Toplam sistem RAM'i (MiB) ----------------------------------------------
+//
+// Ayrı bir tespit: GPU ile ilgisi yok, ama AYNI sözleşmeye uyar (Windows'ta ölç,
+// başarısızsa dürüstçe None). Sihirbazın donanıma göre model önerisi bunu girdi alır.
+
+/// 1 MiB = 1024×1024 bayt. WMI bayt verir; VRAM ve model boyutları MiB'dir.
+const BYTES_PER_MIB: u64 = 1024 * 1024;
+
+/// WMI `Win32_ComputerSystem.TotalPhysicalMemory` sorgusu (BAYT, tam sayı).
+///
+/// Argümanlar SABİTTİR; kullanıcı girdisi geçmez → enjeksiyon yüzeyi yoktur.
+#[cfg(windows)]
+const RAM_SCRIPT: &str = concat!(
+    "try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}; ",
+    "Get-CimInstance Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory",
+);
+
+#[cfg(windows)]
+fn query_ram() -> Option<String> {
+    run_capture(
+        "powershell",
+        &["-NoProfile", "-NonInteractive", "-Command", RAM_SCRIPT],
+    )
+}
+
+/// Windows dışında RAM tespiti yapılmaz: dürüstçe "bilinmiyor".
+#[cfg(not(windows))]
+fn query_ram() -> Option<String> {
+    None
+}
+
+/// Tespit edilen toplam sistem RAM'i (MiB). `None` = bilinmiyor.
+///
+/// GPU tespitiyle aynı gerekçeyle önbelleklenir: sorgu bir süreç başlatır ve
+/// `ai_status` sık çağrılır; sonuç süreç başına BİR kez hesaplanır.
+pub fn detect_ram() -> Option<u64> {
+    *cached_ram()
+}
+
+fn cached_ram() -> &'static Option<u64> {
+    static CACHE: OnceLock<Option<u64>> = OnceLock::new();
+    CACHE.get_or_init(|| query_ram().as_deref().and_then(parse_total_ram_mib))
+}
+
+/// SAF: WMI `TotalPhysicalMemory` çıktısını MiB'e çevirir.
+///
+/// Beklenen: bayt cinsinden tek bir tam sayı (ör. `17179869184`). Çıktının ilk
+/// BOŞ OLMAYAN satırı alınır; baştaki/sondaki boşluk ve `\r\n` hoş görülür.
+///
+/// Boş/`0`/bozuk (ör. `abc`, `17179869184 bytes`, ondalık) girdi → `None`.
+/// `0` da `None`'dır: gerçek bir sistemin 0 bayt RAM'i olamaz; sorgu cevap
+/// verememiştir. Uydurma sayı, hiç sayı olmamasından KÖTÜDÜR.
+pub fn parse_total_ram_mib(output: &str) -> Option<u64> {
+    let bytes = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?
+        .parse::<u64>()
+        .ok()?;
+    let mib = bytes / BYTES_PER_MIB;
+    (mib > 0).then_some(mib)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,6 +456,54 @@ mod tests {
     fn wmi_returns_none_for_empty_output() {
         for input in ["", "  \r\n \n", "\t"] {
             assert_eq!(parse_wmi_name(input), None, "girdi: {input:?}");
+        }
+    }
+
+    // --- RAM ayrıştırıcı ---
+
+    #[test]
+    fn ram_parses_bytes_into_mib() {
+        // 16 GiB = 17179869184 bayt → 16384 MiB
+        assert_eq!(parse_total_ram_mib("17179869184"), Some(16384));
+        // Sınır: tam 1 MiB → 1; altı (1048575) yukarıdaki None testinde.
+        assert_eq!(parse_total_ram_mib("1048576"), Some(1));
+    }
+
+    #[test]
+    fn ram_tolerates_padding_and_carriage_returns() {
+        assert_eq!(parse_total_ram_mib("  17179869184  \r\n"), Some(16384));
+    }
+
+    #[test]
+    fn ram_takes_the_first_non_empty_line() {
+        assert_eq!(parse_total_ram_mib("\r\n17179869184\r\n"), Some(16384));
+    }
+
+    #[test]
+    fn ram_returns_none_for_empty_or_whitespace_output() {
+        for input in ["", "   ", "\n\r\n", "\t \n  \n"] {
+            assert_eq!(parse_total_ram_mib(input), None, "girdi: {input:?}");
+        }
+    }
+
+    #[test]
+    fn ram_returns_none_for_zero_or_sub_mib_values() {
+        // 0 = sorgu cevap veremedi; <1 MiB = gerçek sistem değil. İkisi de None.
+        for input in ["0", "0\r\n", "1048575"] {
+            assert_eq!(parse_total_ram_mib(input), None, "girdi: {input:?}");
+        }
+    }
+
+    #[test]
+    fn ram_returns_none_for_malformed_output() {
+        for input in [
+            "abc",               // sayı değil
+            "17179869184 bytes", // birim eki: tam sayı değil
+            "-17179869184",      // işaretli (negatif)
+            "17.179",            // ondalık
+            "N/A",               // WMI bazen bunu döner
+        ] {
+            assert_eq!(parse_total_ram_mib(input), None, "girdi: {input:?}");
         }
     }
 

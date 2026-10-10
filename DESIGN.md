@@ -530,6 +530,31 @@ oturumun kendisidir. İki bölge: solda **geçmiş paneli**, sağda mesaj akış
   ailedendir; ikinci bir "sonuç kartı" sözlüğü açılmaz.
 - **Dışa aktarma:** başlıkta tek eylem; oturum Markdown olarak yazılır (yol renderer'a uğramaz).
 
+### AI çalışma zamanı ve yedekler (bağlayıcı)
+
+Yerel AI **opsiyoneldir** ve **tek anahtarla** açılır; temiz kurulum kapalı başlar. Anahtar
+kapalıyken **ölü kontrol çizilmez**: semantik arama düğmesi gizlenir, Asistan yüzeyi "AI kapalı"
+der ama sohbet geçmişi okunur kalır.
+
+- **Motor:** llama.cpp **Vulkan** build'i varsayılandır (tek küçük indirme; GPU'suz
+  makinede **CPU backend'e düşer**). GPU hızlanması bugün yalnızca **NVIDIA**'da
+  gerçekleşir (offload VRAM'e bağlıdır, VRAM yalnız `nvidia-smi`'den gelir); AMD/Intel
+  şimdilik CPU'da çalışır. **CUDA** yalnızca NVIDIA'da azami hız için ayrı opsiyondur.
+  İndirme **yalnızca AI'a katılınca** yapılır; installer'a gömülmez.
+- **Model seçimi:** sohbet için **3B/7B/14B** (Q4) sabit hat + **serbest GGUF** ("doğrulanmadı"
+  damgası taşır). Gömme **BGE-M3**, whisper **base** varsayılan. Seçim kalıcıdır; donanıma
+  göre öneri ilk-kurulum sihirbazında verilir.
+- **AI'sız yedekler (aynı yüzey, dürüst etiket):** "Asistan ile Düzenle" → **Kural tabanlı
+  düzenle** (mevcut taksonomi adlarını eşler); defter sayfa özeti → **sayısal özet**;
+  taksonomi bakımında deterministik temizlik (yinelenen/boş) kalır. **Asistan sohbeti ve
+  hiyerarşi planı AI-only'dir** — deterministik karşılıkları yoktur, AI kapalıyken gizlenir.
+- **Semantik arama:** AI kapalıyken düğme gizli; AI açık ama gömme modeli yokken tam-metin
+  aramaya (FTS) düşer ve görünür bir not gösterir.
+
+**The Ölü-Kontrol-Yok Kuralı.** Çalışmayan bir AI kontrolü asla çizilmez: ya AI'ı açmanın tek
+yolu (Ayarlar) gösterilir, ya kontrol gizlenir. Aynı iş, AI yokken deterministik fiille görünür —
+ikinci bir "kural tabanlı mod" ekranı açılmaz.
+
 ## Terimler
 
 Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük kullanılmaz.
@@ -603,6 +628,7 @@ Bitirmeden:
 - **Do** sağ blokları sabit genişlikte tut; satırları **ölçerek** hizala.
 - **Do** yükleniyor durumunu iskeletle göster (`skeleton-paper`), boş durumu öğret.
 - **Do** dar pencereyi birinci sınıf tut.
+- **Do** AI'sız yedeği dürüst etiketle ("Kural tabanlı düzenle", sayısal defter özeti); çalışmayan AI kontrolünü çizme.
 
 ### Don't:
 - **Don't** ikinci bir doygun aksan ekleme; systemBlue tek damgadır.
@@ -620,3 +646,4 @@ Bitirmeden:
 - **Don't** `prefers-reduced-motion` / `prefers-reduced-transparency` sinyallerini yok sayma.
 - **Don't** büyük harf + geniş aralığı gövde metnine uygulama; o damga ve künyenin hakkıdır.
 - **Don't** sayfaya ikinci bir "kaydet" eylemi koyma; birincil kayıt araç çubuğunundur.
+- **Don't** AI kapalıyken çalışmayan bir AI kontrolü (semantik toggle, asistan girişi) gösterme; ya gizle ya Ayarlar'a tek yol ver.

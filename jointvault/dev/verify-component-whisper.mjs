@@ -24,7 +24,7 @@
  *     kanıtlanır (--quick/JV_REAL_DOWNLOAD=0 bu indirmeyi atlar → "kanıtlanmadı").
  *  5. Eksik yt-dlp: `list_formats` yapılandırılmış `BILESEN_EKSIK:yt-dlp` +
  *     okunabilir Türkçe ayrıntı döndürür (ham OS hatası yok).
- *  6. Bileşenler ekranı TÜM kaydı çizer: 13 bileşen / 12 paket grubu; gösterilen
+ *  6. Bileşenler ekranı TÜM kaydı çizer: 17 bileşen / 16 paket grubu; gösterilen
  *     boyutlar KAYITTAN gelir (`components.rs` → `components_status` → DOM);
  *     arayüzde sabit sayı yok.
  *
@@ -132,20 +132,24 @@ const EXPECTED_IDS = [
   'ffprobe',
   'yt-dlp',
   'whisper',
+  'whisper-cuda',
   'whisper-model-tiny',
   'whisper-model-base',
   'whisper-model-small',
   'whisper-model-large-v3-q5_0',
   'whisper-model-large-v3',
   'llama-engine',
+  'llama-engine-cuda',
   'llama-cudart',
   'ai-model-llm',
+  'ai-model-llm-7b',
+  'ai-model-llm-3b',
   'ai-model-embed',
 ];
-// yt-dlp DIŞINDA hepsi indirilebilir olmalı (12 satır).
+// yt-dlp DIŞINDA hepsi indirilebilir olmalı (16 satır).
 const DOWNLOADABLE_IDS = EXPECTED_IDS.filter((id) => id !== YTDLP_ID);
-// 13 bileşen, ffmpeg+ffprobe TEK arşivi paylaşır → arayüzde 12 paket grubu.
-const GROUP_COUNT = 12;
+// 17 bileşen, ffmpeg+ffprobe TEK arşivi paylaşır → arayüzde 16 paket grubu.
+const GROUP_COUNT = 16;
 // Whisper motorunun arşivden çıkardığı dosyalar (kayıt: `WHISPER_ENGINE_WANTED`).
 const WHISPER_ENGINE_FILES = ['whisper.exe', 'whisper.dll', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll'];
 // Gölgelenmesi/geri alınması gereken whisper adları (`whisper-cli.exe` arşiv adı).

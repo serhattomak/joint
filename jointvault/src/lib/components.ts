@@ -254,7 +254,11 @@ const MISSING_COMPONENT_FALLBACKS = new Map<string, string>([
   ],
   [
     'llama-engine',
-    'llama-server motoru kurulu değil. Yerel sohbet, özetleme ve etiketleme bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
+    "llama-server motoru (Vulkan) kurulu değil. Yerel sohbet, özetleme ve etiketleme bu motoru kullanır; GPU'suz makinede CPU'ya düşer. Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
+    'llama-engine-cuda',
+    "llama-server CUDA (GPU) motoru kurulu değil. Yalnızca NVIDIA GPU'da Vulkan'a göre hız kazandırır; CUDA çalışma zamanıyla birlikte iner. Ayarlar → Bileşenler bölümünden indirebilirsin.",
   ],
   [
     'llama-cudart',
@@ -263,6 +267,14 @@ const MISSING_COMPONENT_FALLBACKS = new Map<string, string>([
   [
     'ai-model-llm',
     'Qwen 2.5 14B sohbet modeli kurulu değil. Yerel sohbet ve özetleme bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'ai-model-llm-7b',
+    "Qwen 2.5 7B sohbet modeli kurulu değil. Orta seviye RAM'li makineler için dengeli seçenek; Ayarlar → Bileşenler bölümünden indirebilirsin.",
+  ],
+  [
+    'ai-model-llm-3b',
+    "Qwen 2.5 3B sohbet modeli kurulu değil. Düşük RAM'li makineler için en hafif seçenek; Ayarlar → Bileşenler bölümünden indirebilirsin.",
   ],
   [
     'ai-model-embed',

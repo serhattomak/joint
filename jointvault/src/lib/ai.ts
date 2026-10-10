@@ -1,7 +1,7 @@
 /**
  * JointVault Yerel AI İstemci Kütüphanesi.
  *
- * Qwen 2.5 14B-Instruct ve BGE-M3 modelleriyle iletişim,
+ * Seçili sohbet modeli (3B/7B/14B) ve BGE-M3 modelleriyle iletişim,
  * Tauri IPC çağrıları, streaming sohbet, indeksleme ve RAG asistan hattı.
  */
 
@@ -135,6 +135,21 @@ export interface AiStatus {
   gpu?: AiGpuInfo;
   /** Offload kararı/gerekçesi; eski backend'de yoktur. */
   offload?: AiOffloadDecision;
+  /**
+   * Toplam sistem RAM'i (MiB); tespit başarısızsa `null`. Sihirbazın donanıma
+   * göre model önerisi bunu kullanır. Eski backend bu alanı hiç döndürmez —
+   * yokluk "bilinmiyor" sayılır, uydurma sayı yazılmaz.
+   */
+  ram_mb?: number | null;
+  /**
+   * Seçili sohbet modeli sha256 pinli KAYITLI bir model mi? `false` → kullanıcının
+   * diskten seçtiği serbest `.gguf` ("doğrulanmadı"). Eski backend bu alanı
+   * döndürmez; yokluk "doğrulanmadı" sayılmalıdır (fail-closed, `isAiEnabled`
+   * deseniyle aynı: şüpheli durum kapalı/güvensiz kabul edilir).
+   */
+  llm_verified?: boolean;
+  /** Seçili sohbet modelinin gösterilecek adı (kayıt etiketi ya da dosya adı). */
+  llm_label?: string | null;
 }
 
 export interface AiConfig {
@@ -601,7 +616,7 @@ export async function askVault(
     throw new Error('AI motoru (llama-server) kurulu değil. Lütfen Ayarlar > Yapay Zekâ sekmesinden kur.');
   }
   if (!status.llm_ready) {
-    throw new Error('Qwen 2.5 14B modeli hazır değil. Lütfen Ayarlar > Yapay Zekâ sekmesinden indir veya seç.');
+    throw new Error('Seçili sohbet modeli hazır değil. Lütfen Ayarlar > Yapay Zekâ sekmesinden indir veya seç.');
   }
 
   // 1. Sorunun embedding'ini al (AI açık VE BGE-M3 hazırsa)
@@ -940,6 +955,52 @@ export async function applyCategorization(
  *  Prompt taşmaya başlarsa tek sayıyı düşür (ölçülecek tek yer burası). */
 const BATCH_SIZE = 8;
 
+/** Toplu kategorizasyonda tek bir kaydın kaderi (SAF karar). */
+export type ItemCategorizationPlan =
+  | { kind: 'deterministic'; result: CategorizeAndTagResult }
+  | { kind: 'llm' }
+  | { kind: 'skip' };
+
+/**
+ * Kural tabanlı ön geçişin SAF kararı (`batchCategorizeItems` Adım 3).
+ *
+ * - AI AÇIK: yalnızca TAM deterministik eşleşme (kategori + ≥2 etiket) LLM'i
+ *   atlar; kısmi eşleşme LLM turuna gider ve boşluğu kapatır.
+ * - AI KAPALI: LLM turu YOKTUR. Herhangi bir eşleşme deterministik uygulanır;
+ *   eşleşme yoksa kayıt atlanır — başarısız DEĞİL (yapacak bir şey yok).
+ */
+export function planItemCategorization(
+  text: string,
+  categories: string[],
+  tags: string[],
+  opts: { aiOn: boolean; minConfidence: number },
+): ItemCategorizationPlan {
+  const det = matchTaxonomyInText(text, categories, tags);
+  const fullDet = det.categories.length > 0 && det.tags.length >= 2;
+  const hasDet = det.categories.length > 0 || det.tags.length > 0;
+
+  if (fullDet || (!opts.aiOn && hasDet)) {
+    const resolvedCats = resolveCategories(det.categories, categories, {
+      confidence: 1,
+      minConfidence: opts.minConfidence,
+      maxTotal: 1,
+    });
+    const resolvedTags = resolveTags(det.tags, tags, { max: 5 });
+    return {
+      kind: 'deterministic',
+      result: {
+        categories: resolvedCats.names,
+        tags: resolvedTags,
+        summary: '',
+        confidence: 1,
+        source: 'deterministic',
+      },
+    };
+  }
+
+  return opts.aiOn ? { kind: 'llm' } : { kind: 'skip' };
+}
+
 /**
  * Seçilen öğeleri Qwen 2.5 ile kategorize edip etiketler.
  *
@@ -973,6 +1034,7 @@ export async function batchCategorizeItems(
   const allTags = (await listTags()).map((t) => t.name);
 
   const cfg = await getAiStatus();
+  const aiOn = isAiEnabled(cfg);
   const shouldApply = options?.forceAutoApply ?? cfg.auto_apply_tags ?? false;
   const replaceExisting = options?.replaceExisting ?? false;
   const threshold = readTagThreshold();
@@ -1016,28 +1078,23 @@ export async function batchCategorizeItems(
   // 2. Her kaydın metnini bir kez oku (transkript okuması IPC'sidir).
   const texts = await Promise.all(items.map((it) => getItemTranscriptText(it)));
 
-  // 3. Deterministik eşleşme: adı metinde geçen kayıt LLM'e hiç gitmez.
+  // 3. Deterministik eşleşme: kural tabanlı kayıt LLM'e hiç gitmez. AI kapalıyken
+  //    kısmi eşleşme de deterministik uygulanır; eşleşmeyen kayıt atlanır.
   const pending: number[] = [];
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     const text = [it.title, it.note, texts[i]].filter(Boolean).join('\n');
-    const det = matchTaxonomyInText(text, allCats, allTags);
+    const plan = planItemCategorization(text, allCats, allTags, {
+      aiOn,
+      minConfidence: threshold,
+    });
 
-    if (det.categories.length > 0 && det.tags.length >= 2) {
-      // Tam deterministik: LLM gerek yok.
-      const resolvedCats = resolveCategories(det.categories, allCats, {
-        confidence: 1,
-        minConfidence: threshold,
-        maxTotal: 1,
-      });
-      const resolvedTags = resolveTags(det.tags, allTags, { max: 5 });
-      await settle(it, {
-        categories: resolvedCats.names,
-        tags: resolvedTags,
-        summary: '',
-        confidence: 1,
-        source: 'deterministic',
-      });
+    if (plan.kind === 'deterministic') {
+      await settle(it, plan.result);
+    } else if (plan.kind === 'skip') {
+      // AI kapalı + kural eşleşmesi yok: yapacak bir şey yok, başarısız sayma.
+      processed++;
+      skipped++;
     } else {
       pending.push(i);
     }

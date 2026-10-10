@@ -25,9 +25,12 @@ const EMBED_PORT: u16 = 28081;
 const AI_DISABLED_MESSAGE: &str =
     "AI kapalı — Ayarlar → AI bölümünden açabilirsiniz.";
 
-// NOT (7c-3): llama.cpp motoru, CUDA çalışma zamanı, Qwen ve BGE pinleri artık
-// kayıtta (`components.rs`) TEK yerde durur; burada URL/sha256/dosya kopyası
-// YOKTUR. İndirmeler `component_download::install_component` üzerinden yürür.
+// NOT (7c-3 / ai-hardware-floor): llama.cpp motoru, CUDA çalışma zamanı, Qwen ve
+// BGE pinleri artık kayıtta (`components.rs`) TEK yerde durur; burada URL/sha256/
+// dosya kopyası YOKTUR. İndirmeler `component_download::install_component` üzerinden
+// yürür. VARSAYILAN motor Vulkan'dır (`llama-engine`, ~30 MB, GPU'suz makinede
+// CPU'ya düşer); CUDA (`llama-engine-cuda` + `llama-cudart`) OPSİYONELdir ve
+// varsayılan indirme yolu onu ÇEKMEZ.
 
 // --- Offload kararı (saf) ----------------------------------------------------
 //
@@ -339,6 +342,22 @@ fn resolve_engine_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
             return Some(pb);
         }
     }
+    // G5/H-3: CUDA motoru AYRI dizinde yaşar (`jointvault-binaries/llama-cuda`) ki
+    // `llama-server.exe` adıyla Vulkan motorunu ezmesin. YALNIZCA NVIDIA tespit
+    // edilirse tercih edilir (`nvidia-smi` VRAM verir): salt dosya varlığına bakmak,
+    // AMD/Intel/GPU'suz makinede yanlışlıkla kurulmuş CUDA build'ini seçerdi ve o
+    // build sürücüsüz makinede `ggml-cuda.dll` yükleyip çökebilir. NVIDIA yoksa
+    // aşağıda Vulkan motoruna düşülür.
+    if crate::hardware::detect().has_vram() {
+        if let Ok(cuda_dir) = crate::components::dest_dir(app, crate::components::Dest::BinariesCuda) {
+            if let Some(file) = component_file_name("llama-engine-cuda") {
+                let p = cuda_dir.join(file);
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
     if let Ok(bdir) = binaries_dir(app) {
         // Motorun çalıştırılabilir adı da kayıttan gelir (`llama-engine`); kopya YOK.
         if let Some(file) = component_file_name("llama-engine") {
@@ -363,11 +382,15 @@ fn resolve_llm_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
         }
     }
     if let Ok(mdir) = models_dir(app) {
-        // Kanonik ad kayıttan gelir (`ai-model-llm`); kopya sabit YOK.
-        if let Some(file) = component_file_name("ai-model-llm") {
-            let p = mdir.join(file);
-            if p.exists() {
-                return Some(p);
+        // Kanonik adlar kayıttan gelir; kopya sabit YOK. Sıra 14B → 7B → 3B:
+        // mevcut kullanıcı (yalnız 14B) aynı dosyayı çözmeye devam eder, seçim
+        // yapılmamışsa ilk KURULU sohbet modeli tercih edilir.
+        for id in crate::components::CHAT_MODEL_IDS {
+            if let Some(file) = component_file_name(id) {
+                let p = mdir.join(file);
+                if p.exists() {
+                    return Some(p);
+                }
             }
         }
         // Geriye dönük veya farklı adlandırılmış Qwen modelleri için tarama
@@ -381,6 +404,48 @@ fn resolve_llm_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// SAF: verilen dosya adı kayıtlı (sha256 pinli) bir sohbet modeli mi?
+///
+/// I/O yoktur → doğrudan testlenir. `llm_is_verified` dizin kontrolünü ekler.
+fn is_registered_chat_file(name: &str) -> bool {
+    crate::components::CHAT_MODEL_IDS
+        .iter()
+        .any(|id| component_file_name(id) == Some(name))
+}
+
+/// Seçili sohbet modeli KAYITLI (sha256 pinli) mı, yoksa serbest bir `.gguf` mı?
+///
+/// Doğrulama YALNIZCA `models_dir` içindeki, kayıtlı bir sohbet modeli dosya adına
+/// birebir uyan yol için `true`'dur. Başka dizinden seçilen (ör. İndirilenler'deki)
+/// aynı adlı dosya "doğrulanmadı" sayılır: serbest GGUF'a hak etmediği bir güven
+/// damgası gösterilmez (uydurma kaynak yok — security-patterns).
+fn llm_is_verified(app: &AppHandle, path: &std::path::Path) -> bool {
+    let Ok(mdir) = models_dir(app) else {
+        return false;
+    };
+    if path.parent() != Some(mdir.as_path()) {
+        return false;
+    }
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    is_registered_chat_file(name)
+}
+
+/// Seçili sohbet modelinin kullanıcıya gösterilecek adı: kayıtlıysa registry
+/// etiketi (ör. "Qwen 2.5 7B (sohbet)"), serbest GGUF'sa dosya adı. Uydurma
+/// etiket üretilmez.
+fn llm_display_label(app: &AppHandle, path: &std::path::Path) -> Option<String> {
+    let name = path.file_name().and_then(|n| n.to_str())?;
+    if llm_is_verified(app, path) {
+        return crate::components::CHAT_MODEL_IDS.iter().find_map(|id| {
+            let spec = crate::components::spec_for(id)?;
+            (spec.downloaded_file == name).then(|| spec.label.to_string())
+        });
+    }
+    Some(name.to_string())
 }
 
 fn resolve_embed_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
@@ -637,7 +702,7 @@ async fn ensure_server_running(
             .ok_or_else(|| "llama-server motoru bulunamadı. Lütfen Ayarlar panelinden kur veya yolunu göster.".to_string())?;
 
         let model = if slot_type == "chat" {
-            resolve_llm_path(app, &mgr.config).ok_or_else(|| "Qwen 2.5 14B modeli bulunamadı.".to_string())?
+            resolve_llm_path(app, &mgr.config).ok_or_else(|| "Seçili sohbet modeli bulunamadı.".to_string())?
         } else {
             resolve_embed_path(app, &mgr.config).ok_or_else(|| "BGE-M3 modeli bulunamadı.".to_string())?
         };
@@ -745,6 +810,9 @@ pub async fn ai_status(app: AppHandle) -> Result<Value, String> {
     // Tespit pahalı olabilir (ilk çağrıda süreç başlatır); MANAGER kilidini
     // tutmadan ÖNCE yap ki diğer AI komutlarını gereksiz yere bekletmesin.
     let gpu = hardware::detect();
+    // Toplam RAM (MiB) — sihirbazın donanıma göre model önerisi için. Ayrı tespit;
+    // önbellekli olduğundan pahalı süreç yalnızca ilk çağrıda başlar.
+    let ram_mb = hardware::detect_ram();
     let mut lock = MANAGER.lock().unwrap();
     let mgr = lock.as_mut().ok_or("Manager başlatılamadı")?;
 
@@ -780,11 +848,24 @@ pub async fn ai_status(app: AppHandle) -> Result<Value, String> {
         .unwrap_or_else(|| decide_offload(Some(&gpu), model_bytes, VRAM_RESERVE_MB));
     let gpu_name = gpu.name.clone();
 
+    // Seçili sohbet modeli: pinli (doğrulanmış) mı, serbest GGUF (doğrulanmadı) mı?
+    // `llm` burada hâlâ ödünç; JSON'da tüketilmeden ÖNCE hesaplanır.
+    let llm_verified = llm
+        .as_deref()
+        .map(|p| llm_is_verified(&app, p))
+        .unwrap_or(false);
+    let llm_label = llm.as_deref().and_then(|p| llm_display_label(&app, p));
+
     Ok(serde_json::json!({
         "engine_available": engine.is_some(),
         "engine_path": engine.map(|p| p.to_string_lossy().to_string()),
         "llm_ready": llm.is_some(),
         "llm_path": llm.map(|p| p.to_string_lossy().to_string()),
+        // YALNIZCA EK alanlar: seçili sohbet modelinin etiketi ve doğrulama damgası.
+        // Serbest `.gguf` (kayıt dışı) "doğrulanmadı" olarak raporlanır; eski
+        // tüketiciler bu iki alanı yok sayar (mevcut anahtarlar değişmedi).
+        "llm_verified": llm_verified,
+        "llm_label": llm_label,
         "embed_ready": embed.is_some(),
         "embed_path": embed.map(|p| p.to_string_lossy().to_string()),
         "chat_server_running": chat_running,
@@ -799,6 +880,9 @@ pub async fn ai_status(app: AppHandle) -> Result<Value, String> {
             "vram_mb": gpu.vram_mb,
             "source": gpu.source,
         },
+        // YALNIZCA EK alan: toplam sistem RAM'i (MiB), opsiyonel. Tespit
+        // başarısızsa `null` — uydurma sayı yok. Eski tüketiciler yok sayar.
+        "ram_mb": ram_mb,
         "offload": {
             "mode": offload.mode,
             "n_gpu_layers": offload.n_gpu_layers,
@@ -873,16 +957,20 @@ pub async fn ai_stop_server() -> Result<(), String> {
 pub async fn ai_download_engine(app: AppHandle, payload: Value) -> Result<String, String> {
     let job_id = get_str(&payload, "job_id")?;
 
-    // Sıra ve paylaşılan çubuk: iki arşiv TEK göstergeyi paylaşır (0–50 / 50–100).
-    // `span` bu yüzden motora verilir; pin/URL/zip listesi burada YOK.
+    // VARSAYILAN yol: yalnızca Vulkan motoru (~30 MB). CUDA ARTIK ÇEKİLMEZ —
+    // ~615 MB'lık NVIDIA-özel indirme, varsayılan kuruluma girmemeli. GPU'suz
+    // makinede Vulkan derlemesi CPU'ya düşer (llama.cpp PR #14099), yani bu yol
+    // her makinede çalışır.
+    //
+    // OPSİYONEL CUDA: kullanıcı açıkça isterse `component_download` komutuyla
+    // `llama-engine-cuda` + `llama-cudart` indirilir (kayıt: components.rs).
     //
     // "Varsa atla" davranışı `install_component`'ta korunur: kayıt hedef dosya
-    // (`llama-server.exe` / `cublas64_12.dll`) varsa indirmeyi atlar ve %100 olayı yayar.
+    // (`llama-server.exe`) varsa indirmeyi atlar ve %100 olayı yayar.
     //
     // ÖNEMLİ: kuyruk kilidi (`download::QUEUE`) `install_component` içinde alınır;
     // burada ayrıca ALINMAZ (alınsaydı iç çağrı kilitlenirdi).
-    install_component(&app, "llama-engine", &job_id, Some((0.0, 50.0))).await?;
-    install_component(&app, "llama-cudart", &job_id, Some((50.0, 100.0))).await?;
+    install_component(&app, "llama-engine", &job_id, None).await?;
 
     Ok("done".to_string())
 }
@@ -1503,8 +1591,8 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
 #[cfg(test)]
 mod tests {
     use super::{
-        decide_offload, resolve_ai_enabled, should_warmup, OffloadMode, AI_DISABLED_MESSAGE,
-        ALL_GPU_LAYERS, BYTES_PER_MIB, VRAM_RESERVE_MB,
+        decide_offload, is_registered_chat_file, resolve_ai_enabled, should_warmup, OffloadMode,
+        AI_DISABLED_MESSAGE, ALL_GPU_LAYERS, BYTES_PER_MIB, VRAM_RESERVE_MB,
     };
     use crate::hardware::{GpuInfo, GpuSource};
 
@@ -1737,5 +1825,21 @@ mod tests {
             serde_json::to_string(&OffloadMode::Cpu).unwrap_or_default(),
             "\"cpu\""
         );
+    }
+
+    // --- sohbet modeli doğrulama (SAF): kayıtlı ad mı, serbest `.gguf` mu? ---
+
+    #[test]
+    fn registered_chat_file_names_are_recognized_and_free_ones_are_not() {
+        // Kayıtlı (pinli) üç sohbet modeli dosya adı tanınır.
+        assert!(is_registered_chat_file("Qwen2.5-14B-Instruct-Q4_K_M.gguf"));
+        assert!(is_registered_chat_file("Qwen2.5-7B-Instruct-Q4_K_M.gguf"));
+        assert!(is_registered_chat_file("Qwen2.5-3B-Instruct-Q4_K_M.gguf"));
+        // Serbest/kayıt dışı dosya adları "doğrulanmış" sayılmaz (uydurma güven yok).
+        assert!(!is_registered_chat_file("serbest-model.gguf"));
+        assert!(!is_registered_chat_file("Qwen2.5-14B-Instruct-Q4_K_M.GGUF")); // harf duyarlı
+        // Gömme modeli bir SOHBET modeli değildir: yanlışlıkla "doğrulanmış" olmamalı.
+        assert!(!is_registered_chat_file("bge-m3-Q8_0.gguf"));
+        assert!(!is_registered_chat_file(""));
     }
 }

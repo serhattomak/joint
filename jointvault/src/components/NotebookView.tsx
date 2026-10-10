@@ -12,7 +12,7 @@ import {
 import type { Item, Tag } from '@/lib/db/types';
 import { getAiStatus, isAiEnabled, summarizeCategory } from '@/lib/ai';
 import { parseArticleImages } from '@/lib/scraper';
-import { extractLinks } from '@/lib/notebook';
+import { buildNumericSummary, extractLinks } from '@/lib/notebook';
 import { openExternal } from '@/lib/external';
 import { Button } from '@/components/ui/button';
 
@@ -137,6 +137,12 @@ export function NotebookView({ refreshKey = 0, onOpenItem, onOpenSettings }: Not
   const selectedName =
     selected === null ? 'Sınıflandırılmamış' : categories?.find((c) => c.id === selected)?.name ?? 'Defter';
 
+  // AI kapalıyken sayfa özeti: LLM yerine deterministik sayısal özet (aynı yüzey).
+  const numericSummary = useMemo(
+    () => (aiReady === false && rows ? buildNumericSummary(rows) : null),
+    [aiReady, rows],
+  );
+
   const imagesMemo = useMemo(() => {
     // her satır için ilk 3 görsel + kalan sayısı
     if (!rows) return new Map<string, { first: string[]; more: number }>();
@@ -223,12 +229,25 @@ export function NotebookView({ refreshKey = 0, onOpenItem, onOpenSettings }: Not
           </div>
         </header>
 
-        {/* Özet bloğu: kalıcı özet kategori sayfasına özgü (FK categories) */}
-        {selected === null ? null : aiReady === false ? (
-          <p className="mb-4 text-xs text-muted-foreground">
-            Sayfa özeti için yapay zekâ kapalı — Ayarlar → AI'dan açabilirsin.
-          </p>
-        ) : (
+        {/* Özet bloğu: AI açıkken kalıcı LLM özeti; AI kapalıyken aynı yüzeyde
+            deterministik sayısal özet (dürüst etiket — ikinci sözlük yok). */}
+        {aiReady === false ? (
+          numericSummary ? (
+            <div className="mb-5 flex flex-col gap-2 rounded-sm border border-border/60 bg-card/60 p-3">
+              <div className="flex items-start gap-2">
+                <BookOpen className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Sayısal özet
+                  </span>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                    {numericSummary}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null
+        ) : selected === null ? null : (
           <div className="mb-5 flex flex-col gap-2 rounded-sm border border-border/60 bg-card/60 p-3">
             {summary ? (
               <>

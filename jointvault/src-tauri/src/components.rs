@@ -46,11 +46,13 @@ pub enum ComponentSource {
     Bundled,
 }
 
-/// Bileşenin kurulduğu yer. Üç ayrı yaşam alanı vardır ve karıştırılamaz:
+/// Bileşenin kurulduğu yer. Ayrı yaşam alanları vardır ve karıştırılamaz:
 ///   - `Components` → `components_dir()`: indirilen çalıştırılabilirler (ffmpeg,
 ///     ffprobe, yt-dlp, whisper motoru).
 ///   - `Models` → `app_data_dir()/jointvault-models`: veri dosyaları (`.bin`, `.gguf`).
 ///   - `Binaries` → `app_data_dir()/jointvault-binaries`: AI motoru (llama-server + DLL).
+///   - `BinariesCuda`/`ComponentsCuda` → aynı köklerin CUDA alt klasörleri: aynı
+///     dosya adlarını taşıyan GPU motorları CPU/Vulkan motorunu ezmesin diye.
 ///
 /// `Models`/`Binaries` dizinleri BUGÜNKÜ adlarıyla korunur (bkz. dosya başı notu):
 /// whisper/AI dosyaları zaten orada duruyor. Kayıt yeni bir yol uydurmaz.
@@ -62,6 +64,12 @@ pub enum Dest {
     Models,
     /// AI motoru (llama-server + CUDA DLL'leri).
     Binaries,
+    /// llama.cpp CUDA motoru — ayrı alt klasör (`jointvault-binaries/llama-cuda`).
+    /// CUDA ve Vulkan motorları AYNI `llama-server.exe` adını taşır; aynı dizine
+    /// çıkarılsalardı biri diğerini ezerdi (whisper-cuda'nın `components/whisper-cuda`
+    /// örneğiyle aynı gerekçe). CUDA çalışma zamanı DLL'leri (`llama-cudart`) da
+    /// `llama-server.exe` yanında arandığı için bu hedefe kurulur.
+    BinariesCuda,
     /// Whisper'ın CUDA (GPU) motoru — ayrı alt klasör (`components/whisper-cuda`).
     /// CPU motoruyla AYNI dosya adlarını (`whisper.exe`, `ggml.dll`, …) taşıdığı
     /// için aynı dizine çıkarılamaz; ikisi birbirini ezerdi.
@@ -218,22 +226,24 @@ impl DownloadSpec {
 
 const FFMPEG_TOOLS_BUNDLE: &str = "ffmpeg-tools";
 
-const FFMPEG_TOOLS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-20-13-11/ffmpeg-N-126716-g3faf57342f-win64-gpl.zip";
+const FFMPEG_TOOLS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-09-14-16/ffmpeg-N-127259-gb91a82d6dd-win64-gpl.zip";
 
 /// Yayıncının `checksums.sha256` dosyasından; GitHub asset `digest` alanıyla doğrulandı.
+/// (Eski tarihli tag `autobuild-2026-09-20-13-11` kaldırıldı — asset 404 dönüyordu.)
 const FFMPEG_TOOLS_SHA256: &str =
-    "1e41954de78ce3ebdee55bbe6beb74aa89878b9fdf57b196a9e7e656a03f0a3b";
+    "9bcf8b949efb0e746bb85d840d0c08918e8b6b7d55c641f4065f4aedeffd9a12";
 
-/// Arşiv boyutu: 194_564_474 bayt = 185.55 MiB (≈185.6 MB). Değer, GitHub asset
-/// `size` alanından ve context.md pin tablosundaki 185.6 MB gösteriminden doğrulandı.
-const FFMPEG_TOOLS_ARCHIVE_BYTES: u64 = 194_564_474;
+/// Arşiv boyutu: 200_234_231 bayt = 190.96 MiB (≈191 MB). Değer, GitHub asset
+/// `size` alanından ve `Content-Range` yanıtından doğrulandı.
+const FFMPEG_TOOLS_ARCHIVE_BYTES: u64 = 200_234_231;
 
-/// Arşiv içindeki `ffmpeg.exe` boyutu: 156.62 MiB (164.23 MB).
-const FFMPEG_EXE_BYTES: u64 = 164_232_192;
-/// Arşiv içindeki `ffprobe.exe` boyutu: 156.42 MiB (164.02 MB).
-const FFPROBE_EXE_BYTES: u64 = 164_022_784;
+/// Arşiv içindeki `ffmpeg.exe` boyutu: 168_917_504 bayt = 161.09 MiB. Zip merkezi
+/// dizinindeki açılmış (uncompressed) boyuttan ölçüldü.
+const FFMPEG_EXE_BYTES: u64 = 168_917_504;
+/// Arşiv içindeki `ffprobe.exe` boyutu: 168_707_072 bayt = 160.89 MiB.
+const FFPROBE_EXE_BYTES: u64 = 168_707_072;
 
-/// Tek arşiv girdisi için üst sınır: 400 MiB. Gerçek ikililer ~156 MiB olduğundan
+/// Tek arşiv girdisi için üst sınır: 400 MiB. Gerçek ikililer ~161 MiB olduğundan
 /// meşru derleme geçer; şişirilmiş (zip-bomba) bir girdi burada reddedilir.
 const FFMPEG_ENTRY_CAP_BYTES: u64 = 400 * 1024 * 1024;
 
@@ -247,8 +257,8 @@ const FFMPEG_TOOLS_DISK_BYTES: u64 =
 const FFMPEG_TOOLS_WANTED: &[&str] = &["ffmpeg.exe", "ffprobe.exe"];
 
 /// Paylaşılan arşivin MB cinsinden gösterimi (iki satır da bu sayıyı taşır:
-/// 80+80 değil, TEK ~186 MB indirme).
-const FFMPEG_TOOLS_APPROX_MB: u32 = 186;
+/// 80+80 değil, TEK ~191 MB indirme).
+const FFMPEG_TOOLS_APPROX_MB: u32 = 191;
 
 /// `app_data_dir()` altındaki mevcut klasör adları — DEĞİŞTİRİLMEZ. whisper/AI
 /// dosyaları bugün bu adlarda kurulu; taşımak onları öksüz bırakırdı. Bu iki ad
@@ -387,52 +397,126 @@ const WHISPER_MODEL_LARGE_V3_SHA256: &str =
 const WHISPER_MODEL_LARGE_V3_BYTES: u64 = 3_095_033_483;
 const WHISPER_MODEL_LARGE_V3_MB: u32 = 2951;
 
-// --- llama.cpp motoru + CUDA çalışma zamanı (7c-3) ---
+// --- llama.cpp motoru: Vulkan (VARSAYILAN) + CUDA (OPSİYONEL) + CUDA çalışma zamanı ---
 //
-// İki AYRI arşivdir ve ortak bundle VERİLMEZ: biri `llama-server.exe` + CPU/CUDA
-// backend DLL'leri, diğeri yalnızca cudart/cublas DLL'leridir. Ayrı paketlenince
-// "hangi dosya eksik" sorusu da ayrı ve net kalır.
+// VARSAYILAN motor artık Vulkan'dır (b10964, win-vulkan-x64, ~30 MB). Neden?
+// llama.cpp PR #14099'dan (Haz 2025) beri Vulkan derlemesi, makinede hiç Vulkan
+// cihazı yoksa otomatik olarak CPU'ya düşer (llvmpipe'a değil); yani GPU'suz
+// makinede de çalışır ve tek küçük indirmeyle gelir. Offload kararı VRAM'e bağlıdır
+// (`ai::decide_offload`); VRAM YALNIZCA `nvidia-smi`'den gelir. Bu yüzden bugün GPU
+// hızlanması yalnızca NVIDIA'da gerçekleşir; AMD/Intel'de (VRAM tespiti yok) motor
+// CPU'da çalışır — geniş GPU hızlanması ayrı bir iştir. CUDA (242 MB motor + 373 MB
+// cudart) yalnızca NVIDIA'ya yarar ve ~615 MB indirme ister; bu yüzden VARSAYILAN
+// değil, AYRI ve OPSİYONEL bir seçenektir. Varsayılan indirme yolu
+// (`ai::ai_download_engine`) CUDA'yı ÇEKMEZ; CUDA yalnızca kullanıcı açıkça
+// `llama-engine-cuda` + `llama-cudart` seçtiğinde iner.
+//
+// Üç AYRI arşivdir ve ortak bundle VERİLMEZ: biri `llama-server.exe` + CPU/Vulkan
+// backend DLL'leri, biri aynı exe + CUDA backend DLL'i, diğeri yalnızca
+// cudart/cublas DLL'leridir. Ayrı paketlenince "hangi dosya eksik" sorusu da ayrı
+// ve net kalır.
 
 const LLAMA_ENGINE_BUNDLE: &str = "llama-engine";
 const LLAMA_ENGINE_URL: &str =
-    "https://github.com/ggml-org/llama.cpp/releases/download/b10964/llama-b10964-bin-win-cuda-12.4-x64.zip";
+    "https://github.com/ggml-org/llama.cpp/releases/download/b10964/llama-b10964-bin-win-vulkan-x64.zip";
+/// GitHub asset `digest` alanından birebir (`sha256:...`) alındı; uydurma YOK.
+/// Aynı asset'in `size` alanı `LLAMA_ENGINE_ARCHIVE_BYTES`'ı verir.
 const LLAMA_ENGINE_SHA256: &str =
-    "264f20d7ee3860aecca9ec12418357a9f3e80349a2b186f66c63859ded1a9593";
+    "1ee3ad952f4ba71f438bd6d7bebef19e1c7af04adcaa35d08b4ddabb27d4c642";
 /// Kurulu mu? `ai.rs` bugün `binaries_dir()/llama-server.exe` varlığına bakıyor;
-/// aynı işaret dosyası korunur ki "varsa atla" davranışı değişmesin.
+/// aynı işaret dosyası korunur ki "varsa atla" davranışı değişmesin. CUDA motoru da
+/// AYNI çalıştırılabilir adı taşır — "kurulu mu" sorusu ikisinde ortaktır.
 const LLAMA_ENGINE_FILE: &str = "llama-server.exe";
-const LLAMA_ENGINE_ARCHIVE_BYTES: u64 = 242 * MIB;
+/// GitHub asset `size` alanı: 31_674_542 bayt (~30.2 MB). MB'a yuvarlamak disk
+/// kapısını yanıltırdı; ham bayt yazılır.
+const LLAMA_ENGINE_ARCHIVE_BYTES: u64 = 31_674_542;
 /// Tepe disk: `.part` arşiv doğrulanana kadar hedef klasörde durur ve çıkarma da
-/// aynı klasöre yapılır. Arşiv ~242 MiB; CUDA backend DLL'i (`ggml-cuda.dll`) tek
-/// başına arşivi katlar, CPU varyantları ve `libomp.dll` de eklenir. Cömert bir üst
-/// sınır veriyoruz: kesin koruma, akış sırasındaki `WriteFailed`'dır.
-const LLAMA_ENGINE_PEAK_BYTES: u64 = 1_200 * MIB;
-/// İki llama arşivinin ortak girdi sınırı. Gerçek tek girdiler yüzlerce MB'tır
+/// aynı klasöre yapılır. Arşiv ~30 MiB; açılan `ggml-vulkan.dll` + CPU varyantları
+/// + `llama-server.exe` birkaç katıdır. Cömert bir üst sınır: kesin koruma, akış
+/// sırasındaki `WriteFailed`'dır.
+const LLAMA_ENGINE_PEAK_BYTES: u64 = 256 * MIB;
+/// Tüm llama arşivlerinin ortak girdi sınırı. Gerçek tek girdiler yüzlerce MB'tır
 /// (`ggml-cuda.dll`, `cublasLt64_12.dll`); 2 GiB meşru derlemeyi geçirir, şişirilmiş
 /// girdiyi reddeder. Arşiv zaten sha256 ile pinlidir — bu bir emniyet kemeridir.
 const LLAMA_ARCHIVE_ENTRY_CAP_BYTES: u64 = 2 * 1024 * MIB;
-const LLAMA_ENGINE_APPROX_MB: u32 = 242;
+const LLAMA_ENGINE_APPROX_MB: u32 = 30;
 
-/// llama.cpp CUDA 12.4 Windows arşivinden çıkarılacak dosyalar.
+/// llama.cpp Windows Vulkan arşivinden çıkarılacak dosyalar.
 ///
-/// Motor yalnızca ADI VERİLEN girdileri çıkarır (eşleşmeyen ad sessizce atlanır),
-/// bu yüzden liste tam olmalıdır. `GGML_BACKEND_DL` açık: `ggml-*.dll` dosyaları
-/// çalışma anında exe yanından yüklenir; bu yüzden CPU varyantlarının tamamı
-/// listelenir (desteklenmeyen varyant yalnızca yüklenmez). `libomp.dll` OpenMP
-/// `llama-server.exe`'nin çalışması için gereken dosyalar: kendisi + arşivdeki
-/// **TÜM DLL'ler**.
+/// Liste `dev/verify-engine-archive.mjs` ile **gerçek arşivden** doğrulanır: o sonda
+/// her koşuda kayıtla arşivi karşılaştırır. Motor yalnızca ADI VERİLEN girdileri
+/// çıkarır (eşleşmeyen ad sessizce atlanır), bu yüzden liste tam olmalıdır.
 ///
-/// Neden elle seçilmiyor? 7c-3'te bu liste llama.cpp'nın yayın yapılandırmasından
-/// TÜRETİLMİŞTİ ve **iki yönden de yanlıştı**: arşivde OLMAYAN `ggml-cpu.dll`
-/// yazıyordu ve çalışma zamanında GEREKEN `llama-server-impl.dll` ile
-/// `llama-common.dll` yazmıyordu — yani kurulum sessizce yarım kalır ve
-/// `llama-server.exe` hiç başlamazdı. Bu, 7c-3 raporunda "DOĞRULANMADI" diye
-/// işaretlenen maddenin ta kendisiydi.
+/// `GGML_BACKEND_DL` açık: `ggml-*.dll` dosyaları çalışma anında exe yanından
+/// yüklenir. **`ggml-cpu-*.dll` seti KORUNUR**: Vulkan cihazı olmayan makinede
+/// llama.cpp PR #14099 davranışı gereği CPU'ya düşülür ve o yedek yol bu DLL'lere
+/// dayanır; `ggml-vulkan.dll` GPU yoludur, `libomp.dll` OpenMP çalışma zamanıdır.
 ///
-/// Liste artık `dev/verify-engine-archive.mjs` ile **gerçek arşivden** üretildi ve
-/// o sonda her koşuda kayıtla arşivi karşılaştırır. (7c-3 öncesi kod da tüm DLL'leri
-/// alıyordu; daraltma gereksiz bir riskti.)
+/// RİSK (bilinçli kabul): resmi arşivde `ggml-cpu-zen4.dll` vardır ama **zen2/zen3
+/// yoktur**. Bazı AMD Zen2/Zen3 CPU'larda prebuilt `ggml-cpu-*.dll` seçimi CPU
+/// fallback sırasında çökebilir (node-llama-cpp #554). Bu, resmi prebuilt'ın bilinen
+/// sınırıdır; CPU yedeği yine de bu seti gerektirir (Zen4/Intel'de sorun yok).
+/// Zen2/Zen3 için DLL üretmek kaynak derlemesi gerektirir ve kapsam dışıdır.
 const LLAMA_ENGINE_WANTED: &[&str] = &[
+    "llama-server.exe",
+    "ggml.dll",
+    "ggml-base.dll",
+    "ggml-cpu-alderlake.dll",
+    "ggml-cpu-cannonlake.dll",
+    "ggml-cpu-cascadelake.dll",
+    "ggml-cpu-cooperlake.dll",
+    "ggml-cpu-haswell.dll",
+    "ggml-cpu-icelake.dll",
+    "ggml-cpu-ivybridge.dll",
+    "ggml-cpu-piledriver.dll",
+    "ggml-cpu-sandybridge.dll",
+    "ggml-cpu-sapphirerapids.dll",
+    "ggml-cpu-skylakex.dll",
+    "ggml-cpu-sse42.dll",
+    "ggml-cpu-x64.dll",
+    "ggml-cpu-zen4.dll",
+    "ggml-vulkan.dll",
+    "ggml-rpc.dll",
+    "libomp.dll",
+    "llama.dll",
+    "llama-batched-bench-impl.dll",
+    "llama-bench-impl.dll",
+    "llama-cli-impl.dll",
+    "llama-common.dll",
+    "llama-completion-impl.dll",
+    "llama-fit-params-impl.dll",
+    "llama-perplexity-impl.dll",
+    "llama-quantize-impl.dll",
+    "llama-server-impl.dll",
+    "mtmd.dll",
+];
+
+// CUDA motoru — OPSİYONEL (varsayılan DEĞİL). Yalnızca NVIDIA GPU'da Vulkan'dan
+// hızlıdır ve ~242 MB motor + 373 MB cudart ister. Varsayılan yol bunu indirmez;
+// kullanıcı açıkça seçerse `llama-engine-cuda` + `llama-cudart` birlikte iner.
+// URL/sha256 7c-3'ten beri pinlidir; DEĞİŞTİRİLMEDİ (mevcut CUDA kurulumları
+// dokunulmaz kalır).
+const LLAMA_ENGINE_CUDA_BUNDLE: &str = "llama-engine-cuda";
+const LLAMA_ENGINE_CUDA_URL: &str =
+    "https://github.com/ggml-org/llama.cpp/releases/download/b10964/llama-b10964-bin-win-cuda-12.4-x64.zip";
+const LLAMA_ENGINE_CUDA_SHA256: &str =
+    "264f20d7ee3860aecca9ec12418357a9f3e80349a2b186f66c63859ded1a9593";
+const LLAMA_ENGINE_CUDA_FILE: &str = "llama-server.exe";
+/// GitHub asset `size` alanı: 254_067_651 bayt (~242.3 MB).
+const LLAMA_ENGINE_CUDA_ARCHIVE_BYTES: u64 = 254_067_651;
+/// Tepe disk: arşiv ~242 MiB + açılan CUDA backend (`ggml-cuda.dll`) ve CPU
+/// varyantları. Cömert üst sınır; kesin koruma akış sırasındaki `WriteFailed`.
+const LLAMA_ENGINE_CUDA_PEAK_BYTES: u64 = 1_200 * MIB;
+const LLAMA_ENGINE_CUDA_APPROX_MB: u32 = 242;
+
+/// CUDA motorunun (ve çalışma zamanının) kurulduğu AYRI alt klasör adı. Vulkan
+/// motoru `jointvault-binaries` kökünde kalır; CUDA buraya kurulur ki iki motor
+/// aynı `llama-server.exe` adıyla birbirini ezmesin (bkz. `Dest::BinariesCuda`).
+const LLAMA_CUDA_DIR_NAME: &str = "llama-cuda";
+/// CUDA arşivinden çıkarılacaklar: Vulkan setiyle aynıdır, tek fark `ggml-cuda.dll`
+/// (Vulkan'da `ggml-vulkan.dll`). İki liste AYRI tutulur çünkü sonda "wanted ⊆ arşiv"
+/// bekler; ortak bir üst-küme liste her iki arşivde de "eksik" verirdi.
+const LLAMA_ENGINE_CUDA_WANTED: &[&str] = &[
     "llama-server.exe",
     "ggml.dll",
     "ggml-base.dll",
@@ -505,6 +589,45 @@ const AI_MODEL_EMBED_SHA256: &str =
     "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167";
 const AI_MODEL_EMBED_BYTES: u64 = 605 * MIB;
 const AI_MODEL_EMBED_MB: u32 = 605;
+
+// --- Sohbet (LLM) modelleri: 3B / 7B, 14B ile AYNI yayıncı ailesi (bartowski) ---
+//
+// Neden aynı aile? 14B (`ai-model-llm`) zaten `bartowski/Qwen2.5-14B-Instruct-GGUF`
+// kaynağından pinli; 3B/7B de aynı ailenin Q4_K_M kuantizasyonudur. Farklı yayıncı
+// seçmek dosya adlandırmasını ve doğrulama hattını bölerdi. URL/sha256/boyut
+// HuggingFace API (`?blobs=true`, LFS `sha256` alanı) ve gerçek dosya boyutundan
+// alındı — uydurma YOK (security-patterns: kaynak pinlenir).
+//
+// Yalnızca kullanıcı seçerse iner; varsayılan indirme yolu 14B'yi çeker.
+
+const AI_MODEL_LLM_3B_BUNDLE: &str = "ai-model-llm-3b";
+const AI_MODEL_LLM_3B_FILE: &str = "Qwen2.5-3B-Instruct-Q4_K_M.gguf";
+const AI_MODEL_LLM_3B_URL: &str =
+    "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf";
+/// HuggingFace LFS `sha256` alanından birebir (`?blobs=true`).
+const AI_MODEL_LLM_3B_SHA256: &str =
+    "9c9f56a391a3abbd5b89d0245bf6106081bcc3173119d4229235dd9d23253f94";
+/// Gerçek dosya boyutu (LFS `size`): 1_929_903_264 bayt = 1840.55 MiB.
+const AI_MODEL_LLM_3B_BYTES: u64 = 1_929_903_264;
+const AI_MODEL_LLM_3B_MB: u32 = 1841;
+
+const AI_MODEL_LLM_7B_BUNDLE: &str = "ai-model-llm-7b";
+const AI_MODEL_LLM_7B_FILE: &str = "Qwen2.5-7B-Instruct-Q4_K_M.gguf";
+const AI_MODEL_LLM_7B_URL: &str =
+    "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf";
+/// HuggingFace LFS `sha256` alanından birebir (`?blobs=true`).
+const AI_MODEL_LLM_7B_SHA256: &str =
+    "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423";
+/// Gerçek dosya boyutu (LFS `size`): 4_683_074_240 bayt = 4466.17 MiB.
+const AI_MODEL_LLM_7B_BYTES: u64 = 4_683_074_240;
+const AI_MODEL_LLM_7B_MB: u32 = 4466;
+
+/// Sohbet modeli spec id'leri — çözümleme (`ai.rs::resolve_llm_path`) ve
+/// "doğrulanmış mı" hükmü (`ai.rs::llm_is_verified`) TEK kaynaktan beslenir.
+///
+/// Sıra 14B → 7B → 3B: mevcut kullanıcı (yalnız 14B kurulu) aynı dosyayı çözmeye
+/// devam eder; seçim yapılmamışsa ilk KURULU model tercih edilir.
+pub const CHAT_MODEL_IDS: &[&str] = &["ai-model-llm", "ai-model-llm-7b", "ai-model-llm-3b"];
 
 const SPECS: &[Spec] = &[
     Spec {
@@ -726,7 +849,8 @@ const SPECS: &[Spec] = &[
     },
     Spec {
         id: "llama-engine",
-        label: "llama-server motoru",
+        // VARSAYILAN motor: Vulkan. GPU'suz makinede CPU'ya düşer (PR #14099).
+        label: "llama-server motoru (Vulkan)",
         approx_mb: LLAMA_ENGINE_APPROX_MB,
         dest: Dest::Binaries,
         kind: Kind::Binary,
@@ -749,10 +873,41 @@ const SPECS: &[Spec] = &[
         post_install: None,
     },
     Spec {
+        // OPSİYONEL CUDA motoru: varsayılan yol bunu İNDİRMEZ (bkz. `ai.rs`).
+        // Yalnızca NVIDIA GPU'da hız kazandırır; `llama-cudart` ile birlikte iner.
+        //
+        // G5: AYRI dizine kurulur (`jointvault-binaries/llama-cuda`). İki motor da
+        // `llama-server.exe` adını taşıdığı için aynı dizine çıkarılsalardı biri
+        // diğerini EZERDİ; ayrı dizin sayesinde ikisi bir arada durabilir ve `ai.rs`
+        // kurulu CUDA motorunu tercih edip yoksa Vulkan'a düşer.
+        id: "llama-engine-cuda",
+        label: "llama-server motoru (CUDA / GPU)",
+        approx_mb: LLAMA_ENGINE_CUDA_APPROX_MB,
+        dest: Dest::BinariesCuda,
+        kind: Kind::Binary,
+        downloaded_file: LLAMA_ENGINE_CUDA_FILE,
+        sidecar: None,
+        version_arg: "--version",
+        download: Some(DownloadSpec {
+            bundle: LLAMA_ENGINE_CUDA_BUNDLE,
+            url: LLAMA_ENGINE_CUDA_URL,
+            sha256: LLAMA_ENGINE_CUDA_SHA256,
+            expected_bytes: LLAMA_ENGINE_CUDA_ARCHIVE_BYTES,
+            disk_required_bytes: LLAMA_ENGINE_CUDA_PEAK_BYTES,
+            payload: PayloadRule::Zip {
+                wanted: LLAMA_ENGINE_CUDA_WANTED,
+                max_entry_bytes: LLAMA_ARCHIVE_ENTRY_CAP_BYTES,
+            },
+        }),
+        post_install: None,
+    },
+    Spec {
         id: "llama-cudart",
         label: "CUDA çalışma zamanı (llama)",
         approx_mb: LLAMA_CUDART_APPROX_MB,
-        dest: Dest::Binaries,
+        // G5: CUDA motoruyla AYNI ayrı dizine kurulur — bu DLL'ler `llama-server.exe`
+        // yanında aranır, o yüzden motorla birlikte yaşamalıdır.
+        dest: Dest::BinariesCuda,
         // DLL'ler ÇALIŞTIRILAMAZ: tür bilinçli olarak `Asset`tir ki kurulduğunda
         // "kullanılabilir" sayılsın (`is_usable`). `Binary` işaretlenseydi hiçbir
         // zaman koşamadığı için arayüz kalıcı "çalıştırılamıyor" der ve başarılı
@@ -791,6 +946,50 @@ const SPECS: &[Spec] = &[
             disk_required_bytes: AI_MODEL_LLM_BYTES,
             payload: PayloadRule::Raw {
                 file_name: AI_MODEL_LLM_FILE,
+            },
+        }),
+        post_install: None,
+    },
+    Spec {
+        // 7B: 14B ile aynı aile/kuantizasyon; orta seviye RAM'li makineler için.
+        id: "ai-model-llm-7b",
+        label: "Qwen 2.5 7B (sohbet)",
+        approx_mb: AI_MODEL_LLM_7B_MB,
+        dest: Dest::Models,
+        kind: Kind::Asset,
+        downloaded_file: AI_MODEL_LLM_7B_FILE,
+        sidecar: None,
+        version_arg: ASSET_VERSION_ARG,
+        download: Some(DownloadSpec {
+            bundle: AI_MODEL_LLM_7B_BUNDLE,
+            url: AI_MODEL_LLM_7B_URL,
+            sha256: AI_MODEL_LLM_7B_SHA256,
+            expected_bytes: AI_MODEL_LLM_7B_BYTES,
+            disk_required_bytes: AI_MODEL_LLM_7B_BYTES,
+            payload: PayloadRule::Raw {
+                file_name: AI_MODEL_LLM_7B_FILE,
+            },
+        }),
+        post_install: None,
+    },
+    Spec {
+        // 3B: en hafif sohbet modeli; düşük RAM'li makinelerde yerel AI'yı mümkün kılar.
+        id: "ai-model-llm-3b",
+        label: "Qwen 2.5 3B (sohbet)",
+        approx_mb: AI_MODEL_LLM_3B_MB,
+        dest: Dest::Models,
+        kind: Kind::Asset,
+        downloaded_file: AI_MODEL_LLM_3B_FILE,
+        sidecar: None,
+        version_arg: ASSET_VERSION_ARG,
+        download: Some(DownloadSpec {
+            bundle: AI_MODEL_LLM_3B_BUNDLE,
+            url: AI_MODEL_LLM_3B_URL,
+            sha256: AI_MODEL_LLM_3B_SHA256,
+            expected_bytes: AI_MODEL_LLM_3B_BYTES,
+            disk_required_bytes: AI_MODEL_LLM_3B_BYTES,
+            payload: PayloadRule::Raw {
+                file_name: AI_MODEL_LLM_3B_FILE,
             },
         }),
         post_install: None,
@@ -842,6 +1041,10 @@ pub fn dest_dir(app: &AppHandle, dest: Dest) -> Result<PathBuf, String> {
         Dest::ComponentsCuda => Ok(components_dir(app)?.join(WHISPER_CUDA_DIR_NAME)),
         Dest::Models => app_data_subdir(app, MODELS_DIR_NAME, "Model klasörü açılamadı"),
         Dest::Binaries => app_data_subdir(app, BINARIES_DIR_NAME, "Binary klasörü açılamadı"),
+        Dest::BinariesCuda => Ok(
+            app_data_subdir(app, BINARIES_DIR_NAME, "Binary klasörü açılamadı")?
+                .join(LLAMA_CUDA_DIR_NAME),
+        ),
     }
 }
 
@@ -1093,9 +1296,12 @@ pub fn missing_message(id: &str) -> String {
         "whisper-model-small" => "Whisper 'small' modeli kurulu değil. Daha yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "whisper-model-large-v3-q5_0" => "Whisper 'large-v3' (hızlı) modeli kurulu değil. Türkçe için yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "whisper-model-large-v3" => "Whisper 'large-v3' modeli kurulu değil. En yüksek doğruluklu transkriptler bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
-        "llama-engine" => "llama-server motoru kurulu değil. Yerel sohbet, özetleme ve etiketleme bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "llama-engine" => "llama-server motoru (Vulkan) kurulu değil. Yerel sohbet, özetleme ve etiketleme bu motoru kullanır; GPU'suz makinede CPU'ya düşer. Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "llama-engine-cuda" => "llama-server CUDA (GPU) motoru kurulu değil. Yalnızca NVIDIA GPU'da Vulkan'a göre hız kazandırır; CUDA çalışma zamanıyla birlikte iner. Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "llama-cudart" => "CUDA çalışma zamanı kütüphaneleri (cudart/cublas) kurulu değil. llama-server'ın GPU'da çalışması bunlara bağlıdır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "ai-model-llm" => "Qwen 2.5 14B sohbet modeli kurulu değil. Yerel sohbet ve özetleme bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "ai-model-llm-7b" => "Qwen 2.5 7B sohbet modeli kurulu değil. Orta seviye RAM'li makineler için dengeli seçenek; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "ai-model-llm-3b" => "Qwen 2.5 3B sohbet modeli kurulu değil. Düşük RAM'li makineler için en hafif seçenek; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "ai-model-embed" => "BGE-M3 gömme modeli kurulu değil. Anlamsal arama ve etiketleme bu modeli kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         _ => format!("'{id}' bileşeni kayıtlı değil ya da kurulu değil. Ayarlar → Bileşenler bölümünden bileşen durumunu denetleyebilirsin."),
     }
@@ -1276,8 +1482,11 @@ mod tests {
         "whisper-model-large-v3-q5_0",
         "whisper-model-large-v3",
         "llama-engine",
+        "llama-engine-cuda",
         "llama-cudart",
         "ai-model-llm",
+        "ai-model-llm-7b",
+        "ai-model-llm-3b",
         "ai-model-embed",
     ];
 
@@ -1294,8 +1503,11 @@ mod tests {
         "whisper-model-large-v3",
         "whisper-cuda",
         "llama-engine",
+        "llama-engine-cuda",
         "llama-cudart",
         "ai-model-llm",
+        "ai-model-llm-7b",
+        "ai-model-llm-3b",
         "ai-model-embed",
     ];
 
@@ -1308,6 +1520,8 @@ mod tests {
         "whisper-model-large-v3",
         "llama-cudart",
         "ai-model-llm",
+        "ai-model-llm-7b",
+        "ai-model-llm-3b",
         "ai-model-embed",
     ];
 
@@ -1638,9 +1852,13 @@ mod tests {
             ("whisper-model-large-v3", Dest::Models, Kind::Asset),
             ("whisper-cuda", Dest::ComponentsCuda, Kind::Binary),
             ("llama-engine", Dest::Binaries, Kind::Binary),
+            // G5: CUDA motoru ve çalışma zamanı AYRI dizinde (Vulkan'ı ezmesin).
+            ("llama-engine-cuda", Dest::BinariesCuda, Kind::Binary),
             // cudart bir DLL kümesidir: çalıştırılamaz → Asset (bkz. spec yorumu).
-            ("llama-cudart", Dest::Binaries, Kind::Asset),
+            ("llama-cudart", Dest::BinariesCuda, Kind::Asset),
             ("ai-model-llm", Dest::Models, Kind::Asset),
+            ("ai-model-llm-7b", Dest::Models, Kind::Asset),
+            ("ai-model-llm-3b", Dest::Models, Kind::Asset),
             ("ai-model-embed", Dest::Models, Kind::Asset),
         ];
         for (id, dest, kind) in cases {
@@ -1768,14 +1986,35 @@ mod tests {
 
     #[test]
     fn llama_specs_extract_their_pinned_entries_and_stay_separate() {
+        // VARSAYILAN motor Vulkan'dır: `ggml-vulkan.dll` çıkar, `ggml-cuda.dll`
+        // ÇIKMAZ; CPU fallback için `ggml-cpu-*.dll` seti KORUNUR (PR #14099).
         let engine = spec_for("llama-engine").expect("llama-engine kayıtlı olmalı");
         let engine_download = engine.download.as_ref().expect("llama-engine kaynağı");
         match &engine_download.payload {
             PayloadRule::Zip { wanted, .. } => {
                 assert!(wanted.contains(&"llama-server.exe"));
-                assert!(wanted.contains(&"ggml-cuda.dll"), "CUDA backend gerekli");
+                assert!(wanted.contains(&"ggml-vulkan.dll"), "Vulkan backend gerekli");
+                assert!(
+                    !wanted.contains(&"ggml-cuda.dll"),
+                    "varsayılan motor CUDA backend taşımaz"
+                );
+                assert!(
+                    wanted.contains(&"ggml-cpu-x64.dll"),
+                    "GPU'suz makinede CPU'ya düşmek için CPU DLL'leri kalmalı"
+                );
             }
             PayloadRule::Raw { .. } => panic!("llama-engine zip olmalı"),
+        }
+        // OPSİYONEL CUDA motoru ayrı bir spec'tir: CUDA backend'ini taşır, Vulkan'ı taşımaz.
+        let cuda = spec_for("llama-engine-cuda").expect("llama-engine-cuda kayıtlı olmalı");
+        let cuda_download = cuda.download.as_ref().expect("llama-engine-cuda kaynağı");
+        match &cuda_download.payload {
+            PayloadRule::Zip { wanted, .. } => {
+                assert!(wanted.contains(&"llama-server.exe"));
+                assert!(wanted.contains(&"ggml-cuda.dll"), "CUDA backend gerekli");
+                assert!(!wanted.contains(&"ggml-vulkan.dll"));
+            }
+            PayloadRule::Raw { .. } => panic!("llama-engine-cuda zip olmalı"),
         }
         let cudart = spec_for("llama-cudart").expect("llama-cudart kayıtlı olmalı");
         let cudart_download = cudart.download.as_ref().expect("llama-cudart kaynağı");
@@ -1786,10 +2025,13 @@ mod tests {
             }
             PayloadRule::Raw { .. } => panic!("llama-cudart zip olmalı"),
         }
-        // İki AYRI arşiv: ortak bundle verilmez.
+        // Üç AYRI arşiv: ortak bundle verilmez (varsayılan + CUDA motoru + cudart).
         assert_ne!(engine_download.bundle, cudart_download.bundle);
-        // "Varsa atla" işaret dosyası ai.rs ile aynı kalmalı.
+        assert_ne!(engine_download.bundle, cuda_download.bundle);
+        assert_ne!(cuda_download.bundle, cudart_download.bundle);
+        // "Varsa atla" işaret dosyası ai.rs ile aynı kalmalı (iki motor da aynı exe).
         assert_eq!(cudart.downloaded_file, LLAMA_CUDART_FILE);
+        assert_eq!(engine.downloaded_file, cuda.downloaded_file);
         assert_eq!(cudart_download.framework(), "archive");
     }
 
@@ -1802,6 +2044,8 @@ mod tests {
             ("whisper-model-large-v3-q5_0", WHISPER_MODEL_LARGE_V3_Q5_FILE),
             ("whisper-model-large-v3", WHISPER_MODEL_LARGE_V3_FILE),
             ("ai-model-llm", AI_MODEL_LLM_FILE),
+            ("ai-model-llm-7b", AI_MODEL_LLM_7B_FILE),
+            ("ai-model-llm-3b", AI_MODEL_LLM_3B_FILE),
             ("ai-model-embed", AI_MODEL_EMBED_FILE),
         ];
         for (id, file) in cases {

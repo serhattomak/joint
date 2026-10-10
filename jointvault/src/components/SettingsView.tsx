@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { DataBackupSection } from '@/components/DataBackupSection';
 import { ComponentsSection } from '@/components/ComponentsSection';
@@ -80,7 +80,7 @@ import {
 } from '@/lib/notebook-pipeline';
 import { planItemMerge } from '@/lib/notebook';
 import type { Item } from '@/lib/db/types';
-import type { ComponentStatus } from '@/lib/components';
+import { downloadComponent, type ComponentStatus } from '@/lib/components';
 
 export type SettingsTab = 'view' | 'downloads' | 'speech' | 'ai' | 'diagnostics' | 'extension' | 'backup' | 'components';
 
@@ -158,11 +158,22 @@ function gpuHardwareLine(gpu: AiGpuInfo | undefined): string {
  * dönük rol metni. Boyut burada YOK — her satırın MB'ı `components_status`'tan
  * okunur ki Bileşenler ekranıyla iki farklı sayı gösterilmesin (tek gerçek).
  */
-const AI_COMPONENT_ITEMS: readonly { id: string; role: string }[] = [
+const AI_COMPONENT_ITEMS: readonly { id: string; role: string; optional?: boolean }[] = [
   { id: 'llama-engine', role: 'AI motoru (llama-server)' },
-  { id: 'llama-cudart', role: 'CUDA çalışma zamanı (GPU hızlandırma)' },
-  { id: 'ai-model-llm', role: 'Qwen 2.5 14B sohbet modeli' },
+  { id: 'llama-cudart', role: 'CUDA çalışma zamanı (GPU hızlandırma)', optional: true },
+  { id: 'llama-engine-cuda', role: 'llama-server CUDA motoru (NVIDIA)', optional: true },
   { id: 'ai-model-embed', role: 'BGE-M3 anlamsal gömme modeli' },
+];
+
+/*
+ * Seçilebilir sohbet modelleri — kayıt kimlikleri (`components.rs::CHAT_MODEL_IDS`)
+ * ve kayıt etiketleriyle (`Spec::label`) birebir. Boyut burada YOK; her satırın
+ * MB'ı `components_status.approx_mb`'den okunur (tek gerçek). Sıra: hafiften ağıra.
+ */
+const CHAT_MODELS: readonly { id: string; label: string }[] = [
+  { id: 'ai-model-llm-3b', label: 'Qwen 2.5 3B (sohbet)' },
+  { id: 'ai-model-llm-7b', label: 'Qwen 2.5 7B (sohbet)' },
+  { id: 'ai-model-llm', label: 'Qwen 2.5 14B (sohbet)' },
 ];
 
 export function SettingsView(props: SettingsViewProps) {
@@ -200,12 +211,16 @@ export function SettingsView(props: SettingsViewProps) {
    * uydurulmaz; ilgili etiket yedek pin değerine düşer.
    */
   const [componentSizes, setComponentSizes] = useState<Record<string, number | undefined>>({});
+  /* id → kurulu dosya yolu: model seçimi `llm_path`'e bu yolu yazar (tek kaynak). */
+  const [componentPaths, setComponentPaths] = useState<Record<string, string>>({});
 
   // Yerel AI (Qwen 2.5 14B + BGE-M3 + llama-server)
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [aiEngineJob, setAiEngineJob] = useState<string | null>(null);
   const [aiModelJob, setAiModelJob] = useState<string | null>(null);
   const [aiModelType, setAiModelType] = useState<'llm' | 'embed' | null>(null);
+  /* Sohbet modeli kurulumu (satır içi; tek indirme motoru `downloadComponent`). */
+  const [chatJob, setChatJob] = useState<{ id: string; jobId: string } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   // Ana anahtar (`enabled`) yazımı ve açık rıza onayı: indirme DEĞİL, tercih.
   const [aiConfigBusy, setAiConfigBusy] = useState(false);
@@ -218,6 +233,24 @@ export function SettingsView(props: SettingsViewProps) {
   const [reindexBusy, setReindexBusy] = useState(false);
   const aiEnginePct = useAiEngineProgress(aiEngineJob);
   const aiModelPct = useAiModelProgress(aiModelJob);
+  const chatModelPct = useAiModelProgress(chatJob?.jobId ?? null);
+
+  const refreshComponentStatus = useCallback(async (): Promise<void> => {
+    try {
+      const rows = await invoke<ComponentStatus[]>('components_status');
+      const sizes: Record<string, number> = {};
+      const paths: Record<string, string> = {};
+      for (const row of rows) {
+        sizes[row.id] = row.approx_mb;
+        if (row.path) paths[row.id] = row.path;
+      }
+      setComponentSizes(sizes);
+      setComponentPaths(paths);
+    } catch {
+      setComponentSizes({});
+      setComponentPaths({});
+    }
+  }, []);
 
   useEffect(() => {
     setDirError(null);
@@ -230,14 +263,8 @@ export function SettingsView(props: SettingsViewProps) {
     setWhisperModelState(getWhisperModel());
     void getWhisperStatus().then(setWhisperStatus);
     void getAiStatus().then(setAiStatus).catch(() => null);
-    // Boyut etiketleri kayıttan gelir (tek gerçek); okunamazsa yedek pin değerleri.
-    void invoke<ComponentStatus[]>('components_status')
-      .then((rows) => {
-        const sizes: Record<string, number> = {};
-        for (const row of rows) sizes[row.id] = row.approx_mb;
-        setComponentSizes(sizes);
-      })
-      .catch(() => setComponentSizes({}));
+    // Boyut/yol etiketleri kayıttan gelir (tek gerçek); okunamazsa boş kalır.
+    void refreshComponentStatus();
     void invoke<string>('get_close_behavior')
       .then((m) => setCloseMode(m === 'quit' ? 'quit' : 'tray'))
       .catch(() => setCloseMode('tray'));
@@ -247,7 +274,7 @@ export function SettingsView(props: SettingsViewProps) {
     void invoke<string>('get_pairing_token')
       .then(setToken)
       .catch((e: unknown) => setTokenError(String(e)));
-  }, []);
+  }, [refreshComponentStatus]);
 
   const pickDir = async (): Promise<void> => {
     setDirError(null);
@@ -379,7 +406,7 @@ export function SettingsView(props: SettingsViewProps) {
     setAiError(null);
     try {
       const selected = await openDialog({
-        title: type === 'llm' ? 'Qwen 2.5 14B Model Dosyası (.gguf)' : 'BGE-M3 Vektör Modeli (.gguf)',
+        title: type === 'llm' ? 'Sohbet Modeli (.gguf)' : 'BGE-M3 Vektör Modeli (.gguf)',
         multiple: false,
         filters: [{ name: 'GGUF Model', extensions: ['gguf'] }],
       });
@@ -393,6 +420,38 @@ export function SettingsView(props: SettingsViewProps) {
       }
     } catch (e) {
       setAiError(String(e));
+    }
+  };
+
+  /* Kayıtlı sohbet modelini seç: yolu `llm_path`'e yaz (backend çözümlemesi buradan). */
+  const selectChatModel = async (id: string): Promise<void> => {
+    const path = componentPaths[id];
+    if (!path) return;
+    setAiError(null);
+    try {
+      await saveAiConfig({ llm_path: path });
+      await refreshAi();
+    } catch (e) {
+      setAiError(String(e));
+    }
+  };
+
+  /* Kurulu olmayan sohbet modelini indir (tek motor: `downloadComponent`). */
+  const installChatModel = async (id: string): Promise<void> => {
+    if (chatJob) return;
+    setAiError(null);
+    const jobId = crypto.randomUUID();
+    setChatJob({ id, jobId });
+    try {
+      const res = await downloadComponent(id, jobId);
+      if (!res.ok) {
+        setAiError(res.error ?? 'Model indirilemedi.');
+        return;
+      }
+      await refreshComponentStatus();
+      await refreshAi();
+    } finally {
+      setChatJob(null);
     }
   };
 
@@ -783,7 +842,7 @@ export function SettingsView(props: SettingsViewProps) {
   };
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; desc: string }[] = [
-    { id: 'ai', label: 'Yapay Zekâ', icon: <Sparkles className="size-4" />, desc: 'Qwen 2.5 14B, BGE-M3, VRAM yönetimi, taksonomi ve indeksleme' },
+    { id: 'ai', label: 'Yapay Zekâ', icon: <Sparkles className="size-4" />, desc: 'Qwen 2.5 3B/7B/14B, BGE-M3, VRAM yönetimi, taksonomi ve indeksleme' },
     { id: 'speech', label: 'Konuşma (Whisper)', icon: <Mic className="size-4" />, desc: 'Whisper.cpp yerel konuşma tanıma motoru ve modelleri' },
     { id: 'view', label: 'Görünüm', icon: <Eye className="size-4" />, desc: 'Arayüz teması, sayfalama ve pano izleme tercihleri' },
     { id: 'downloads', label: 'İndirme', icon: <Download className="size-4" />, desc: 'Medya indirme klasörü, varsayılan kalite ve sistem çekmecesi' },
@@ -857,19 +916,61 @@ export function SettingsView(props: SettingsViewProps) {
     return mb === undefined ? '' : ` (~${mb} MB)`;
   };
 
+  /*
+   * Bir dosya yolunun boyutu, kayıttan (id → approx_mb) bulunur. Serbest GGUF
+   * kayıtlı bir dosyayla çakışmıyorsa `undefined` döner; uydurma sayı yazılmaz.
+   */
+  const componentMbForPath = (path: string): number | undefined => {
+    for (const [id, p] of Object.entries(componentPaths)) {
+      if (p === path) return componentSizes[id];
+    }
+    return undefined;
+  };
+
   // Yerel AI görünümü: etkinlik kararı TEK yerden (`isAiEnabled`, fail-closed).
   const aiEnabled = isAiEnabled(aiStatus);
   const aiGpu = aiStatus?.gpu;
   const aiOffload = aiStatus?.offload;
 
   /*
+   * Seçili sohbet modeli: `llm_path` kayıtlı bir modelin YOLUYLA eşleşiyorsa o id,
+   * aksi hâlde null (serbest GGUF). Karşılaştırma YOL üzerinden yapılır çünkü
+   * backend de `llm_path`'i yolla çözer.
+   */
+  const llmPath = aiStatus?.llm_path ?? null;
+  const selectedChatModelId = llmPath
+    ? CHAT_MODELS.find((m) => componentPaths[m.id] === llmPath)?.id ?? null
+    : null;
+  /* Serbest GGUF: kayıtlı bir modelle eşleşmeyen, doğrulanmamış bir yol. */
+  const freeGgufSelected =
+    llmPath !== null && selectedChatModelId === null && aiStatus?.llm_verified !== true;
+  const freeGgufSize = freeGgufSelected ? componentMbForPath(llmPath) : undefined;
+
+  /*
    * Rıza metninin toplamı KAYITTAN toplanır. Eksik boyut varsa toplam GÖSTERİLMEZ:
    * yarım toplamı "küçük bir indirme" gibi göstermek yanlış olurdu (uydurma sayı).
    */
-  const aiComponentRows = AI_COMPONENT_ITEMS.map((item) => ({ ...item, mb: componentSizes[item.id] }));
-  const aiSizesComplete = aiComponentRows.every((row) => row.mb !== undefined);
+  /*
+   * Rıza listesi: motor + gömme ZORUNLU, CUDA opsiyonel. Sohbet modeli satırları
+   * SEÇİLİ modele göre işaretlenir — 14B'yi dayatmaz (M-2); seçim yoksa en hafif
+   * (3B) zorunlu sayılır. Boyut her satırda KAYITTAN gelir.
+   */
+  const activeChatModelId = freeGgufSelected ? null : (selectedChatModelId ?? 'ai-model-llm-3b');
+  const chatModelRows = CHAT_MODELS.map((model) => ({
+    id: model.id,
+    role: model.label,
+    optional: model.id !== activeChatModelId,
+    mb: componentSizes[model.id],
+  }));
+  const aiComponentRows = [
+    ...AI_COMPONENT_ITEMS.map((item) => ({ ...item, mb: componentSizes[item.id] })),
+    ...chatModelRows,
+  ];
+  /* Toplam YALNIZCA zorunlu satırlardan: CUDA ve seçili olmayan sohbet modelleri opsiyoneldir. */
+  const aiRequiredRows = aiComponentRows.filter((row) => !row.optional);
+  const aiSizesComplete = aiRequiredRows.every((row) => row.mb !== undefined);
   const aiTotalLabel = aiSizesComplete
-    ? `≈ ${formatMb(aiComponentRows.reduce((sum, row) => sum + (row.mb ?? 0), 0))}`
+    ? `≈ ${formatMb(aiRequiredRows.reduce((sum, row) => sum + (row.mb ?? 0), 0))}`
     : 'boyut bilgisi yükleniyor…';
 
   const aiServerRunning = aiStatus?.chat_server_running === true || aiStatus?.embed_server_running === true;
@@ -1003,7 +1104,10 @@ export function SettingsView(props: SettingsViewProps) {
                       <ul className="flex flex-col gap-1">
                         {aiComponentRows.map((row) => (
                           <li key={row.id} className="flex items-center justify-between gap-3 text-xs">
-                            <span className="text-muted-foreground">{row.role}</span>
+                            <span className="text-muted-foreground">
+                              {row.role}
+                              {row.optional ? ' · opsiyonel' : ''}
+                            </span>
                             <span className="font-mono text-2xs text-foreground">
                               {row.mb !== undefined ? formatMb(row.mb) : 'boyut okunamadı'}
                             </span>
@@ -1079,44 +1183,89 @@ export function SettingsView(props: SettingsViewProps) {
                   )}
                 </div>
 
-                {/* 2. LLM Modeli */}
-                <div className="flex flex-col gap-2 settings-card p-3.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-sm font-medium">Qwen 2.5 14B-Instruct</span>
-                      <p className="text-xs text-muted-foreground">Ana Akıl & Sohbet Modeli (GGUF Q4_K_M){sizeSuffix('ai-model-llm')}</p>
+                {/* 2. Sohbet Modeli — 3B/7B/14B sabit hat + serbest GGUF ("doğrulanmadı") */}
+                <div className="flex flex-col gap-3 settings-card p-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium">Sohbet Modeli</span>
+                      <p className="text-xs text-muted-foreground">
+                        Asistan ve özetleme için kullanılan model. Seçim kalıcıdır; boyutlar bileşen
+                        kaydından okunur.
+                      </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="shrink-0">
                       {aiStatus?.llm_ready ? (
                         <Stamp state="local">hazır</Stamp>
                       ) : (
                         <Stamp state="none">eksik</Stamp>
                       )}
-                      {!aiStatus?.llm_ready && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void runDownloadAiModel('llm')}
-                          disabled={aiModelJob !== null}
-                        >
-                          {aiModelJob && aiModelType === 'llm'
-                            ? (aiModelPct !== null && aiModelPct >= 0 ? `%${Math.round(aiModelPct)}` : '…')
-                            : 'HF İndir'}
-                        </Button>
-                      )}
-                      <Button variant="outline" size="sm" onClick={() => void pickAiModelFile('llm')}>
-                        Diskten Seç (.gguf)
-                      </Button>
                     </div>
                   </div>
-                  {aiModelJob && aiModelType === 'llm' && (
-                    <div className="h-1.5 overflow-hidden rounded bg-muted">
-                      <div
-                        className="h-full rounded bg-primary transition-[width]"
-                        style={{ width: `${aiModelPct !== null && aiModelPct >= 0 ? Math.round(aiModelPct) : 100}%` }}
-                      />
-                    </div>
-                  )}
+
+                  <div className="flex flex-col divide-y divide-border/70">
+                    {CHAT_MODELS.map((m) => {
+                      const installed = componentPaths[m.id] !== undefined;
+                      const selected = selectedChatModelId === m.id;
+                      const installing = chatJob?.id === m.id;
+                      const mb = componentSizes[m.id];
+                      return (
+                        <SettingRow
+                          key={m.id}
+                          label={m.label}
+                          hint={
+                            mb !== undefined
+                              ? `${installed ? 'kurulu' : 'indirilecek'} · ${formatMb(mb)}`
+                              : installed
+                                ? 'kurulu'
+                                : 'boyut okunamadı'
+                          }
+                        >
+                          {selected && <Stamp state="local">seçili</Stamp>}
+                          {installed ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={selected}
+                              onClick={() => void selectChatModel(m.id)}
+                            >
+                              Seç
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={chatJob !== null}
+                              onClick={() => void installChatModel(m.id)}
+                            >
+                              {installing
+                                ? chatModelPct !== null && chatModelPct >= 0
+                                  ? `%${Math.round(chatModelPct)}`
+                                  : '…'
+                                : 'Kur'}
+                            </Button>
+                          )}
+                        </SettingRow>
+                      );
+                    })}
+
+                    <SettingRow
+                      label="Serbest GGUF"
+                      hint={
+                        freeGgufSelected
+                          ? `Seçili dosya: ${aiStatus?.llm_label ?? 'ad okunamadı'}`
+                          : 'Kayıtlı olmayan bir .gguf dosyası seç. Doğrulanmadığı damgayla belirtilir.'
+                      }
+                    >
+                      {freeGgufSelected && <Stamp state="none">doğrulanmadı</Stamp>}
+                      {freeGgufSize !== undefined && (
+                        <span className="font-mono text-2xs text-muted-foreground">{formatMb(freeGgufSize)}</span>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => void pickAiModelFile('llm')}>
+                        Diskten Seç
+                      </Button>
+                    </SettingRow>
+                  </div>
+
                   {aiStatus?.llm_path && (
                     <p className="truncate font-mono text-2xs text-muted-foreground" title={aiStatus.llm_path}>
                       {aiStatus.llm_path}

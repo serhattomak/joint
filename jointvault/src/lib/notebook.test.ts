@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Item } from './db/types';
 import {
   buildCategoryDigest,
+  buildNumericSummary,
   extractLinks,
   planItemMerge,
   sortNotebookItems,
@@ -102,5 +103,32 @@ describe('buildCategoryDigest', () => {
   it('maxChars sonunda keser', () => {
     const out = buildCategoryDigest(['x'.repeat(10), 'y'.repeat(10)], 15);
     expect(out.length).toBe(15);
+  });
+});
+
+describe('buildNumericSummary', () => {
+  it('boş sayfada null döner (boş durumu çağıran öğretir)', () => {
+    expect(buildNumericSummary([])).toBeNull();
+  });
+
+  it('kayıt/platform/yerel sayılarını deterministik üretir', () => {
+    const out = buildNumericSummary([
+      { platform: 'youtube', local_path: '/a.mp4', created_at: '2026-09-01T00:00:00Z' },
+      { platform: 'youtube', local_path: null, created_at: '2026-10-01T00:00:00Z' },
+      { platform: 'instagram', local_path: '/b.jpg', created_at: '2026-09-15T00:00:00Z' },
+    ]);
+    expect(out).toContain('Bu sayfada 3 kayıt.');
+    expect(out).toContain('youtube (2), instagram (1)');
+    expect(out).toContain('Yerel: 2 · indirilmedi: 1.');
+    expect(out).toContain('2026-09-01 – 2026-10-01');
+  });
+
+  it('platform sırası adet ↓ sonra ad ↑ (determinizm)', () => {
+    const out = buildNumericSummary([
+      { platform: 'b', local_path: null, created_at: '2026-01-01T00:00:00Z' },
+      { platform: 'a', local_path: null, created_at: '2026-01-01T00:00:00Z' },
+      { platform: 'a', local_path: null, created_at: '2026-01-01T00:00:00Z' },
+    ]);
+    expect(out).toContain('a (2), b (1)');
   });
 });

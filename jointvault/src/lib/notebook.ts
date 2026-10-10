@@ -81,6 +81,49 @@ export function planItemMerge(target: Item, victims: Item[]): MergePatch {
   };
 }
 
+/** Sayısal defter özetinin ihtiyaç duyduğu alanlar (saf, DB'siz). */
+export interface NumericSummaryItem {
+  platform: string;
+  local_path?: string | null;
+  created_at: string;
+}
+
+/**
+ * AI kapalıyken defter sayfa özeti: LLM yerine sayısal gerçek. Sayfadaki kayıt
+ * sayısı, platform dağılımı, yerel/indirilmedi sayısı ve tarih aralığı tek metne
+ * iner. Girdi boşsa `null` — çağıran boş durumu öğretir.
+ *
+ * Determinizm: platform (adet ↓, ad ↑ tr-TR), tarih ISO sırası.
+ */
+export function buildNumericSummary(items: NumericSummaryItem[]): string | null {
+  if (items.length === 0) return null;
+
+  const byPlatform = new Map<string, number>();
+  for (const it of items) {
+    const key = it.platform || 'bilinmiyor';
+    byPlatform.set(key, (byPlatform.get(key) ?? 0) + 1);
+  }
+  const platforms = [...byPlatform.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr-TR'))
+    .map(([name, n]) => `${name} (${n})`)
+    .join(', ');
+
+  const local = items.filter((it) => it.local_path != null).length;
+  const dates = items
+    .map((it) => it.created_at)
+    .filter((d): d is string => Boolean(d))
+    .sort();
+  const range = dates.length > 0 ? `${dates[0].slice(0, 10)} – ${dates[dates.length - 1].slice(0, 10)}` : '';
+
+  const lines = [
+    `Bu sayfada ${items.length} kayıt.`,
+    `Platformlar: ${platforms}.`,
+    `Yerel: ${local} · indirilmedi: ${items.length - local}.`,
+  ];
+  if (range) lines.push(`Tarih aralığı: ${range}.`);
+  return lines.join('\n');
+}
+
 /**
  * Kategori özeti malzemesi: trim + tekilleştir (büyük/küçük duyarsız),
  * sırayla `maxChars` karaktere kadar.

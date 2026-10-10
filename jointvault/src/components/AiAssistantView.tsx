@@ -307,7 +307,7 @@ export function AiAssistantView({ onOpenItem, onOpenSettings }: AiAssistantViewP
   const activeSession = sessions.find((s) => s.id === activeId) ?? null;
   const gpuLabel = status?.gpu?.name?.trim() || 'bilinmiyor';
   const modelParts = [
-    ...(status?.llm_ready ? ['Qwen 2.5 14B'] : []),
+    ...(status?.llm_ready ? [status.llm_label ?? 'sohbet modeli'] : []),
     ...(status?.embed_ready ? ['BGE-M3'] : []),
   ];
   const headerDetail = !statusKnown

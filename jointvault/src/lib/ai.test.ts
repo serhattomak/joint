@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildParentMap, isAiEnabled, type AiStatus } from './ai';
+import { buildParentMap, isAiEnabled, planItemCategorization, type AiStatus } from './ai';
 import { resolveCategories } from './taxonomy';
 
 /*
@@ -127,3 +127,53 @@ describe('kategori hiyerarşisi (uçtan uca)', () => {
 function names2(cats: { name: string }[]): string[] {
   return cats.map((c) => c.name);
 }
+
+/*
+ * AI kapalıyken toplu kategorizasyonun kural tabanlı turu: LLM çağrılmaz,
+ * deterministik eşleşme uygulanır, eşleşme yoksa kayıt başarısız sayılmaz.
+ * (batchCategorizeItems Adım 3'ün saf kararı.)
+ */
+describe('planItemCategorization — AI kapalı deterministik', () => {
+  const cats = ['Yapay Zeka', 'Pizza'];
+  const tags = ['rust', 'video', 'tutorial'];
+
+  it('AI kapalı: kısmi eşleşme (kategori var, etiket <2) deterministik uygulanır', () => {
+    // Arrange: "pizza" + "rust" → 1 kategori, 1 etiket (tam eşik değil).
+    const text = 'Pizza tarifi ve rust dersi';
+
+    // Act
+    const plan = planItemCategorization(text, cats, tags, { aiOn: false, minConfidence: 0.6 });
+
+    // Assert
+    expect(plan.kind).toBe('deterministic');
+    if (plan.kind === 'deterministic') {
+      expect(plan.result.categories).toEqual(['Pizza']);
+      expect(plan.result.tags).toEqual(['rust']);
+      expect(plan.result.source).toBe('deterministic');
+    }
+  });
+
+  it('AI kapalı: eşleşme yoksa LLM turu YOK, kayıt atlanır (başarısız değil)', () => {
+    const plan = planItemCategorization('alakasız bir metin', cats, tags, {
+      aiOn: false,
+      minConfidence: 0.6,
+    });
+    expect(plan.kind).toBe('skip');
+  });
+
+  it('AI açık: kısmi eşleşme LLM turuna gider (boşluğu kapatır)', () => {
+    const plan = planItemCategorization('Pizza tarifi ve rust dersi', cats, tags, {
+      aiOn: true,
+      minConfidence: 0.6,
+    });
+    expect(plan.kind).toBe('llm');
+  });
+
+  it('AI açık: tam eşleşme (kategori + ≥2 etiket) LLM turunu atlar', () => {
+    const plan = planItemCategorization('Pizza rust tutorial', cats, tags, {
+      aiOn: true,
+      minConfidence: 0.6,
+    });
+    expect(plan.kind).toBe('deterministic');
+  });
+});

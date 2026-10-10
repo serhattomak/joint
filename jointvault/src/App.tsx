@@ -210,7 +210,12 @@ function App() {
     let live = true;
     void getAiStatus()
       .then((s) => {
-        if (live) setAiEnabled(isAiEnabled(s));
+        if (!live) return;
+        const on = isAiEnabled(s);
+        setAiEnabled(on);
+        // AI kapatılınca semantik arama state'i sıfırlanır: toggle gizlenir, açık
+        // kalan `semantic` her sorguyu çıkışsız ölü ekrana çevirirdi (H-4).
+        if (!on) setSemantic(false);
       })
       .catch(() => undefined);
     return () => {

@@ -320,3 +320,30 @@ export function formatQueryResult(
   );
   return `${head}\n${lines.join('\n')}`;
 }
+
+export interface StructuralAnswer {
+  query: VaultQuery;
+  count: number;
+  items: VaultQueryItem[];
+  /** Arayüze/modele verilecek KESİN metin (`formatQueryResult` çıktısı). */
+  text: string;
+}
+
+/**
+ * Yapısal sorguyu AI OLMADAN uçtan uca çözer: taksonomi → niyet → DB → metin.
+ *
+ * Asistan sohbeti AI-only kalır; bu, aynı deterministik sorgu yeteneğinin AI'sız
+ * çağrılabilen tek girişidir. Yapısal sinyal yoksa `null` döner — çağıran içerik
+ * sorusunu LLM'e bırakır.
+ */
+export async function answerStructuralQuery(question: string): Promise<StructuralAnswer | null> {
+  const intent = detectStructuralIntent(question, await loadTaxonomy());
+  if (!intent) return null;
+  const result = await executeVaultQuery(intent);
+  return {
+    query: intent,
+    count: result.count,
+    items: result.items,
+    text: formatQueryResult(intent, result),
+  };
+}

@@ -76,13 +76,17 @@ describe('runNotebookPipeline', () => {
     expect(deps.isAi).toHaveBeenCalledOnce();
   });
 
-  it('AI kapalıysa Adım 2-3 {aiOff:true}, categorize/vectors/findGroups çağrılmaz', async () => {
+  it('AI kapalıysa Adım 2 deterministik tur koşar, Adım 3 (embedding) atlanır', async () => {
     const deps = baseDeps();
     deps.isAi = vi.fn().mockResolvedValue(false);
+    deps.listMissingCategory = vi.fn().mockResolvedValue([item('1')]);
     const report = await runNotebookPipeline(deps, () => undefined);
-    expect(report.categorize).toEqual({ aiOff: true });
+    // Adım 2 koşar: kural tabanlı tur LLM gerektirmez.
+    expect(deps.categorize).toHaveBeenCalledOnce();
+    expect(report.categorize).toBeDefined();
+    expect(report.categorize && 'aiOff' in report.categorize).toBe(false);
+    // Adım 3 yalnız AI açıkken (embedding gerekir).
     expect(report.dedupe?.aiOff).toBe(true);
-    expect(deps.categorize).not.toHaveBeenCalled();
     expect(deps.vectors).not.toHaveBeenCalled();
     expect(deps.findGroups).not.toHaveBeenCalled();
   });

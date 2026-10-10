@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PackageOpen, Sp
 import { BulkActions } from '@/components/BulkActions';
 import { RuleStrip } from '@/components/RuleStrip';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { ItemCardView, ItemRowView } from '@/components/ItemViews';
@@ -119,6 +120,9 @@ export function ItemGrid({
   const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [debouncedQuery, setDebouncedQuery] = useState(query);
+  /* Gömme modeli yokken anlamsal arama tam-metne (FTS) düşer; durum panelde
+     saklanmaz, görünür bir notta kalır (DESIGN · Kural-Görünür-Kalır). */
+  const [embedFallback, setEmbedFallback] = useState(false);
   // Inline progress percents by item id; cleared when the download settles.
   const [progress, setProgress] = useState<Record<string, number>>({});
   // Hız/ETA metası (ölçüm için de kullanılır).
@@ -142,6 +146,7 @@ export function ItemGrid({
       // AI kapalıyken anlamsal arama HİÇ denenmez (embedding/istek yok) ve
       // sessizce FTS'e düşülmez: dürüst durum ayrı bir dala çizilir (semanticOff).
       if (semantic && q && !aiEnabled) {
+        setEmbedFallback(false);
         setRows([]);
         setTotal(0);
         setLoadError(null);
@@ -156,14 +161,21 @@ export function ItemGrid({
             const embeds = await generateEmbeddings([q]).catch(() => []);
             if (embeds.length > 0) queryEmbedding = embeds[0];
           }
+          // Gömme yoksa hibrit arama yalnızca tam-metin (FTS) yapar; bu durum
+          // görünür bir nota taşınır (panel içinde saklanmaz).
+          setEmbedFallback(queryEmbedding === null);
           const results = await searchHybridChunks(q, queryEmbedding, size);
           setRows(results.map((r) => r.item));
           setTotal(results.length);
           setLoaded(true);
           return;
         } catch (e) {
+          // Statü/gömme alınamadı: tam-metin aramasına düşülür, durum görünür kalır.
+          setEmbedFallback(true);
           console.warn('[ItemGrid:semanticSearchFallback]', e);
         }
+      } else {
+        setEmbedFallback(false);
       }
 
       try {
@@ -395,6 +407,30 @@ export function ItemGrid({
 
       {strip}
       <div className="min-h-0 flex-1 px-4 py-4">
+        {semantic && !semanticOff && embedFallback && (
+          <div
+            role="status"
+            className="animate-rise mb-3 flex items-center gap-2 text-2xs text-muted-foreground"
+          >
+            <Badge variant="outline" className="gap-1.5">
+              <Sparkles aria-hidden />
+              Tam metin
+            </Badge>
+            <span className="min-w-0 truncate">
+              Gömme modeli (BGE-M3) hazır değil — anlamsal arama tam metne düştü.
+            </span>
+            {onOpenAiSettings && (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={onOpenAiSettings}
+                className="ml-auto shrink-0 text-2xs"
+              >
+                Ayarlar
+              </Button>
+            )}
+          </div>
+        )}
         {semanticOff ? (
           // AI kapalıyken anlamsal arama dürüst durum + gerçek yönlendirme
           // gösterir; sonuçları FTS ile doldurup "anlamsal" gibi sunmak yok.
