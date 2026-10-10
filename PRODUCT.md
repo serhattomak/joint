@@ -16,11 +16,15 @@ Kullanım sahnesi: masaüstü (Windows), varsayılan 1280×800 pencere, sık sı
 
 JointVault kişisel medya arşividir: linkleri tek tek veya toplu kaydeder, tarayıcı eklentisiyle X/Instagram/YouTube'dan içe aktarır, yt-dlp ile indirir, ffmpeg ile dönüştürür/kırpar/altyazılar, yinelenenleri bulur ve hepsini koleksiyon/kategori/etiket ile düzenler. Amaç, dağınık platform kayıtlarını kaybolmayan, aranabilir, üzerinde iş yapılabilir tek bir yerel arşive dönüştürmek. Arşivin üstünde kategori başına okunabilir bir **İçerik Defteri** derlenir: kayıtların tam metinleri, görselleri ve linkleri defter sayfaları gibi tek yerde toplanır.
 
-**Taksonomi kuralı:** Kategori iki seviyelidir (Üst > Alt) ve bir kayıt **yalnızca alt**
-kategoriye bağlanır — üst seçildiğinde altları kapsanır. Taksonomide aynı kavramı
+**Taksonomi kuralı:** Kategori bir hiyerarşidir, **en fazla 5 seviye** (üst › alt › …).
+Bir kayıt **tek** kategoriye bağlanır ve bu yaprak olmak zorunda değildir: en derin
+uyan düğüme oturur; var olandan daha özgülse mevcut bir üstün altında tek yeni alt
+açılır. Bir üst seçildiğinde **tüm alt ağacı** kapsanır. Taksonomide aynı kavramı
 taşıyan iki ad bulunmaz: asistan mevcut bir ad varsa yenisiyle değiştirmez
-("Pizza Tarifi" ve "Pizza Yapımı" ayrı kategori olmaz, ikisi de `Pizza`). Etiket
-son tercihtir: mevcut etiketler kullanılır, yeni etiket ancak gerekçesiyle önerilir.
+("Pizza Tarifi" ve "Pizza Yapımı" ayrı kategori olmaz, ikisi de `Pizza`). Birleştirme
+önerileri hiyerarşiye ve **imlâya duyarlıdır**: aynı kavramın iki yazımı varsa
+(`Yazilim` / `Yazılım`) doğru Türkçe yazım kanonik olur, kullanım sayısına bakılmaz.
+Etiket son tercihtir: mevcut etiketler kullanılır, yeni etiket ancak gerekçesiyle önerilir.
 
 Başarı ölçütü (kullanıcı tarafından onaylandı):
 1. Bir şeyi kaydetmek tek hareket olur — gözle aranmaz.

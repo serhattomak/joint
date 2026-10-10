@@ -320,9 +320,10 @@ Seçim tek bir **`Filtrele`** düğmesinden yapılır; ama **yürürlükteki kur
   seçenekler (TR-duyarlı süzme, `Bulunamadı` durumu).
 - **Aktif filtreler şeritte çip olarak kalır** (`YouTube ✕`) ve tek tıkla kaldırılır. Seçim panele,
   durum şeride aittir.
-- **Kategori paneli iki sütunludur** (üst, alt başlık altında `›` ile). Üst seçilince
-  **altları da kapsanır** — "Yemek" seçiliyken Pizza ve Çorba kayıtları gelir. Arama
-  alt adıyla da tutturur: "pizza" yazınca Yemek'in altındaki Pizza bulunur.
+- **Kategori paneli bir ağaçtır** (`CategoryTree`): her düğüm girintili, aç/kapa oklu; bir dal
+  açıldığında altları görünür. Seçim **tüm alt ağacı kapsar** — "Yemek" seçiliyken altındaki
+  bütün düğümlerin kayıtları gelir. Arama, eşleşen düğümün **atalarını kendiliğinden açar**,
+  böylece derin bir eşleşme görünür kalır ("pizza" yazınca `Yemek › Pizza` açılır).
 - Sağda sıralama + `N kayıt` sayımı (`data-num`) sabittir.
 
 **The Kural-Görünür-Kalır Kuralı.** Bir filtre ya da ayar yürürlükteyse, onu açan panel kapalıyken
@@ -334,21 +335,28 @@ Kavramlar karışmaz; ikisi de kaydı tamamlar ama işleri farklıdır.
 
 | | Kategori | Etiket |
 |---|---|---|
-| Hiyerarşi | **İki seviye**: Üst > Alt | Yok, düz |
-| Kayda atanma | Yalnızca **alt** (bir kayıt bir yerde durur) | Birden çok |
-| Sıra | Kanonik (Yemek > Pizza) — kayıt künyede `Yemek › Pizza` | Kullanım sırasına göre |
+| Hiyerarşi | **En fazla 5 seviye**: üst › alt › … | Yok, düz |
+| Kayda atanma | Tek kategori; **en derin uyan** (yaprak olmak zorunda değil) | Birden çok |
+| Sıra | Kanonik — kayıt künyede **tam yol**: `Yemek › Tatlı › Sütlü Tatlı` | Kullanım sırasına göre |
 
-- **Kayıt yalnızca alt kategoriye bağlanır.** Üst, sorgu katmanında çözülür
-  (`resolveCategoryFilterIds`); "Yemek" seçmek Pizza'yı da kapsar.
-- **Taksonomide aynı anlama gelen iki ad durmaz.** Asistan mevcut listede
-  yakın bir ad varsa (`Pizza`) yenisiyle (`Pizza Tarifi`) değiştirmez; `collapseToExisting`
-  adı var olanın altına indirger. Bu, şişmeyi baştan keser.
+- **Kayıt tek kategoriye bağlanır ve bu yaprak olmak zorunda değildir:** kayıt en derin uyan
+  düğüme oturur; var olandan daha özgülse mevcut bir üstün altında **tek** yeni alt açılır.
+  Seçim sorgu katmanında çözülür (`resolveCategoryFilterIds`); üst seçmek **tüm alt ağacı**
+  kapsar.
+- **Derinlik en fazla 5 seviyedir.** Ağacı bozan yazımlar (kendini üst yapmak, çevrim, sınırı
+  aşmak) yazımdan önce doğrulanır (`validateCategoryMove`, `validateCategoryCreate`).
+- **Taksonomide aynı anlama gelen iki ad durmaz.** Asistan mevcut listede yakın bir ad varsa
+  (`Pizza`) yenisiyle (`Pizza Tarifi`) değiştirmez; adı var olanın altına indirger. Önerilen
+  birleştirmeler **hiyerarşiye duyarlıdır** (üst ile onun altı birleştirilmez) ve **imlâya
+  duyarlıdır**: aynı kavramın iki yazımında (`Yazilim` / `Yazılım`) kanonik seçim, kullanım
+  sayısına bakılmaksızın doğru Türkçe yazımdır (`preferCanonical` / `turkishScore`). Bu,
+  şişmeyi baştan keser.
 - **Etiket son tercihtir.** Mevcut etiketler her zaman kullanılabilir; yeni etiket
   ancak **güven eşiğini** ve **gerekçeyi** birlikte geçerse önerilir. Gerekçesiz
   etiket taksonomiye girmez — her işlenen kayıtla kası bir etiket büyümez.
-- Yeniden yapılandırma (**Koleksiyonlar › Taksonomi bakımı › Plan Oluştur**) yalnızca
-  **önerir**: kullanıcı önizlemeyi görüp onaylayana kadar hiçbir şey değişmez. Onay
-  geri alınamaz; önce yedek alınır.
+- Yeniden yapılandırma (**Koleksiyonlar › Taksonomi bakımı › Plan Oluştur**) her taşımada tam
+  **yolu** taşır, böylece N seviyeli ağaç kurabilir; yalnızca **önerir** — kullanıcı önizlemeyi
+  görüp onaylayana kadar hiçbir şey değişmez. Onay geri alınamaz; önce yedek alınır.
 
 ## Materials
 
@@ -580,7 +588,9 @@ Koordinatlar `jointvault/` köküne göredir.
   `ui/progress` · `ui/tabs` · `ui/dialog` · `ui/alert-dialog` (`ConfirmDialog`) · `ui/popover` ·
   `ui/menu` · `ui/tooltip` · `ui/notice` · `ui/field` (`Field`, `SettingRow`, `FieldGroup`).
 - **Arşiv:** `src/components/ItemGrid.tsx` (ızgara, büyük başlık, sekmeler, sayfalama) ·
-  `src/components/RuleStrip.tsx` (Filtrele paneli) · `src/components/ItemViews.tsx`
+  `src/components/RuleStrip.tsx` (Filtrele paneli) · `src/components/CategoryTree.tsx`
+  (paylaşılan kategori ağacı — Filtrele paneli, Defter kenar çubuğu, Koleksiyonlar) ·
+  `src/components/ItemViews.tsx`
   (`ItemCardView`, `ItemRowView`, `Stamp`, `DownloadControl`, `ActionButtons`).
 - **Tam-sayfa yüzeyler:** `CollectionsView` · `NotebookView` · `DownloadsView` · `SyncView` · `StatsView` ·
   `ToolboxHub` (+ `MergeTool`/`SilenceTool`/`GifTool`/`SubtitleTool`/`DuplicatesView`) ·
