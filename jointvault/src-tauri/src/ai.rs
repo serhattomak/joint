@@ -732,15 +732,25 @@ async fn ensure_server_running(
         .arg("-ngl")
         .arg(offload.n_gpu_layers.to_string())
         .arg("-c")
-        .arg(if slot_type == "chat" { "8192" } else { "4096" });
+        .arg(if slot_type == "chat" { "20480" } else { "4096" });
+
+    // Eşzamanlı slot sayısı: `-c` slotlara BÖLÜNÜR. 4 slot × 5120 token = 20480;
+    // toplu prompt (yönerge + taksonomi + 8 kayıt ≈ 4160) + üretim tavanı (704)
+    // 5120'ye sığar. Tek slotta üretim seridir ve darboğaz odur (logda üretim
+    // 3,4 sn, prompt işleme 0,2 sn) — 4 slot bellek-bant kısıtlı decode'da
+    // ağırlıkları bir kez okutur, duvar saati ~4× düşer.
+    // KV maliyeti: 14B GQA'da 20480 token ≈ 3,8 GB; 16 GB'a sığar.
+    if slot_type == "chat" {
+        cmd.arg("--parallel").arg("4");
+    }
 
     // `-b`/`-ub`: llama.cpp varsayılanı `-b 2048`; bundan UZUN prompt'lar
     // "input is too large to process" ile REDDEDİLİR ve o çağrının tüm kayıtları
-    // kaybolur. Sohbet prompt'u (yönerge + taksonomi + etiket listesi + kayıtlar)
-    // taksonomi/etiket büyüdükçe 2048'i aşıyor — logda 4160 token ile reddedilen
-    // bir çağrı görüldü. `-ub` hesaplama arabelleğini belirlediği için ölçülü.
+    // kaybolur. Tipik toplu prompt ~1700 token ama tek bir uzun transkript onu
+    // 4160'a çıkarıp çağrıyı düşürdü (logda görüldü) — bu yüzden `-b` 8192.
+    // `-ub` hesaplama arabelleğini belirlediği için ölçülü tutulur.
     let (batch, ubatch) = if slot_type == "chat" {
-        ("4096", "1024")
+        ("8192", "1024")
     } else {
         ("2048", "2048")
     };

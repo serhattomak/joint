@@ -1066,9 +1066,9 @@ export function summarizeBatchAiStats(s: BatchAiStats): {
  * Seçilen öğeleri Qwen 2.5 ile kategorize edip etiketler.
  *
  * Deterministik ön geçiş LLM'siz kayıtları eler; kalanlar **8'li gruplar**
- * hâlinde TEK çağrıda gönderilir (`ai_categorize_batch`). `llama-server` tek
- * slot'lu olduğu için eşzamanlı istekler kazandırmaz — darboğaz çağrı
- * sayısıdır. 100 kayıt: 100 tur yerine ~13 tur.
+ * hâlinde gönderilir (`ai_categorize_batch`) ve 4 grup AYNI ANDA istenir
+ * (llama-server `--parallel 4`). Darboğaz üretim tokenı olduğu için paralellik
+ * doğrudan duvar saatini düşürür. 100 kayıt: ~13 çağrı, ~4 dalga.
  *
  * forceAutoApply = true ise veya ayarlarda auto_apply_tags açıksa veritabanına
  * doğrudan uygular.
@@ -1094,6 +1094,11 @@ export async function batchCategorizeItems(
   const allCats = dbCats.map((c) => c.name);
   const catTree = categoryTreeText(dbCats);
   const allTags = (await listTags()).map((t) => t.name);
+  // Sunucuya gönderilen etiket listesi çalışma boyunca SABİT kalır: her yeni
+  // etiket ön eki değiştirir, llama-server'ın ön ek önbelleğini bozar ve paralel
+  // slotların her birini yeniden işlemeye zorlar. `allTags` yine büyür (metin
+  // eşleştirmesi için), ama modele gösterilen sözlük sabittir.
+  const promptTags = [...allTags];
 
   const cfg = await getAiStatus();
   const aiOn = isAiEnabled(cfg);
@@ -1167,135 +1172,156 @@ export async function batchCategorizeItems(
     }
   }
 
-  // 4. Kalanları 8'li gruplar hâlinde tek çağrıda toplu gönder.
-  for (let start = 0; start < pending.length; start += BATCH_SIZE) {
-    const group = pending.slice(start, start + BATCH_SIZE);
+  // 4. Kalanları 8'li gruplar hâlinde gönder. Sunucu `--parallel 4` ile çalışır,
+  //    bu yüzden 4 grup AYNI ANDA istenir: darboğaz üretim olduğu için slotlar
+  //    bellek-bant kısıtlı decode'u paylaşır ve duvar saati ~4× düşer. Sonuçlar
+  //    sonra SIRAYLA işlenir — böylece DB yazımı tek akışta kalır.
+  const PARALLEL = 4;
+  for (let waveStart = 0; waveStart < pending.length; waveStart += BATCH_SIZE * PARALLEL) {
+    const offsets = Array.from({ length: PARALLEL }, (_, w) => waveStart + w * BATCH_SIZE).filter(
+      (s) => s < pending.length,
+    );
 
     if (options?.onProgress) {
-      const first = items[group[0]];
+      const first = items[pending[waveStart]];
       options.onProgress(
-        Math.min(start + group.length, items.length),
+        waveStart,
         items.length,
-        `${group.length} kayıt birlikte analiz ediliyor — ${first.title || first.url || 'Öğe'}`,
+        `${Math.min(BATCH_SIZE * PARALLEL, pending.length - waveStart)} kayıt birlikte analiz ediliyor — ${first.title || first.url || 'Öğe'}`,
       );
     }
 
-    let raw: unknown;
-    try {
-      raw = await invoke<unknown>('ai_categorize_batch', {
-        payload: {
-          items: group.map((i) => ({
-            title: items[i].title || '',
-            text: [items[i].note ? `Not: ${items[i].note}` : '', texts[i] ? `Transkript: ${texts[i]}` : '']
-              .filter(Boolean)
-              .join('\n\n'),
-            platform: items[i].platform || '',
-            url: items[i].url || '',
-          })),
-          existing_category_tree: catTree,
-          existing_tags: allTags,
-        },
-      });
-    } catch (err) {
-      // Toplu çağrı düştü: grubun tamamı başarısız, diğer gruplar sürer.
-      failed += group.length;
-      console.error(`Toplu kategorizasyon başarısız (${group.length} kayıt):`, err);
-      continue;
-    }
+    const wave = await Promise.all(
+      offsets.map(async (s) => {
+        const group = pending.slice(s, s + BATCH_SIZE);
+        try {
+          const raw = await invoke<unknown>('ai_categorize_batch', {
+            payload: {
+              items: group.map((i) => ({
+                title: items[i].title || '',
+                text: [items[i].note ? `Not: ${items[i].note}` : '', texts[i] ? `Transkript: ${texts[i]}` : '']
+                  .filter(Boolean)
+                  .join('\n\n'),
+                platform: items[i].platform || '',
+                url: items[i].url || '',
+              })),
+              existing_category_tree: catTree,
+              existing_tags: promptTags,
+            },
+          });
+          return { ok: true as const, start: s, group, raw };
+        } catch (err) {
+          // Tek grup düşerse dalgadaki diğer gruplar sürer.
+          return { ok: false as const, start: s, group, err };
+        }
+      }),
+    );
 
-    // Komut `{ entries, stats }` döner; eski düz dizi şekli de kabul edilir
-    // (sürüm uyuşmazlığında iş durmasın).
-    const shaped = raw as { entries?: unknown; stats?: Partial<BatchAiStats> } | null;
-    const rows: unknown[] = Array.isArray(raw)
-      ? raw
-      : Array.isArray(shaped?.entries)
-        ? (shaped.entries as unknown[])
-        : [];
+    for (const job of wave) {
+      const { start, group } = job;
 
-    if (shaped && !Array.isArray(raw) && shaped.stats) {
-      const st = shaped.stats;
-      stats.calls += 1;
-      stats.promptTokens += st.promptTokens ?? 0;
-      stats.completionTokens += st.completionTokens ?? 0;
-      stats.elapsedMs += st.elapsedMs ?? 0;
-      const rate = summarizeBatchAiStats(stats);
-      if (options?.onProgress) {
-        // Ölçüm görünür olsun: hız kararı sayıyla verilsin.
-        options.onProgress(
-          Math.min(start + group.length, items.length),
-          items.length,
-          `${rate.tokPerSec.toFixed(1)} tok/s — çıktı payı %${rate.outputSharePct.toFixed(0)}`,
-        );
-      }
-    }
-
-    for (let k = 0; k < group.length; k++) {
-      const i = group[k];
-      const it = items[i];
-      const entry = rows[k];
-
-      if (entry === null || entry === undefined || typeof entry !== 'object') {
-        failed++;
+      if (!job.ok) {
+        failed += group.length;
+        console.error(`Toplu kategorizasyon başarısız (${group.length} kayıt):`, job.err);
         continue;
       }
 
-      // Kısa şema (`i,k,e,t,y,g,c`) kanonik adlara çevrilir; model eski uzun
-      // adlara dönerse de ayrıştırıcı kabul eder (sessiz toplu kayıp olmasın).
-      const llm = normalizeLlmSuggestion(expandBatchEntry(entry));
-      const llmValid =
-        llm.confidence > 0 ||
-        llm.categories.length > 0 ||
-        llm.tags.length > 0 ||
-        !!llm.newCategory ||
-        !!llm.summary;
+      const raw = job.raw;
 
-      if (!llmValid) {
-        failed++;
-        continue;
+      // Komut `{ entries, stats }` döner; eski düz dizi şekli de kabul edilir
+      // (sürüm uyuşmazlığında iş durmasın).
+      const shaped = raw as { entries?: unknown; stats?: Partial<BatchAiStats> } | null;
+      const rows: unknown[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray(shaped?.entries)
+          ? (shaped.entries as unknown[])
+          : [];
+
+      if (shaped && !Array.isArray(raw) && shaped.stats) {
+        const st = shaped.stats;
+        stats.calls += 1;
+        stats.promptTokens += st.promptTokens ?? 0;
+        stats.completionTokens += st.completionTokens ?? 0;
+        stats.elapsedMs += st.elapsedMs ?? 0;
+        const rate = summarizeBatchAiStats(stats);
+        if (options?.onProgress) {
+          // Ölçüm görünür olsun: hız kararı sayıyla verilsin.
+          options.onProgress(
+            Math.min(start + group.length, items.length),
+            items.length,
+            `${rate.tokPerSec.toFixed(1)} tok/s — çıktı payı %${rate.outputSharePct.toFixed(0)}`,
+          );
+        }
       }
 
-      // Deterministik eşleşmeler önceki adımda zaten elendi; bu turda yalnız
-      // LLM önerisi vardır.
-      const text = [it.title, it.note, texts[i]].filter(Boolean).join('\n');
-      const det = matchTaxonomyInText(text, allCats, allTags);
-      const suggestedCats = [...det.categories, ...llm.categories];
-      const suggestedTags = [...det.tags, ...llm.tags];
+      for (let k = 0; k < group.length; k++) {
+        const i = group[k];
+        const it = items[i];
+        const entry = rows[k];
 
-      const newChild = llm.newCategory?.child;
-      const catsForResolve =
-        newChild && !allCats.some((c) => normalizeKey(c) === normalizeKey(newChild))
-          ? [...allCats, newChild]
-          : allCats;
+        if (entry === null || entry === undefined || typeof entry !== 'object') {
+          failed++;
+          continue;
+        }
 
-      const resolvedCats = resolveCategories(suggestedCats, catsForResolve, {
-        confidence: llm.confidence,
-        minConfidence: threshold,
-        maxNew: 1,
-        maxTotal: 1,
-        categories: dbCats,
-      });
-      const resolvedTags = resolveTags(suggestedTags, allTags, {
-        max: 5,
-        minConfidence: threshold,
-        confidence: llm.confidence,
-        reasons: llm.newTagReason,
-      });
+        // Kısa şema (`i,k,e,t,y,g,c`) kanonik adlara çevrilir; model eski uzun
+        // adlara dönerse de ayrıştırıcı kabul eder (sessiz toplu kayıp olmasın).
+        const llm = normalizeLlmSuggestion(expandBatchEntry(entry));
+        const llmValid =
+          llm.confidence > 0 ||
+          llm.categories.length > 0 ||
+          llm.tags.length > 0 ||
+          !!llm.newCategory ||
+          !!llm.summary;
 
-      // Uydurma dal yasak: önerilen `ust` ağaçta yoksa yeni kategori düşer.
-      const proposedNew = llm.newCategory;
-      const newCategory =
-        llm.confidence >= threshold && validNewCategory(proposedNew, allCats)
-          ? proposedNew
-          : null;
+        if (!llmValid) {
+          failed++;
+          continue;
+        }
 
-      await settle(it, {
-        categories: resolvedCats.names,
-        tags: resolvedTags,
-        summary: llm.summary,
-        confidence: llm.confidence,
-        source: det.categories.length > 0 ? 'both' : 'llm',
-        newCategory,
-      });
+        // Deterministik eşleşmeler önceki adımda zaten elendi; bu turda yalnız
+        // LLM önerisi vardır.
+        const text = [it.title, it.note, texts[i]].filter(Boolean).join('\n');
+        const det = matchTaxonomyInText(text, allCats, allTags);
+        const suggestedCats = [...det.categories, ...llm.categories];
+        const suggestedTags = [...det.tags, ...llm.tags];
+
+        const newChild = llm.newCategory?.child;
+        const catsForResolve =
+          newChild && !allCats.some((c) => normalizeKey(c) === normalizeKey(newChild))
+            ? [...allCats, newChild]
+            : allCats;
+
+        const resolvedCats = resolveCategories(suggestedCats, catsForResolve, {
+          confidence: llm.confidence,
+          minConfidence: threshold,
+          maxNew: 1,
+          maxTotal: 1,
+          categories: dbCats,
+        });
+        const resolvedTags = resolveTags(suggestedTags, allTags, {
+          max: 5,
+          minConfidence: threshold,
+          confidence: llm.confidence,
+          reasons: llm.newTagReason,
+        });
+
+        // Uydurma dal yasak: önerilen `ust` ağaçta yoksa yeni kategori düşer.
+        const proposedNew = llm.newCategory;
+        const newCategory =
+          llm.confidence >= threshold && validNewCategory(proposedNew, allCats)
+            ? proposedNew
+            : null;
+
+        await settle(it, {
+          categories: resolvedCats.names,
+          tags: resolvedTags,
+          summary: llm.summary,
+          confidence: llm.confidence,
+          source: det.categories.length > 0 ? 'both' : 'llm',
+          newCategory,
+        });
+      }
     }
   }
 
