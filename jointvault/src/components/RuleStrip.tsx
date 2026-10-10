@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ListFilter, X } from 'lucide-react';
 import { cn } from 'cn';
+import { CategoryTree, OptionRow } from '@/components/CategoryTree';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
@@ -56,108 +57,11 @@ interface FilterDef {
   dirty: boolean;
 }
 
-function OptionRow({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left text-sm transition-colors duration-100 ease-paper',
-        active ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 /*
- * Kategori iki sviyelidir (üst > alt). Sadece üst seçilince altları da
- * kapsanır (bkz. `resolveCategoryFilterIds`), o yüzden üst seçilebilir.
+ * İki panelli filtre: solda filtre adları, sağda arama alanı + seçenekler.
+ * Kategori dalı N seviyeli ağaçtır; üst seçilince altları da kapsanır
+ * (bkz. `resolveCategoryFilterIds`), o yüzden her seviye seçilebilir.
  */
-function CategoryOptions({
-  categories,
-  value,
-  onPick,
-}: {
-  categories: Category[];
-  value: string;
-  onPick: (id: string) => void;
-}) {
-  const [q, setQ] = useState('');
-  const needle = q.trim().toLocaleLowerCase('tr');
-  const roots = categoryTreeOf(categories);
-
-  const matches = (name: string) => !needle || name.toLocaleLowerCase('tr').includes(needle);
-  // Arama alt adıyla da tutturmalı: "pizza" yazınca Yemek'in altındaki Pizza
-  // bulunur; üst sütun boş kalırsa sonuç yok gibi görünürdü.
-  const rows = roots
-    .map((root) => ({
-      root,
-      children: needle ? root.children.filter((c) => matches(c.name)) : root.children,
-    }))
-    .filter((r) => !needle || matches(r.root.name) || r.children.length > 0);
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="p-1.5">
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Kategori ara…"
-          className="h-7 text-xs"
-          autoFocus
-        />
-      </div>
-      {rows.length === 0 ? (
-        <p className="px-3 py-3 text-xs text-muted-foreground">Bulunamadı.</p>
-      ) : (
-        <ul className="min-h-0 flex-1 divide-y divide-border/70 overflow-y-auto">
-          <li>
-            <OptionRow active={value === 'all'} onClick={() => onPick('all')}>
-              <span className="truncate text-muted-foreground">Tüm kategoriler</span>
-            </OptionRow>
-          </li>
-          {rows.map(({ root, children }) => (
-            <li key={root.id}>
-              <OptionRow active={value === root.id} onClick={() => onPick(root.id)}>
-                <span className="truncate font-medium">{root.name}</span>
-                <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
-                  {root.children.length || ''}
-                </span>
-              </OptionRow>
-              {children.length > 0 && (
-                <ul className="pb-1">
-                  {children.map((child) => (
-                    <li key={child.id}>
-                      <OptionRow active={value === child.id} onClick={() => onPick(child.id)}>
-                        <span aria-hidden className="shrink-0 pl-3 text-muted-foreground">
-                          ›
-                        </span>
-                        <span className="truncate">{child.name}</span>
-                      </OptionRow>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/* İki panelli filtre: solda filtre adları, sağda arama alanı + seçenekler. */
 function FilterPanel({
   filters,
   categories,
@@ -201,19 +105,25 @@ function FilterPanel({
         ))}
       </div>
 
-      {active.key === 'category' ? (
-        <CategoryOptions categories={categories} value={active.value} onPick={active.onPick} />
-      ) : (
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="p-1.5">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={`${active.label} ara…`}
-              className="h-7 text-xs"
-              autoFocus
-            />
-          </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="p-1.5">
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={`${active.label} ara…`}
+            className="h-7 text-xs"
+            autoFocus
+          />
+        </div>
+        {active.key === 'category' ? (
+          <CategoryTree
+            nodes={categoryTreeOf(categories)}
+            selectedId={active.value}
+            onSelect={active.onPick}
+            search={q}
+            emptyLabel="Tüm kategoriler"
+          />
+        ) : (
           <ul className="min-h-0 flex-1 overflow-y-auto p-1.5 pt-0">
             {options.length === 0 ? (
               <li className="px-2 py-3 text-xs text-muted-foreground">Bulunamadı.</li>
@@ -236,8 +146,8 @@ function FilterPanel({
               ))
             )}
           </ul>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

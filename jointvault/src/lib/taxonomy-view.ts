@@ -48,6 +48,30 @@ export function categoryTreeOf(categories: Category[]): CategoryTreeNode[] {
 }
 
 /**
+ * Arama metniyle eşleşen düğümlerin **atalarını** toplar (kendileri değil).
+ *
+ * Kullanıcı derin bir torunu aradığında ebeveynleri kapalıysa sonuç görünmez
+ * kalırdı; bu küme, eşleşmeye giden yolu geçici olarak açar. Kök eşleşirse
+ * ata yoktur → küme boş. Boş/boşluk arama eşleşme sayılmaz.
+ */
+export function expandedForSearch(nodes: CategoryTreeNode[], needle: string): Set<string> {
+  const q = needle.trim().toLocaleLowerCase('tr');
+  const open = new Set<string>();
+  if (!q) return open;
+
+  const walk = (list: CategoryTreeNode[], ancestors: string[]): void => {
+    for (const node of list) {
+      if (node.name.toLocaleLowerCase('tr').includes(q)) {
+        for (const id of ancestors) open.add(id);
+      }
+      walk(node.children, [...ancestors, node.id]);
+    }
+  };
+  walk(nodes, []);
+  return open;
+}
+
+/**
  * Yol listesini girintili ağaca çevirir (prompt biçimi; SAF).
  *
  * Her yol `derinlik × 2 boşluk` ile yazılır. Girdi yolları herhangi bir sırada

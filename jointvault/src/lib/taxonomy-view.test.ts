@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Category } from './db/types';
-import { categoryPathLabel, categoryTreeOf } from './taxonomy-view';
+import { categoryPathLabel, categoryTreeOf, expandedForSearch } from './taxonomy-view';
 
 const cat = (id: string, name: string, parent_id: string | null = null): Category => ({
   id,
@@ -79,5 +79,28 @@ describe('categoryPathLabel', () => {
   it('kendine referanslı bozuk veride sonsuz döngüye girmez', () => {
     const cats = [cat('1', 'A', '1')];
     expect(categoryPathLabel(cats, '1')).toBe('A');
+  });
+});
+
+describe('expandedForSearch', () => {
+  it('ARAMA derin torunla eşleşince ATALAR açılır', () => {
+    const nodes = categoryTreeOf([cat('1', 'Yemek'), cat('2', 'Tatlı', '1'), cat('3', 'Sütlü Tatlı', '2')]);
+    // "sütlü" yalnız yaprakta geçer; ebeveynleri kapalıysa sonuç görünmez olurdu.
+    expect([...expandedForSearch(nodes, 'sütlü')]).toEqual(['1', '2']);
+  });
+
+  it('arama eşleşmezse hiçbir şey açılmaz', () => {
+    const nodes = categoryTreeOf([cat('1', 'Yemek')]);
+    expect(expandedForSearch(nodes, 'zzz').size).toBe(0);
+  });
+
+  it('boş aramada hiçbir şey açılmaz', () => {
+    const nodes = categoryTreeOf([cat('1', 'Yemek'), cat('2', 'Tatlı', '1')]);
+    expect(expandedForSearch(nodes, '   ').size).toBe(0);
+  });
+
+  it('kökün kendisi eşleşirse açılacak ata yoktur (boş küme)', () => {
+    const nodes = categoryTreeOf([cat('1', 'Yemek'), cat('2', 'Tatlı', '1')]);
+    expect([...expandedForSearch(nodes, 'yemek')]).toEqual([]);
   });
 });
