@@ -185,6 +185,22 @@ export function resolveCategories(
 }
 
 /**
+ * Yeni kategori önerisi geçerli mi: önerilen `ust` (üst) mevcut ağaçta VAR olmalı.
+ *
+ * Model uydurma bir dal önermesin diye (§5.1 kural 3): `proposed` yoksa, `ust`
+ * boşsa ya da ağaçta karşılığı yoksa öneri düşer.
+ */
+export function validNewCategory(
+  proposed: { parent: string; child: string } | null | undefined,
+  existing: string[],
+): boolean {
+  if (!proposed) return false;
+  const parent = normalizeKey(proposed.parent);
+  if (!parent) return false;
+  return existing.some((c) => normalizeKey(c) === parent);
+}
+
+/**
  * Etiket önerilerini normalize eder, mevcuda eşler, tekilleştirir ve sınırlar.
  *
  * Etiket **son tercihtir**: mevcut listeden eşleşenler her zaman alınır, ama

@@ -46,6 +46,7 @@ import {
   resolveCategories,
   resolveTags,
   shouldAutoApply,
+  validNewCategory,
 } from './taxonomy';
 import {
   categoryPathOf,
@@ -877,9 +878,7 @@ export async function categorizeAndTagItem(
   // gerçekten VARSA kaydedilecek ad çifti döndürülür (uydurma dal yasak).
   const proposedNew = llmValid ? llm.newCategory : null;
   const newCategory =
-    proposedNew &&
-    llmConfidence >= threshold &&
-    cats.some((c) => normalizeKey(c) === normalizeKey(proposedNew.parent))
+    proposedNew && llmConfidence >= threshold && validNewCategory(proposedNew, cats)
       ? proposedNew
       : null;
 
@@ -1205,9 +1204,7 @@ export async function batchCategorizeItems(
       // Uydurma dal yasak: önerilen `ust` ağaçta yoksa yeni kategori düşer.
       const proposedNew = llm.newCategory;
       const newCategory =
-        llm.confidence >= threshold &&
-        proposedNew &&
-        allCats.some((c) => normalizeKey(c) === normalizeKey(proposedNew.parent))
+        llm.confidence >= threshold && validNewCategory(proposedNew, allCats)
           ? proposedNew
           : null;
 

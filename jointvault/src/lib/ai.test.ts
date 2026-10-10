@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isAiEnabled, planItemCategorization, type AiStatus } from './ai';
 import type { Category } from './db/types';
-import { resolveCategories } from './taxonomy';
+import { resolveCategories, validNewCategory } from './taxonomy';
 
 /** Test kategorisi: ağaç alanları dolu, kalanı sahte. */
 function cat(id: string, name: string, parent_id: string | null = null): Category {
@@ -108,6 +108,27 @@ describe('kategori hiyerarşisi (uçtan uca)', () => {
     });
 
     expect(r.names).toEqual(['Yemek']);
+  });
+});
+
+/*
+ * §5.1 kural 3: yeni bir `{ust, alt}` önerisi yalnız `ust` ağaçta VARSA geçerli.
+ * Uydurma dal (ağaçta olmayan üst) sessizce düşmeli — ret, hata değil.
+ */
+describe('validNewCategory', () => {
+  const cats = ['Yemek', 'Tatlı', 'Yazılım'];
+
+  it('ust ağaçta varsa true (aksan/harf duyarsız)', () => {
+    expect(validNewCategory({ parent: 'tatlı', child: 'Sütlü Tatlı' }, cats)).toBe(true);
+  });
+
+  it('ust ağaçta yoksa false (uydurma dal düşer)', () => {
+    expect(validNewCategory({ parent: 'Uzay', child: 'Roket' }, cats)).toBe(false);
+  });
+
+  it('öneri yoksa (null/undefined) false', () => {
+    expect(validNewCategory(null, cats)).toBe(false);
+    expect(validNewCategory(undefined, cats)).toBe(false);
   });
 });
 
