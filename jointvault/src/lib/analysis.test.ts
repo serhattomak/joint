@@ -65,14 +65,23 @@ describe('resolveAnalysisTaxonomy', () => {
     expect(resolveAnalysisTaxonomy(['Tatlı'], [], [], [], 0.5, 0.6).categories).toEqual([]);
     expect(resolveAnalysisTaxonomy(['Tatlı'], [], [], [], 0.6, 0.6).categories).toEqual(['Tatlı']);
   });
-  it('maxNew=1: en fazla bir YENİ kategori; toplam ≤ 2', () => {
+  it('maxNew=1: en fazla bir YENİ kategori', () => {
     const r = resolveAnalysisTaxonomy(['A', 'B', 'C'], [], [], [], 0.9, 0.6);
     expect(r.categories).toEqual(['A']);
   });
-  it('keyword → etiket, normalize + max 12', () => {
+  it('keyword → etiket: anahtar kelimelerden yeni etiket türetmez', () => {
+    /* Etiket son tercihtir. 15 anahtar kelime güven eşiğini aşıyor olsa bile
+       mevcut listede karşılıkları yoksa taksonomiye yeni ad girmez — aksi
+       halde her analizde kası 15 etiket büyürdü. */
     const keywords = Array.from({ length: 15 }, (_, i) => `#Etiket ${i}`);
     const r = resolveAnalysisTaxonomy([], keywords, [], [], 0.9, 0.6);
-    expect(r.tags).toHaveLength(12);
+    expect(r.tags).toEqual([]);
+  });
+  it('keyword → etiket: mevcut listedeki eşleşmeler korunur', () => {
+    const keywords = Array.from({ length: 15 }, (_, i) => `#Etiket ${i}`);
+    const existing = Array.from({ length: 15 }, (_, i) => `etiket ${i}`);
+    const r = resolveAnalysisTaxonomy([], keywords, [], existing, 0.9, 0.6);
+    expect(r.tags).toHaveLength(12); // max 12
     expect(r.tags[0]).toBe('etiket 0');
   });
   it('etiket mevcut adla eşlenir (kanonik)', () => {

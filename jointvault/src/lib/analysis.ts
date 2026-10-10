@@ -99,8 +99,17 @@ export function resolveAnalysisTaxonomy(
     confidence,
     minConfidence,
     maxNew: 1,
+    // Kayıt tek çocuk kategoriye bağlanır (iki seviyeli taksonomi).
+    maxTotal: 1,
   }).names;
-  const tags = resolveTags(keywords, existingTags, { max: 12 });
+  // Etiket son tercihtir: güven eşiğini geçse bile yeni etiket gerekçesiz
+  // kabul edilmez. Anahtar kelimelerden türetilen adlar çoğunlukla mevcut
+  // listede zaten vardır.
+  const tags = resolveTags(keywords, existingTags, {
+    max: 12,
+    minConfidence,
+    confidence,
+  });
   return { categories, tags };
 }
 

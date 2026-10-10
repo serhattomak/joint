@@ -93,6 +93,7 @@ pub fn run() {
       ai::ai_summarize,
       ai::ai_warmup,
       ai::ai_categorize_and_tag,
+      ai::ai_categorize_batch,
       analyze::analyze_media,
       turbo_download::turbo_probe_url,
       turbo_download::turbo_start_download,

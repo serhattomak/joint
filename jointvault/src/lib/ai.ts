@@ -29,6 +29,7 @@ import {
   listCategories,
   listItems,
   listTags,
+  mergeCategories,
   saveItemChunks,
   searchHybridChunks,
   setCategoriesForItem,
@@ -40,12 +41,18 @@ import { buildCategoryDigest } from './notebook';
 import { invalidateVectorIndex } from './vector-cache';
 import {
   matchTaxonomyInText,
+  normalizeKey,
   normalizeLlmSuggestion,
   resolveCategories,
   resolveTags,
   shouldAutoApply,
 } from './taxonomy';
-import { parseMergeSuggestions } from './taxonomy-maintenance';
+import {
+  parseMergeSuggestions,
+  parseRestructPlan,
+  type RestructMove,
+  type RestructPlan,
+} from './taxonomy-maintenance';
 import {
   buildHistoryWindow,
   mergeQueryPayload,
@@ -154,9 +161,23 @@ export interface CategorizeAndTagResult {
   confidence: number;
   /** Önerinin kaynağı: deterministik eşleşme / LLM / ikisi / hiçbiri. */
   source: 'deterministic' | 'llm' | 'both' | 'none';
+  /** LLM'in önerdiği yeni hiyerarşi (güven eşiğini geçtiyse). */
+  newCategory?: { parent: string; child: string } | null;
 }
 
 export const TAG_THRESHOLD_KEY = 'jv-ai-tag-threshold';
+
+/** Kategori satırlarından "child → parent" haritası üretir (üstü olmayanlar kök). */
+export function buildParentMap(
+  cats: { id: string; name: string; parent_id: string | null }[],
+): Map<string, string> {
+  const byId = new Map(cats.map((c) => [c.id, c.name]));
+  const map = new Map<string, string>();
+  for (const c of cats) {
+    if (c.parent_id && byId.has(c.parent_id)) map.set(c.name, byId.get(c.parent_id)!);
+  }
+  return map;
+}
 
 /** Ayarlardan güven eşiği (yoksa 0.6). */
 export function readTagThreshold(): number {
@@ -748,9 +769,11 @@ export async function categorizeAndTagItem(
 ): Promise<CategorizeAndTagResult> {
   // Mevcut taksonomiyi yükle (verilmediyse DB'den çek)
   let cats = existingCategories;
+  let parents: Map<string, string> | undefined;
   if (!cats) {
     const dbCats = await listCategories();
     cats = dbCats.map((c) => c.name);
+    parents = buildParentMap(dbCats);
   }
 
   let tags = existingTags;
@@ -767,7 +790,7 @@ export async function categorizeAndTagItem(
 
   // 2. Boşluk varsa LLM devreye girer.
   const needLlm = det.categories.length === 0 || det.tags.length < 2;
-  let llm = { categories: [] as string[], tags: [] as string[], summary: '', confidence: 0 };
+  let llm = normalizeLlmSuggestion(null);
   let llmValid = false;
   if (needLlm) {
     try {
@@ -789,7 +812,11 @@ export async function categorizeAndTagItem(
       llm = normalizeLlmSuggestion(raw);
       // Geçersiz/boş yanıt tespiti (eksik alanlar normalize edilir; çökme yok).
       llmValid =
-        llm.confidence > 0 || llm.categories.length > 0 || llm.tags.length > 0 || !!llm.summary;
+        llm.confidence > 0 ||
+        llm.categories.length > 0 ||
+        llm.tags.length > 0 ||
+        !!llm.newCategory ||
+        !!llm.summary;
     } catch {
       llmValid = false;
     }
@@ -799,12 +826,36 @@ export async function categorizeAndTagItem(
   const suggestedTags = [...det.tags, ...(llmValid ? llm.tags : [])];
 
   const llmConfidence = llmValid ? llm.confidence : 0;
-  const resolvedCats = resolveCategories(suggestedCats, cats, {
+  const threshold = readTagThreshold();
+
+  // LLM mevcut bir çocuk bulamadıysa ve `{ust, alt}` önerdiyse, aday havuzuna
+  // alt adı ekle: `resolveCategories` güven eşiğiyle onu yeni kabul eder,
+  // taksonomide "Risotto" adı gerçekten oluşur.
+  const newChild = llmValid ? llm.newCategory?.child : undefined;
+  const catsForResolve = newChild && !cats.some((c) => normalizeKey(c) === normalizeKey(newChild))
+    ? [...cats, newChild]
+    : cats;
+
+  const resolvedCats = resolveCategories(suggestedCats, catsForResolve, {
     confidence: llmConfidence,
-    minConfidence: readTagThreshold(),
+    minConfidence: threshold,
     maxNew: 1,
+    maxTotal: 1, // kayıt YALNIZCA çocuk kategoriye bağlanır
+    ...(parents ? { parents } : {}),
   });
-  const resolvedTags = resolveTags(suggestedTags, tags, { max: 5 });
+  const resolvedTags = resolveTags(suggestedTags, tags, {
+    max: 5,
+    minConfidence: threshold,
+    confidence: llmConfidence,
+    ...(llmValid ? { reasons: llm.newTagReason } : {}),
+  });
+
+  // Yeni hiyerarşik öneri güven eşiğini geçtiyse ve adı taksonomide yoksa
+  // kaydedilecek ad çifti döndürülür (üst ayrıca `applyCategorization` açar).
+  const newCategory =
+    llmValid && llm.newCategory && llmConfidence >= threshold
+      ? llm.newCategory
+      : null;
 
   const detHasAny = det.categories.length > 0 || det.tags.length > 0;
   const confidence = detHasAny ? 1 : llmValid ? llm.confidence : 0;
@@ -822,6 +873,7 @@ export async function categorizeAndTagItem(
     summary: llmValid ? llm.summary : '',
     confidence,
     source,
+    newCategory,
   };
 }
 
@@ -839,13 +891,24 @@ export async function applyCategorization(
   itemId: string,
   categoryNames: string[],
   tagNames: string[],
+  /** Varsa alt kategorinin üstü önce açılır (kök, alt adı olmadan işe yaramaz). */
+  newCategory?: { parent: string; child: string } | null,
 ): Promise<void> {
   if (categoryNames.length > 0) {
+    // Üst kategoriyi önce aç: alt, `parent_id` ile ona bağlanmalı.
+    const parentRow = newCategory ? await getOrCreateCategory(newCategory.parent) : null;
+
     const currentCats = await getCategoriesForItem(itemId);
     const existingNames = new Set(currentCats.map((c) => c.name.toLowerCase()));
     const toAdd = categoryNames.filter((c) => c && !existingNames.has(c.toLowerCase()));
     if (toAdd.length > 0) {
-      const newCatRows = await Promise.all(toAdd.map((name) => getOrCreateCategory(name)));
+      const newCatRows = await Promise.all(
+        toAdd.map((name) =>
+          parentRow && normalizeKey(name) === normalizeKey(newCategory!.child)
+            ? getOrCreateCategory(name, null, parentRow.id)
+            : getOrCreateCategory(name),
+        ),
+      );
       const mergedIds = [...currentCats.map((c) => c.id), ...newCatRows.map((c) => c.id)];
       await setCategoriesForItem(itemId, mergedIds);
     }
@@ -870,9 +933,23 @@ export async function applyCategorization(
   }
 }
 
+/** Bir turda kaç kayıt tek LLM çağrısına sığar.
+ *
+ *  Ponytail: 8 seçildi çünkü her kayıt ~700 karakter metin + taksonomi
+ *  listesi prompt'u şişiriyor. 8 kayıtta ~6k token; `-c 8192` içinde güvenli.
+ *  Prompt taşmaya başlarsa tek sayıyı düşür (ölçülecek tek yer burası). */
+const BATCH_SIZE = 8;
+
 /**
- * Seçilen öğeleri sırayla Qwen 2.5 ile kategorize edip etiketler.
- * forceAutoApply = true ise veya ayarlarda auto_apply_tags açıksa veritabanına doğrudan uygular.
+ * Seçilen öğeleri Qwen 2.5 ile kategorize edip etiketler.
+ *
+ * Deterministik ön geçiş LLM'siz kayıtları eler; kalanlar **8'li gruplar**
+ * hâlinde TEK çağrıda gönderilir (`ai_categorize_batch`). `llama-server` tek
+ * slot'lu olduğu için eşzamanlı istekler kazandırmaz — darboğaz çağrı
+ * sayısıdır. 100 kayıt: 100 tur yerine ~13 tur.
+ *
+ * forceAutoApply = true ise veya ayarlarda auto_apply_tags açıksa veritabanına
+ * doğrudan uygular.
  */
 export async function batchCategorizeItems(
   items: Item[],
@@ -891,12 +968,14 @@ export async function batchCategorizeItems(
   skipped: number;
   replaced: number;
 }> {
-  const allCats = (await listCategories()).map((c) => c.name);
+  const dbCats = await listCategories();
+  const allCats = dbCats.map((c) => c.name);
   const allTags = (await listTags()).map((t) => t.name);
 
   const cfg = await getAiStatus();
   const shouldApply = options?.forceAutoApply ?? cfg.auto_apply_tags ?? false;
   const replaceExisting = options?.replaceExisting ?? false;
+  const threshold = readTagThreshold();
 
   let processed = 0;
   let applied = 0;
@@ -906,51 +985,244 @@ export async function batchCategorizeItems(
   let skipped = 0;
   let replaced = 0;
 
+  /** Sonucu uygulanabilir mi diye değerlendirir ve sayacları günceller. */
+  const settle = async (it: Item, result: CategorizeAndTagResult): Promise<void> => {
+    processed++;
+    if (result.source === 'deterministic') deterministic++;
+
+    const hasSuggestions = result.categories.length > 0 || result.tags.length > 0;
+    const canApply = hasSuggestions && shouldApplySuggestion(result, shouldApply);
+
+    if (canApply) {
+      if (replaceExisting) {
+        await setCategoriesForItem(it.id, []);
+        await setTagsForItem(it.id, []);
+      }
+      await applyCategorization(it.id, result.categories, result.tags, result.newCategory);
+      applied++;
+      if (replaceExisting) replaced++;
+      for (const c of result.categories) if (!allCats.includes(c)) allCats.push(c);
+      for (const t of result.tags) if (!allTags.includes(t)) allTags.push(t);
+    } else if (result.source === 'none') {
+      failed++;
+    } else if (shouldApply) {
+      lowConfidence++;
+    } else {
+      // Otomatik uygulama kapalı: bu bir "düşük güven" değil, "öneri modu".
+      skipped++;
+    }
+  };
+
+  // 2. Her kaydın metnini bir kez oku (transkript okuması IPC'sidir).
+  const texts = await Promise.all(items.map((it) => getItemTranscriptText(it)));
+
+  // 3. Deterministik eşleşme: adı metinde geçen kayıt LLM'e hiç gitmez.
+  const pending: number[] = [];
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
+    const text = [it.title, it.note, texts[i]].filter(Boolean).join('\n');
+    const det = matchTaxonomyInText(text, allCats, allTags);
+
+    if (det.categories.length > 0 && det.tags.length >= 2) {
+      // Tam deterministik: LLM gerek yok.
+      const resolvedCats = resolveCategories(det.categories, allCats, {
+        confidence: 1,
+        minConfidence: threshold,
+        maxTotal: 1,
+      });
+      const resolvedTags = resolveTags(det.tags, allTags, { max: 5 });
+      await settle(it, {
+        categories: resolvedCats.names,
+        tags: resolvedTags,
+        summary: '',
+        confidence: 1,
+        source: 'deterministic',
+      });
+    } else {
+      pending.push(i);
+    }
+  }
+
+  // 4. Kalanları 8'li gruplar hâlinde tek çağrıda toplu gönder.
+  for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+    const group = pending.slice(start, start + BATCH_SIZE);
+
     if (options?.onProgress) {
-      options.onProgress(i + 1, items.length, it.title || it.url || 'Öğe');
+      const first = items[group[0]];
+      options.onProgress(
+        Math.min(start + group.length, items.length),
+        items.length,
+        `${group.length} kayıt birlikte analiz ediliyor — ${first.title || first.url || 'Öğe'}`,
+      );
     }
 
+    let raw: unknown;
     try {
-      const result = await categorizeAndTagItem(it, allCats, allTags);
-      processed++;
-
-      // Yalnız TAM deterministik eşleşme "LLM'siz" sayılır (both LLM kullandı).
-      if (result.source === 'deterministic') deterministic++;
-
-      const hasSuggestions = result.categories.length > 0 || result.tags.length > 0;
-      const canApply = hasSuggestions && shouldApplySuggestion(result, shouldApply);
-
-      if (canApply) {
-        if (replaceExisting) {
-          await setCategoriesForItem(it.id, []);
-          await setTagsForItem(it.id, []);
-        }
-        await applyCategorization(it.id, result.categories, result.tags);
-        applied++;
-        if (replaceExisting) replaced++;
-        for (const c of result.categories) {
-          if (!allCats.includes(c)) allCats.push(c);
-        }
-        for (const t of result.tags) {
-          if (!allTags.includes(t)) allTags.push(t);
-        }
-      } else if (result.source === 'none') {
-        failed++;
-      } else if (shouldApply) {
-        lowConfidence++;
-      } else {
-        // Otomatik uygulama kapalı: bu bir "düşük güven" değil, "öneri modu".
-        skipped++;
-      }
+      raw = await invoke<unknown>('ai_categorize_batch', {
+        payload: {
+          items: group.map((i) => ({
+            title: items[i].title || '',
+            text: [items[i].note ? `Not: ${items[i].note}` : '', texts[i] ? `Transkript: ${texts[i]}` : '']
+              .filter(Boolean)
+              .join('\n\n'),
+            platform: items[i].platform || '',
+            url: items[i].url || '',
+          })),
+          existing_categories: allCats,
+          existing_tags: allTags,
+        },
+      });
     } catch (err) {
-      failed++;
-      console.error(`Öğe kategorize edilirken hata (ID: ${it.id}):`, err);
+      // Toplu çağrı düştü: grubun tamamı başarısız, diğer gruplar sürer.
+      failed += group.length;
+      console.error(`Toplu kategorizasyon başarısız (${group.length} kayıt):`, err);
+      continue;
+    }
+
+    const rows = Array.isArray(raw) ? (raw as unknown[]) : [];
+
+    for (let k = 0; k < group.length; k++) {
+      const i = group[k];
+      const it = items[i];
+      const entry = rows[k];
+
+      if (entry === null || entry === undefined || typeof entry !== 'object') {
+        failed++;
+        continue;
+      }
+
+      const llm = normalizeLlmSuggestion(entry);
+      const llmValid =
+        llm.confidence > 0 ||
+        llm.categories.length > 0 ||
+        llm.tags.length > 0 ||
+        !!llm.newCategory ||
+        !!llm.summary;
+
+      if (!llmValid) {
+        failed++;
+        continue;
+      }
+
+      // Deterministik eşleşmeler önceki adımda zaten elendi; bu turda yalnız
+      // LLM önerisi vardır.
+      const text = [it.title, it.note, texts[i]].filter(Boolean).join('\n');
+      const det = matchTaxonomyInText(text, allCats, allTags);
+      const suggestedCats = [...det.categories, ...llm.categories];
+      const suggestedTags = [...det.tags, ...llm.tags];
+
+      const newChild = llm.newCategory?.child;
+      const catsForResolve =
+        newChild && !allCats.some((c) => normalizeKey(c) === normalizeKey(newChild))
+          ? [...allCats, newChild]
+          : allCats;
+
+      const parents = buildParentMap(dbCats);
+      const resolvedCats = resolveCategories(suggestedCats, catsForResolve, {
+        confidence: llm.confidence,
+        minConfidence: threshold,
+        maxNew: 1,
+        maxTotal: 1,
+        parents,
+      });
+      const resolvedTags = resolveTags(suggestedTags, allTags, {
+        max: 5,
+        minConfidence: threshold,
+        confidence: llm.confidence,
+        reasons: llm.newTagReason,
+      });
+
+      await settle(it, {
+        categories: resolvedCats.names,
+        tags: resolvedTags,
+        summary: llm.summary,
+        confidence: llm.confidence,
+        source: det.categories.length > 0 ? 'both' : 'llm',
+        newCategory: llm.confidence >= threshold ? llm.newCategory : null,
+      });
     }
   }
 
   return { processed, applied, lowConfidence, failed, deterministic, skipped, replaced };
+}
+
+/**
+ * Mevcut düz kategorileri iki seviyeli taksonomiye indirgemek için LLM planı
+ * üretir. **Yalnızca önerir** — hiçbir şey yazmaz. Kullanıcı planı görüp
+ * onaylayınca `applyRestructPlan` çalışır.
+ */
+export async function restructurePlan(
+  names: string[],
+): Promise<{ moves: RestructMove[]; merges: RestructPlan['merges'] }> {
+  if (names.length < 2) return { moves: [], merges: [] };
+
+  const status = await getAiStatus();
+  if (!isAiEnabled(status) || !status.llm_ready || !status.engine_available) {
+    return { moves: [], merges: [] };
+  }
+
+  const system =
+    'Sen bir taksonomi düzenleme asistanısın. Yalnızca geçerli bir JSON nesnesi döndür; başka metin yazma.';
+  const prompt =
+    'Aşağıdaki kategori adlarını İKİ SEVİYELİ bir taksonomiye indirge.\n' +
+    'KURALLAR:\n' +
+    '1. "moves": listedeki HER ad için tam bir girdi ver.\n' +
+    '2. Aynı kavramı taşıyan ayrı adları BİRLEŞTİR: "pizza tarifi" ve "pizza yapımı"\n' +
+    '   ayrı kalmasın, ikisi de alt "Pizza"ya gitsin.\n' +
+    '3. Üst seviye GENEL (Yemek, Teknoloji, Sanat); alt seviye SOMUT (Pizza, Rust, Fotoğraf).\n' +
+    '4. Kök kalması gerekenlerde toChild boş string bırak.\n' +
+    '5. YENİ ad uydurma — yalnızca listede geçen adları kullan.\n' +
+    '6. "merges": aynı kavramı taşıyan ad grupları (kanonik + katlananlar).\n\n' +
+    `Kategori adları: ${names.join(', ')}\n\n` +
+    'Yanıt biçimi (yalnız JSON):\n' +
+    '{"moves":[{"from":"pizza tarifi","toParent":"Yemek","toChild":"Pizza"},' +
+    '{"from":"Python","toParent":"","toChild":""}],"merges":' +
+    '[{"canonical":"Pizza","duplicates":["pizza tarifi","pizza yapımı"]}]}';
+
+  try {
+    const text = await streamAiChat(
+      crypto.randomUUID(),
+      [{ role: 'user', content: prompt }],
+      system,
+    );
+    return parseRestructPlan(text, names);
+  } catch {
+    return { moves: [], merges: [] };
+  }
+}
+
+/**
+ * Onaylanan planı uygular: kategorileri hiyerarşiye taşır ve yinelenenleri
+ * birleştirir.
+ *
+ * Sıra önemli: **önce birleştir** (kayıtlar hedefe taşınır), sonra `parent_id`
+ * ata. Aksi halde birleştirilen adın altındaki kayıtlar yaşayan bir üst
+ * adına bağlanamaz.
+ *
+ * Geri alınabilir değildir; bu yüzden çağırmadan önce kullanıcı onayı zorunlu.
+ */
+export async function applyRestructPlan(plan: RestructPlan): Promise<void> {
+  // 1. Yinelenenleri kanonik adın altında birleştir.
+  for (const m of plan.merges) {
+    const canonicalRow = await getOrCreateCategory(m.canonical);
+    const dupIds: string[] = [];
+    for (const name of m.duplicates) {
+      const row = await getOrCreateCategory(name);
+      if (row.id !== canonicalRow.id) dupIds.push(row.id);
+    }
+    if (dupIds.length > 0) await mergeCategories(canonicalRow.id, dupIds);
+  }
+
+  // 2. Hiyerarşiyi kur: `from` adı taşındıysa güncelle, kalanlar kök kalır.
+  for (const move of plan.moves) {
+    if (!move.toChild) continue;
+    const parent = await getOrCreateCategory(move.toParent);
+    const child = await getOrCreateCategory(move.toChild, null, parent.id);
+    const source = await getOrCreateCategory(move.from);
+    if (source.id === child.id) continue;
+    // `from` da bir kaynak adıysa kanonik alt ad olur: kayıtlarını taşı.
+    await mergeCategories(child.id, [source.id]);
+  }
 }
 
 /**

@@ -1256,17 +1256,31 @@ pub async fn ai_categorize_and_tag(app: AppHandle, payload: Value) -> Result<Val
     };
 
     let prompt = format!(
-        "Aşağıdaki medya kaydını analiz et, en uygun kategori ve etiketleri belirle.\n\n\
-        TAKSONOMİ VE EŞLEŞTİRME KURALLARI:\n\
-        1. KATEGORİLER: Öncelikle kasadaki mevcut kategorilerden EN UYGUN 1 veya en fazla 2 tanesini seç: [{existing_cat_str}].\n\
-           Eğer içerik bu kategorilerden hiçbirine uymuyorsa, yeni ve genel geçer 1 kategori öner (Örn: Yazılım, Tasarım, Müzik, Bilim, Finans vb.).\n\
-        2. ETİKETLER: Öncelikle kasadaki mevcut etiketlerden EN UYGUN 2 ila 4 tanesini seç: [{existing_tag_str}].\n\
-           Eğer içerikteki önemli kavramlar mevcut listede yoksa, 1 ila 3 yeni etiket türet. Etiketlerin başına '#' koyma, küçük harf ve sade tut.\n\
+        "Aşağıdaki medya kaydını analiz et, en uygun KATEGORİYİ ve etiketleri belirle.\n\n\
+        TAKSONOMİ KURALLARI:\n\
+        1. KATEGORİ — tam olarak 1 adet, SADECE alt (child) seviyeden:\n\
+           [{existing_cat_str}]\n\
+           - Kayıt bir yemek tarifi ve \"Yemek > Pizza\" varsa sadece \"Pizza\" seç. \"Yemek\" SEÇME.\n\
+           - Listede \"Pizza\" varsa \"Pizza Tarifi\", \"Pizza Yapımı\", \"Ev Yapımı Pizza\" gibi\n\
+             YENİ adlar KURMA. Mevcut tam adı kullan. Aynı anlama gelen ayrı kategori\n\
+             üretmek yasaktır.\n\
+           - Hiçbiri uymuyorsa `yeni` alanını doldur: en genel geçer üst + en somut alt\n\
+             ad (örn: {{\"ust\":\"Yemek\",\"alt\":\"Risotto\"}}). Yeni üst yalnızca gerçekten\n\
+             gerekliyse önerilir.\n\
+        2. ETİKET — son tercih:\n\
+           - Önce mevcut listeden uygun olanı seç: [{existing_tag_str}]\n\
+           - Mevcut etiketlerden hiçbiri kaydı gerçekten TANIMLAMIYORSA yeni etiket\n\
+             üretme; `tags` boş, `yeni_etiket` null döndür.\n\
+           - Yalnızca kaydın kimliği etiketle tanımlanıyorsa EN FAZLA 1 tane üret ve\n\
+             `yeni_etiket_gerekce` alanına bu etiket neden gerekliğini yaz.\n\
+           - Etiketlerin başına '#' koyma, küçük harf ve sade tut.\n\
         3. ÖZET: İçeriği tek cümleyle net bir şekilde özetle.\n\
-        4. GÜVEN SKORU: Önerilerin içeriğe uygunluğuna 0.0 ile 1.0 arasında bir confidence değeri ver.\n\n\
-        ÇIKTI FORMATI: Yanıt olarak SADECE geçerli bir JSON nesnesi döndür. Başka hiçbir markdown, karşılama veya açıklama yazma.\n\
-        Örnek format:\n\
-        {{\"categories\": [\"Teknoloji\"], \"tags\": [\"yapay-zeka\", \"python\"], \"summary\": \"Yapay zeka modellerinin yerel çalıştırılması üzerine rehber.\", \"confidence\": 0.95}}\n\n\
+        4. GÜVEN SKORU: Önerinin içeriğe uygunluğuna 0.0 ile 1.0 arasında bir confidence ver.\n\n\
+        ÇIKTI FORMATI: Yanıt olarak SADECE geçerli bir JSON nesnesi döndür.\n\
+        Örnek (mevcut kategori):\n\
+        {{\"kategori\":\"Pizza\",\"ust\":null,\"yeni\":null,\"tags\":[\"hamur\"],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Margherita pizza tarifi.\",\"confidence\":0.95}}\n\
+        Örnek (hiçbir şey uymuyor, yeni kategori):\n\
+        {{\"kategori\":null,\"ust\":null,\"yeni\":{{\"ust\":\"Yemek\",\"alt\":\"Risotto\"}},\"tags\":[],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Risotto tarifi.\",\"confidence\":0.8}}\n\n\
         KAYIT DETAYLARI:\n\
         - Başlık: {title}\n\
         - Platform / Kaynak: {platform}\n\
@@ -1316,21 +1330,174 @@ pub async fn ai_categorize_and_tag(app: AppHandle, payload: Value) -> Result<Val
     let parsed: Value = if let (Some(start), Some(end)) = (content.find('{'), content.rfind('}')) {
         let json_slice = &content[start..=end];
         serde_json::from_str(json_slice).unwrap_or(serde_json::json!({
-            "categories": [],
+            "kategori": null,
+            "ust": null,
+            "yeni": null,
             "tags": [],
+            "yeni_etiket": null,
+            "yeni_etiket_gerekce": null,
             "summary": "",
             "confidence": 0.0
         }))
     } else {
         serde_json::json!({
-            "categories": [],
+            "kategori": null,
+            "ust": null,
+            "yeni": null,
             "tags": [],
+            "yeni_etiket": null,
+            "yeni_etiket_gerekce": null,
             "summary": "",
             "confidence": 0.0
         })
     };
 
     Ok(parsed)
+}
+
+/// Tek HTTP çağrısıyla birden çok kaydı kategorize eder.
+///
+/// Neden toplu: `llama-server` TEK slot ile çalışır (`-c 8192`, `--parallel`
+/// yok), yani eşzamanlı HTTP istekleri sunucuda sıraya girer ve kazandırmaz.
+/// Darboğaz çağrı SAYISIDIR: 100 kayıt = 100 tur yerine ~10 tur.
+///
+/// `--parallel N` EKLENMEZ: `-c` slot sayısına bölündüğü için her slot'a
+/// `8192/N` düşer ve taksonomi listesiyle birlikte uzun prompt'lar
+/// taşmaya başlar. Ölçülen kazanç, kaybedilen bağlamdan büyük değil.
+///
+/// Çıktı, `ai_categorize_and_tag` ile aynı şemada TEK kayıt listesi döner;
+/// sıra girdiyle birebir korunur.
+#[tauri::command]
+pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value, String> {
+    let items: Vec<Value> = serde_json::from_value(
+        payload.get("items").cloned().unwrap_or(Value::Array(vec![])),
+    )
+    .unwrap_or_default();
+
+    if items.is_empty() {
+        return Ok(serde_json::json!([]));
+    }
+
+    let existing_categories: Vec<String> = serde_json::from_value(
+        payload
+            .get("existing_categories")
+            .cloned()
+            .unwrap_or(Value::Array(vec![])),
+    )
+    .unwrap_or_default();
+
+    let existing_tags: Vec<String> = serde_json::from_value(
+        payload.get("existing_tags").cloned().unwrap_or(Value::Array(vec![])),
+    )
+    .unwrap_or_default();
+
+    let existing_cat_str = if existing_categories.is_empty() {
+        "Henüz kategori yok".to_string()
+    } else {
+        existing_categories.join(", ")
+    };
+    let existing_tag_str = if existing_tags.is_empty() {
+        "Henüz etiket yok".to_string()
+    } else {
+        existing_tags.join(", ")
+    };
+
+    // Kayıt başına kısa özet: ham içerik 3000 karakteri aşınca toplam prompt
+    // bağlamı taşar ve toplu çağrının kendisi yavaşlar.
+    let mut blocks: Vec<String> = Vec::with_capacity(items.len());
+    for (i, item) in items.iter().enumerate() {
+        let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let text = item.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        let platform = item.get("platform").and_then(|v| v.as_str()).unwrap_or("");
+        let snippet: String = if text.chars().count() > 700 {
+            text.chars().take(700).collect::<String>() + "..."
+        } else {
+            text.to_string()
+        };
+        blocks.push(format!(
+            "KAYIT {i}:\n- Başlık: {title}\n- Platform: {platform}\n- İçerik: {snippet}"
+        ));
+    }
+
+    let prompt = format!(
+        "Aşağıdaki {n} medya kaydını analiz et. Her kayıt için TAM OLARAK 1 kategori ve\n\
+         en fazla 4 etiket belirle.\n\n\
+         KURALLAR (her kayıt için ayrı ayrı uygula):\n\
+         1. KATEGORİ — SADECE alt (child) seviyeden seç: [{existing_cat_str}]\n\
+            - \"Yemek > Pizza\" varsa ve kayıt pizza ise sadece \"Pizza\" seç, \"Yemek\" SEÇME.\n\
+            - Listede \"Pizza\" varsa \"Pizza Tarifi\"/\"Pizza Yapımı\" gibi YENİ ad KURMA.\n\
+            - Hiçbiri uymuyorsa `yeni` alanını doldur: {{\"ust\":\"...\",\"alt\":\"...\"}}.\n\
+         2. ETİKET — son tercih. Önce mevcut listeden: [{existing_tag_str}]\n\
+            - Hiçbiri kaydı gerçekten tanımlamıyorsa ETİKET ÜRETME.\n\
+            - En fazla 1 yeni etiket; `yeni_etiket_gerekce` alanına nedenini yaz.\n\
+         3. ÖZET ve GÜVEN (confidence 0.0-1.0).\n\n\
+         ÇIKTI FORMATI: SADECE {n} elemanlı geçerli JSON DİZİSİ döndür, markdown yok.\n\
+         Eleman sırası KAYIT 0..{last} ile BİREBİR aynı olmalı.\n\
+         Örnek tek eleman:\n\
+         {{\"index\":0,\"kategori\":\"Pizza\",\"ust\":null,\"yeni\":null,\"tags\":[\"hamur\"],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Margherita pizza tarifi.\",\"confidence\":0.95}}\n\n\
+         {records}",
+        n = items.len(),
+        last = items.len().saturating_sub(1),
+        records = blocks.join("\n\n")
+    );
+
+    let port = ensure_server_running(&app, "chat").await?;
+    let api_url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .post(&api_url)
+        .json(&serde_json::json!({
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Sen JointVault kişisel medya kasası için çalışan uzman bir içerik taksonomi motorusun. Çıktıyı SADECE belirtilen JSON formatında üretirsin."
+                },
+                { "role": "user", "content": prompt }
+            ],
+            "temperature": 0.2
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Toplu kategorizasyon API çağrısı başarısız: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("Toplu kategorizasyon API hatası: {e}"))?;
+
+    let res_json: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let content = res_json
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c0| c0.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("[]");
+
+    let start = content.find('[');
+    let end = content.rfind(']');
+    let parsed: Vec<Value> = match (start, end) {
+        (Some(s), Some(e)) if e > s => {
+            serde_json::from_str(&content[s..=e]).unwrap_or_default()
+        }
+        _ => Vec::new(),
+    };
+
+    // Yanıt eksik/kısa olursa eksik kayıtlar boş sonuçla doldurulur; çağıran
+    // taraf `index` ile eşleştirip sessizce kayıp bırakmaz.
+    let mut out: Vec<Value> = vec![Value::Null; items.len()];
+    for entry in parsed {
+        let Some(idx) = entry.get("index").and_then(|v| v.as_u64()) else {
+            continue;
+        };
+        if (idx as usize) < out.len() {
+            out[idx as usize] = entry;
+        }
+    }
+
+    Ok(Value::Array(out))
 }
 
 #[cfg(test)]
