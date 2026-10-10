@@ -1,10 +1,11 @@
 /**
  * Kategori ağacının görünüm tarafı (SAF — DB/IPC yok, Node'da test edilir).
  *
- * Hiyerarşi iki seviyedir; burada üçüncü seviye bir derinlikte olsa da aynı
- * ağaç çizilir. `listCategories` düz döndüğü için ağaç burada kurulur.
+ * Hiyerarşi N seviyeye açıktır; ağaç ve tam yol aynı derinlikte çizilir.
+ * `listCategories` düz döndüğü için ağaç burada kurulur.
  */
 import type { Category } from './db/types';
+import { categoryPathOf } from './taxonomy-maintenance';
 
 export interface CategoryTreeNode {
   id: string;
@@ -46,15 +47,12 @@ export function categoryTreeOf(categories: Category[]): CategoryTreeNode[] {
   return roots.sort(byName).map(build);
 }
 
-/** Kategoriyi "Üst › Alt" olarak okunur biçimde döndürür; kökte yalnız ad. */
+/** Kategoriyi "Üst › Alt › Torun" tam yolu olarak döndürür; kökte yalnız ad. */
 export function categoryPathLabel(
   categories: Category[],
   categoryId: string,
 ): string | null {
-  const byId = new Map(categories.map((c) => [c.id, c]));
-  const self = byId.get(categoryId);
-  if (!self) return null;
-  if (!self.parent_id) return self.name;
-  const parent = byId.get(self.parent_id);
-  return parent ? `${parent.name} › ${self.name}` : self.name;
+  // Yürüyüş, çevrim ve eksik ata mantığı `categoryPathOf`'ta tek yerde yaşar;
+  // burada yalnızca okunur biçime çevrilir (kopyası yazılmaz).
+  return categoryPathOf(categories, categoryId)?.join(' › ') ?? null;
 }

@@ -64,4 +64,20 @@ describe('categoryPathLabel', () => {
   it('bilinmeyen id için null döner (çökmez)', () => {
     expect(categoryPathLabel(cats, 'yok')).toBeNull();
   });
+
+  it('3 seviyeli tam yolu yazar', () => {
+    const cats = [cat('1', 'Yemek'), cat('2', 'Tatlı', '1'), cat('3', 'Sütlü Tatlı', '2')];
+    expect(categoryPathLabel(cats, '3')).toBe('Yemek › Tatlı › Sütlü Tatlı');
+  });
+
+  it('sarkan üst: eksik ata yola girmez, kategori KAYBOLMAZ', () => {
+    // Üstü silinmiş satır (parent_id dolu ama karşılığı yok) ağaçtan düşmemeli.
+    const cats = [cat('9', 'Yetim', 'silinmis')];
+    expect(categoryPathLabel(cats, '9')).toBe('Yetim');
+  });
+
+  it('kendine referanslı bozuk veride sonsuz döngüye girmez', () => {
+    const cats = [cat('1', 'A', '1')];
+    expect(categoryPathLabel(cats, '1')).toBe('A');
+  });
 });

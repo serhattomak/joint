@@ -401,7 +401,10 @@ function Accession({
       )}
       {collectionLabel && <span>· {collectionLabel}</span>}
       {categories.map((c) => (
-        <span key={c.id}>· {catLabel(c)}</span>
+        // Tam yol 5 seviyeye çıkabilir; görünürde kırpılır, tamamı title'da.
+        <span key={c.id} className="min-w-0 max-w-full truncate" title={catLabel(c)}>
+          · {catLabel(c)}
+        </span>
       ))}
       {tags.map((t) => (
         <span key={t.id} className="text-primary">
