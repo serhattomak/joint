@@ -77,6 +77,7 @@ describe('initDb şema yolu', () => {
   it('idx_ önekli indeksleri oluşturur', () => {
     expect(run.indexes).toEqual([
       'idx_articles_scraped_at',
+      'idx_categories_parent',
       'idx_chunks_item_id',
       'idx_chunks_type',
       'idx_downloads_category',
@@ -100,7 +101,7 @@ describe('initDb şema yolu', () => {
     // Act
     const statementCount = splitSqlStatements(SCHEMA_SQL).length;
 
-    // Assert
-    expect(statementCount).toBe(25);
+    // Assert — göç 8'de hiyerarşi indeksi eklendi (+1).
+    expect(statementCount).toBe(26);
   });
 });

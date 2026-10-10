@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/select';
 import { PLATFORM_META, PLATFORM_ORDER } from '@/lib/platform';
 import type { Category, Collection, Tag } from '@/lib/db/types';
 import type { ItemSort } from '@/lib/db/client';
+import { categoryTreeOf } from '@/lib/taxonomy-view';
 
 /*
  * Kural şeridi — arşivin yürürlükteki kuralları görünen bir banttır.
@@ -79,8 +80,91 @@ function OptionRow({
   );
 }
 
+/*
+ * Kategori iki sviyelidir (üst > alt). Sadece üst seçilince altları da
+ * kapsanır (bkz. `resolveCategoryFilterIds`), o yüzden üst seçilebilir.
+ */
+function CategoryOptions({
+  categories,
+  value,
+  onPick,
+}: {
+  categories: Category[];
+  value: string;
+  onPick: (id: string) => void;
+}) {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLocaleLowerCase('tr');
+  const roots = categoryTreeOf(categories);
+
+  const matches = (name: string) => !needle || name.toLocaleLowerCase('tr').includes(needle);
+  // Arama alt adıyla da tutturmalı: "pizza" yazınca Yemek'in altındaki Pizza
+  // bulunur; üst sütun boş kalırsa sonuç yok gibi görünürdü.
+  const rows = roots
+    .map((root) => ({
+      root,
+      children: needle ? root.children.filter((c) => matches(c.name)) : root.children,
+    }))
+    .filter((r) => !needle || matches(r.root.name) || r.children.length > 0);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="p-1.5">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Kategori ara…"
+          className="h-7 text-xs"
+          autoFocus
+        />
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-3 py-3 text-xs text-muted-foreground">Bulunamadı.</p>
+      ) : (
+        <ul className="min-h-0 flex-1 divide-y divide-border/70 overflow-y-auto">
+          <li>
+            <OptionRow active={value === 'all'} onClick={() => onPick('all')}>
+              <span className="truncate text-muted-foreground">Tüm kategoriler</span>
+            </OptionRow>
+          </li>
+          {rows.map(({ root, children }) => (
+            <li key={root.id}>
+              <OptionRow active={value === root.id} onClick={() => onPick(root.id)}>
+                <span className="truncate font-medium">{root.name}</span>
+                <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
+                  {root.children.length || ''}
+                </span>
+              </OptionRow>
+              {children.length > 0 && (
+                <ul className="pb-1">
+                  {children.map((child) => (
+                    <li key={child.id}>
+                      <OptionRow active={value === child.id} onClick={() => onPick(child.id)}>
+                        <span aria-hidden className="shrink-0 pl-3 text-muted-foreground">
+                          ›
+                        </span>
+                        <span className="truncate">{child.name}</span>
+                      </OptionRow>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /* İki panelli filtre: solda filtre adları, sağda arama alanı + seçenekler. */
-function FilterPanel({ filters }: { filters: FilterDef[] }) {
+function FilterPanel({
+  filters,
+  categories,
+}: {
+  filters: FilterDef[];
+  categories: Category[];
+}) {
   const [activeKey, setActiveKey] = useState(filters[0]?.key ?? '');
   const [q, setQ] = useState('');
 
@@ -117,37 +201,43 @@ function FilterPanel({ filters }: { filters: FilterDef[] }) {
         ))}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="p-1.5">
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={`${active.label} ara…`}
-            className="h-7 text-xs"
-            autoFocus
-          />
+      {active.key === 'category' ? (
+        <CategoryOptions categories={categories} value={active.value} onPick={active.onPick} />
+      ) : (
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="p-1.5">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={`${active.label} ara…`}
+              className="h-7 text-xs"
+              autoFocus
+            />
+          </div>
+          <ul className="min-h-0 flex-1 overflow-y-auto p-1.5 pt-0">
+            {options.length === 0 ? (
+              <li className="px-2 py-3 text-xs text-muted-foreground">Bulunamadı.</li>
+            ) : (
+              options.map((o) => (
+                <li key={o.value}>
+                  <OptionRow
+                    active={o.value === active.value}
+                    onClick={() => {
+                      active.onPick(o.value);
+                      setQ('');
+                    }}
+                  >
+                    {o.dot && (
+                      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${o.dot}`} />
+                    )}
+                    <span className="truncate">{o.label}</span>
+                  </OptionRow>
+                </li>
+              ))
+            )}
+          </ul>
         </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto p-1.5 pt-0">
-          {options.length === 0 ? (
-            <li className="px-2 py-3 text-xs text-muted-foreground">Bulunamadı.</li>
-          ) : (
-            options.map((o) => (
-              <li key={o.value}>
-                <OptionRow
-                  active={o.value === active.value}
-                  onClick={() => {
-                    active.onPick(o.value);
-                    setQ('');
-                  }}
-                >
-                  {o.dot && <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${o.dot}`} />}
-                  <span className="truncate">{o.label}</span>
-                </OptionRow>
-              </li>
-            ))
-          )}
-        </ul>
-      </div>
+      )}
     </div>
   );
 }
@@ -246,7 +336,7 @@ export function RuleStrip(props: RuleStripProps) {
         </PopoverTrigger>
         <PopoverContent className="w-[22rem] p-0">
           <PopoverTitle>Filtreler</PopoverTitle>
-          <FilterPanel filters={filters} />
+          <FilterPanel filters={filters} categories={categories} />
         </PopoverContent>
       </Popover>
 

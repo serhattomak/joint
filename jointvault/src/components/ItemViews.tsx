@@ -13,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useOpenTarget } from '@/lib/open-target';
+import { categoryPathLabel } from '@/lib/taxonomy-view';
 import { Button } from '@/components/ui/button';
 import {
   Menu,
@@ -42,6 +43,8 @@ export interface ItemViewProps {
   item: Item;
   tags: Tag[];
   categories: Category[];
+  /** Kasadaki TÜM kategori satırları — künyede "Üst › Alt" yolu için. */
+  allCategories: Category[];
   collectionLabel: string | null;
   selected: boolean;
   index: number;
@@ -336,8 +339,16 @@ function Accession({
   collectionLabel,
   hasArticle,
   variant,
-}: Pick<ItemViewProps, 'item' | 'tags' | 'categories' | 'collectionLabel' | 'hasArticle'> & { variant: 'card' | 'row' }) {
+  allCategories,
+}: Pick<ItemViewProps, 'item' | 'tags' | 'categories' | 'collectionLabel' | 'hasArticle'> & {
+  variant: 'card' | 'row';
+  /** Tüm kategori satırları; üst adını bulmak için gerekir. */
+  allCategories: Category[];
+}) {
   const hasTaxonomy = Boolean(collectionLabel) || categories.length > 0 || tags.length > 0 || hasArticle;
+  // "Pizza" tek başına hangi üste ait olduğunu belli etmez; "Yemek › Pizza"
+  // der. Üst yoksa (hiyerarşi öncesi veri) yalnız ad görünür.
+  const catLabel = (c: Category) => categoryPathLabel(allCategories, c.id) ?? c.name;
 
   if (variant === 'row') {
     /*
@@ -351,7 +362,7 @@ function Accession({
           <span>{platformLabel(item.platform)}</span>
           {collectionLabel && <> · {collectionLabel}</>}
           {categories.map((c) => (
-            <span key={c.id}> · {c.name}</span>
+            <span key={c.id}> · {catLabel(c)}</span>
           ))}
           {tags.map((t) => (
             <span key={t.id} className="text-primary">
@@ -390,7 +401,7 @@ function Accession({
       )}
       {collectionLabel && <span>· {collectionLabel}</span>}
       {categories.map((c) => (
-        <span key={c.id}>· {c.name}</span>
+        <span key={c.id}>· {catLabel(c)}</span>
       ))}
       {tags.map((t) => (
         <span key={t.id} className="text-primary">
@@ -406,6 +417,7 @@ export const ItemRowView = memo(function ItemRowView({
   item,
   tags,
   categories,
+  allCategories,
   collectionLabel,
   selected,
   hasArticle,
@@ -467,7 +479,7 @@ export const ItemRowView = memo(function ItemRowView({
             <TooltipContent>{item.title || item.url}</TooltipContent>
           </Tooltip>
         </button>
-        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="row" />
+        <Accession item={item} tags={tags} categories={categories} allCategories={allCategories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="row" />
       </div>
       {/* Sağ bloklar SABİT genişlikte ve sağa hizalı: durum/aksiyon sayısı
           değişse de künye ve tarih sütunları her satırda aynı hizada kalır. */}
@@ -493,6 +505,7 @@ export const ItemCardView = memo(function ItemCardView({
   item,
   tags,
   categories,
+  allCategories,
   collectionLabel,
   selected,
   index,
@@ -562,7 +575,7 @@ export const ItemCardView = memo(function ItemCardView({
             {item.title || item.url}
           </h3>
         </button>
-        <Accession item={item} tags={tags} categories={categories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="card" />
+        <Accession item={item} tags={tags} categories={categories} allCategories={allCategories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="card" />
         <div className="mt-auto flex items-center gap-1 border-t border-border pt-2">
           <DownloadControl
             item={item}

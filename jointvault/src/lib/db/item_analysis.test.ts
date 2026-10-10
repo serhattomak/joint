@@ -7,7 +7,8 @@ describe('migration 6 — item_analysis', () => {
     const pending = planMigrations(5);
     const v6 = MIGRATIONS.find((m) => m.version === 6);
     expect(v6).toBeTruthy();
-    expect(pending.map((m) => m.version)).toEqual([6, 7]);
+    // Göç 8 (kategori hiyerarşisi) sonradan eklendi; liste güncel kalmalı.
+    expect(pending.map((m) => m.version)).toEqual([6, 7, 8]);
     expect(v6!.statements.join('\n')).toContain('CREATE TABLE IF NOT EXISTS item_analysis');
     // Faz 2 alanı Faz 1'de rezerve:
     expect(v6!.statements.join('\n')).toContain('visual_notes_json');

@@ -38,6 +38,7 @@ import {
   listTagsWithCounts,
   mergeCategories,
   mergeTags,
+  purgeTaxonomy,
   removeCategory,
   removeCollection,
   removeTag,
@@ -50,7 +51,13 @@ import {
 } from '@/lib/db/client';
 import { createBackup } from '@/lib/db/backup';
 import { duplicateGroups } from '@/lib/taxonomy-maintenance';
-import { suggestTaxonomyMerges } from '@/lib/ai';
+import { applyRestructPlan, restructurePlan, suggestTaxonomyMerges } from '@/lib/ai';
+import { validateRestructPlan, type RestructPlan } from '@/lib/taxonomy-maintenance';
+import {
+  purgeConfirmText,
+  purgeDecision,
+  purgePreview as taxonomyPurgePreview,
+} from '@/lib/taxonomy-purge';
 
 export type CollectionsTabKey = 'collections' | 'categories' | 'tags';
 
@@ -187,6 +194,105 @@ export function CollectionsView({
       setSuggestions(groups);
     } finally {
       setSuggestBusy(false);
+    }
+  };
+
+  /*
+   * Yeniden yapılandırma: düz taksonomiyi iki seviyeye indirger.
+   * İki adımlı — önce ÖNERİ (hiçbir şey yazılmaz), sonra kullanıcı onayıyla
+   * uygulama. Geri alınamaz olduğu için ikinci adım yedek alır ve onay ister.
+   */
+  const [restructPlan, setRestructPlan] = useState<RestructPlan | null>(null);
+  const [restructBusy, setRestructBusy] = useState(false);
+  const [confirmRestruct, setConfirmRestruct] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Toplu taksonomi temizliği (sıfırdan başlatmak için)
+  const [confirmPurge, setConfirmPurge] = useState<{
+    kind: 'categories' | 'tags';
+  } | null>(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
+
+  const purgePreview = (kind: 'categories' | 'tags') =>
+    taxonomyPurgePreview(
+      kind === 'categories' ? categories : tags,
+      kind === 'categories'
+        ? categories.reduce((sum, c) => sum + c.count, 0)
+        : tags.reduce((sum, t) => sum + t.count, 0),
+    );
+
+  const runPurge = async (): Promise<void> => {
+    if (!confirmPurge) return;
+    const { kind } = confirmPurge;
+    setConfirmPurge(null);
+    setPurgeBusy(true);
+    try {
+      const preview = purgePreview(kind);
+      if (!preview.canPurge) {
+        setNotice('Silinecek kategori ya da etiket yok.');
+        return;
+      }
+      // Geri alınamaz işlem: yedek almadan silme YAPILMAZ.
+      await createBackup(await getDb());
+      const decision = purgeDecision(preview, true);
+      if (!decision.ok) {
+        setNotice(decision.reason ?? 'Silme yapılamadı.');
+        return;
+      }
+
+      const { removed, affectedItemIds } = await purgeTaxonomy(kind);
+      window.dispatchEvent(new CustomEvent('vault-items-updated'));
+      // Taksonomi adları meta chunk'a gömülüydü; silme onları bayatlatır.
+      for (const id of affectedItemIds) {
+        window.dispatchEvent(new CustomEvent('vault-item-index-dirty', { detail: { id } }));
+      }
+      setNotice(`${removed} ${kind === 'categories' ? 'kategori' : 'etiket'} silindi.`);
+      await loadData();
+    } catch (e) {
+      setNotice(`Silme başarısız: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPurgeBusy(false);
+    }
+  };
+
+  const runRestructSuggest = async (): Promise<void> => {
+    setRestructBusy(true);
+    setRestructPlan(null);
+    try {
+      const names = categories.map((c) => c.name);
+      const { moves, merges } = await restructurePlan(names);
+      const check = validateRestructPlan(names, { moves, merges });
+      if (!check.ok) {
+        setNotice(
+          `Plan uygulanamaz: ${check.missing.length} bilinmeyen, ${check.duplicated.length} yinelenen ad.`,
+        );
+        return;
+      }
+      if (moves.length === 0 && merges.length === 0) {
+        setNotice('Taksonomi zaten uygun görünüyor.');
+        return;
+      }
+      setRestructPlan({ moves, merges });
+    } finally {
+      setRestructBusy(false);
+    }
+  };
+
+  const runRestructApply = async (): Promise<void> => {
+    if (!restructPlan) return;
+    setConfirmRestruct(false);
+    setRestructBusy(true);
+    try {
+      await createBackup(await getDb());
+      await applyRestructPlan(restructPlan);
+      setRestructPlan(null);
+      setNotice('Taksonomi iki seviyeye indirgendi.');
+      window.dispatchEvent(new CustomEvent('vault-items-updated'));
+      await loadData();
+    } catch (e) {
+      setNotice(`Yeniden yapılandırma başarısız: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRestructBusy(false);
     }
   };
 
@@ -656,6 +762,20 @@ export function CollectionsView({
               })}
             </div>
           )}
+
+          {/* Toplu temizlik: taksonomiyi sıfırdan kurmak isteyenler için. */}
+          <div className="flex justify-end border-t border-border pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:text-destructive"
+              disabled={categories.length === 0 || purgeBusy}
+              onClick={() => setConfirmPurge({ kind: 'categories' })}
+            >
+              <Trash2 className="size-3.5" />
+              Tüm Kategorileri Sil
+            </Button>
+          </div>
         </div>
       )}
 
@@ -770,6 +890,20 @@ export function CollectionsView({
               })}
             </div>
           )}
+
+          {/* Toplu temizlik: taksonomiyi sıfırdan kurmak isteyenler için. */}
+          <div className="flex justify-end border-t border-border pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:text-destructive"
+              disabled={tags.length === 0 || purgeBusy}
+              onClick={() => setConfirmPurge({ kind: 'tags' })}
+            >
+              <Trash2 className="size-3.5" />
+              Tüm Etiketleri Sil
+            </Button>
+          </div>
         </div>
       )}
 
@@ -916,6 +1050,74 @@ export function CollectionsView({
             ))}
           </div>
 
+          {/* Hiyerarşi: düz taksonomiyi iki seviyeye indirgemek (tek seferlik) */}
+          {maintKind === 'categories' && (
+            <div className="flex flex-col gap-2 border-t border-border pt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  Hiyerarşi (Asistan) — kategorileri üst/alt olarak düzenler
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void runRestructSuggest()}
+                  disabled={restructBusy || categories.length < 2}
+                >
+                  {restructBusy ? 'Planlanıyor…' : 'Plan Oluştur'}
+                </Button>
+              </div>
+
+              {notice && <p className="text-2xs text-muted-foreground">{notice}</p>}
+
+              {restructPlan && (
+                <div className="flex flex-col gap-2 rounded-lg border border-border px-3 py-2">
+                  <p className="text-2xs text-muted-foreground">
+                    Önizleme — hiçbir şey değişmedi. Onaylamadan uygulanmaz.
+                  </p>
+
+                  {restructPlan.merges.length > 0 && (
+                    <ul className="flex flex-col gap-1">
+                      {restructPlan.merges.map((m, i) => (
+                        <li key={i} className="flex flex-wrap items-center gap-1.5 text-sm">
+                          <Badge variant="secondary" className="font-medium">
+                            {m.canonical}
+                          </Badge>
+                          <span className="text-2xs text-muted-foreground">←</span>
+                          {m.duplicates.map((d) => (
+                            <Badge key={d} variant="outline" className="text-3xs line-through">
+                              {d}
+                            </Badge>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {restructPlan.moves
+                    .filter((m) => m.toChild)
+                    .map((m, i) => (
+                      <p key={i} className="text-sm">
+                        <span className="text-muted-foreground line-through">{m.from}</span>
+                        <span className="mx-1.5 text-muted-foreground">→</span>
+                        <Badge variant="secondary" className="font-medium">
+                          {m.toParent} › {m.toChild}
+                        </Badge>
+                      </p>
+                    ))}
+
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => setConfirmRestruct(true)} disabled={restructBusy}>
+                      Planı Uygula
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setRestructPlan(null)}>
+                      Vazgeç
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter className="justify-between">
             <Button
               variant="destructive"
@@ -981,6 +1183,42 @@ export function CollectionsView({
         confirmLabel="Sil"
         tone="destructive"
         onConfirm={() => void runDeleteUnused()}
+      />
+
+      <ConfirmDialog
+        open={confirmRestruct}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRestruct(false);
+        }}
+        title="Taksonomi yeniden yapılandırılsın mı?"
+        description={
+          restructPlan
+            ? `${restructPlan.merges.length} birleştirme ve ` +
+              `${restructPlan.moves.filter((m) => m.toChild).length} hiyerarşi ataması uygulanacak. ` +
+              'İşlem geri alınamaz; önce yedek alınır.'
+            : ''
+        }
+        confirmLabel="Uygula"
+        tone="destructive"
+        onConfirm={() => void runRestructApply()}
+      />
+
+      <ConfirmDialog
+        open={confirmPurge !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmPurge(null);
+        }}
+        title={
+          confirmPurge
+            ? confirmPurge.kind === 'categories'
+              ? 'Tüm kategoriler silinsin mi?'
+              : 'Tüm etiketler silinsin mi?'
+            : ''
+        }
+        description={confirmPurge ? purgeConfirmText(confirmPurge.kind, purgePreview(confirmPurge.kind)) : ''}
+        confirmLabel="Yine de Sil"
+        tone="destructive"
+        onConfirm={() => void runPurge()}
       />
     </PageSurface>
   );

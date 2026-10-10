@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS item_tags (
 CREATE TABLE IF NOT EXISTS categories (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  -- Hiyerarşi: null = üst seviye, doluysa üst kategorinin id'si (iki seviye).
+  -- Göç 8 mevcut arşivlere bu kolonu ekler; buradaki tanım yalnızca taze
+  -- arşivler içindir ve aynı kısıtları taşır.
+  parent_id TEXT NULL REFERENCES categories(id) ON DELETE SET NULL,
   user_id TEXT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -70,6 +74,8 @@ CREATE INDEX IF NOT EXISTS idx_items_platform ON items(platform);
 -- Bilesik PK'nin ondeki sutunu item_id, ters sira ile suzmek gerekir.
 CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag_id, item_id);
 CREATE INDEX IF NOT EXISTS idx_item_categories_cat ON item_categories(category_id, item_id);
+-- Hiyerarşi: alt kategori listeleri ve üst seçimi altlarını toplama.
+CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
 
 CREATE TABLE IF NOT EXISTS item_chunks (
   id TEXT PRIMARY KEY,

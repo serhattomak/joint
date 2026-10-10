@@ -266,8 +266,11 @@ export async function listItemsPage(
     params.push(f.collectionId);
   }
   if (f.categoryId && f.categoryId !== 'all') {
-    conds.push('ic.category_id = ?');
-    params.push(f.categoryId);
+    // Üst seçildiğinde altları da kapsanır: kayıtlar yalnızca child'a
+    // yazıldığı için "Yemek" filtresi Pizza+Çorba'yı da toplamalı.
+    const ids = await resolveCategoryFilterIds(f.categoryId);
+    conds.push(`ic.category_id IN (${ids.map(() => '?').join(',')})`);
+    params.push(...ids);
   }
   if (f.tagId && f.tagId !== 'all') {
     conds.push('it.tag_id = ?');
@@ -481,22 +484,69 @@ export async function setTagsForItem(item_id: string, tag_ids: string[]): Promis
 
 // --- categories (mirror of tags: broad topics, many-to-many) ---
 
-export async function createCategory(name: string, user_id: string | null = null): Promise<Category> {
+export async function createCategory(
+  name: string,
+  user_id: string | null = null,
+  parent_id: string | null = null,
+): Promise<Category> {
   const db = await getDb();
-  const row: Category = { id: crypto.randomUUID(), name, user_id, created_at: now(), updated_at: now() };
-  await db.execute('INSERT INTO categories (id, name, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)', [
-    row.id,
-    row.name,
-    row.user_id,
-    row.created_at,
-    row.updated_at,
-  ]);
+  const row: Category = {
+    id: crypto.randomUUID(),
+    name,
+    parent_id,
+    user_id,
+    created_at: now(),
+    updated_at: now(),
+  };
+  await db.execute(
+    'INSERT INTO categories (id, name, parent_id, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)',
+    [row.id, row.name, row.parent_id, row.user_id, row.created_at, row.updated_at],
+  );
   return row;
 }
 
 export async function listCategories(): Promise<Category[]> {
   const db = await getDb();
   return db.select<Category[]>('SELECT * FROM categories ORDER BY name ASC');
+}
+
+/**
+ * Kategori ağacı: kökler ve altları, altlar üstünün altında.
+ * `listCategories` her yerde kullanıldığı için **düz** kalmaya devam eder;
+ * hiyerarşi yalnızca burada ve filtrede gerekir.
+ */
+export interface CategoryNode extends Category {
+  children: CategoryNode[];
+}
+
+export async function listCategoryTree(): Promise<CategoryNode[]> {
+  const all = await listCategories();
+  const byParent = new Map<string | null, Category[]>();
+  for (const c of all) {
+    const list = byParent.get(c.parent_id) ?? [];
+    list.push(c);
+    byParent.set(c.parent_id, list);
+  }
+  const build = (parent: string | null): CategoryNode[] =>
+    (byParent.get(parent) ?? []).map((c) => ({ ...c, children: build(c.id) }));
+  return build(null);
+}
+
+/**
+ * Üst seviye seçildiğinde altları da kapsanır: verilen id kökse onun
+ * tüm çocuklarının id'sini de döndürür. Filtre zinciri tek yerden buradan
+ * geçer (bkz. `listItemsPage`).
+ */
+export async function resolveCategoryFilterIds(categoryId: string): Promise<string[]> {
+  if (categoryId === 'all') return [];
+  const db = await getDb();
+  const rows = await db.select<{ id: string }[]>(
+    'SELECT id FROM categories WHERE id = $1 OR parent_id = $1',
+    [categoryId],
+  );
+  // Hiyerarşi öncesi arşivde kökün altı olmayabilir; o durumda seçilen id
+  // sorguya hiç girmemesin diye satır bulunamazsa id'yi kendisi döndürürüz.
+  return rows.length > 0 ? rows.map((r) => r.id) : [categoryId];
 }
 
 export async function updateCategory(id: string, name: string): Promise<Category> {
@@ -509,6 +559,42 @@ export async function updateCategory(id: string, name: string): Promise<Category
 export async function removeCategory(id: string): Promise<void> {
   const db = await getDb();
   await db.execute('DELETE FROM categories WHERE id = $1', [id]);
+}
+
+/**
+ * Taksonomiyi tümüyle siler (kategori ya da etiket) ve bağlarıyla birlikte.
+ *
+ * FK CASCADE `item_categories` / `item_tags` satırlarını temizler: kayıtların
+ * KENDİSİ silinmez, yalnız taksonomi bağı düşer — istenen davranış tam olarak
+ * budur. Hiyerarşide `parent_id ON DELETE SET NULL` olduğundan üst kategoriler
+ * de silinir.
+ *
+ * Etkilenen kayıtların id'leri döner: meta chunk'larında kategori/etiket adı
+ * gömülü olduğu için arama indeksi tazelenmelidir.
+ */
+export async function purgeTaxonomy(
+  kind: 'categories' | 'tags',
+): Promise<{ removed: number; affectedItemIds: string[] }> {
+  const db = await getDb();
+  const linkTable = kind === 'categories' ? 'item_categories' : 'item_tags';
+  const rootTable = kind === 'categories' ? 'categories' : 'tags';
+
+  const itemIds = await db.select<{ item_id: string }[]>(
+    `SELECT DISTINCT item_id FROM ${linkTable}`,
+  );
+
+  // Satır sayısını silmeden ÖNCE al: sonra sayacak satır kalmaz.
+  const [countRow] = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM ${rootTable}`,
+  );
+
+  // Alt kategoriler önce: parent FK'si silinen bir üste işaret edemez.
+  if (kind === 'categories') {
+    await db.execute('DELETE FROM categories WHERE parent_id IS NOT NULL');
+  }
+  await db.execute(`DELETE FROM ${rootTable}`);
+
+  return { removed: countRow?.n ?? 0, affectedItemIds: itemIds.map((r) => r.item_id) };
 }
 
 /** `mergeTags`'in kategori karşılığı. */
@@ -534,11 +620,17 @@ export async function getItemIdsForCategory(categoryId: string): Promise<string[
   return rows.map((r) => r.item_id);
 }
 
-export async function getOrCreateCategory(name: string, user_id: string | null = null): Promise<Category> {
+export async function getOrCreateCategory(
+  name: string,
+  user_id: string | null = null,
+  parent_id: string | null = null,
+): Promise<Category> {
   const db = await getDb();
+  // Ad benzersiz olduğu için parent ayrımı aramaya gerekmez: aynı ad tek
+  // yerde durur. Mevcut satırın parent'ı farklıysa dokunulmaz (veri kaybı yok).
   const [existing] = await db.select<Category[]>('SELECT * FROM categories WHERE name = $1', [name]);
   if (existing) return existing;
-  return createCategory(name, user_id);
+  return createCategory(name, user_id, parent_id);
 }
 
 export async function getCategoriesForItem(item_id: string): Promise<Category[]> {
@@ -1327,8 +1419,11 @@ export async function listNotebookItems(
   const join = categoryId === null ? '' : 'JOIN item_categories ic ON ic.item_id = i.id';
   const where =
     categoryId === null ? 'NOT EXISTS (SELECT 1 FROM item_categories c WHERE c.item_id = i.id)' : '';
-  const filter = categoryId === null ? 'WHERE ' + where : 'WHERE ic.category_id = $1';
-  const params = categoryId === null ? [] : [categoryId];
+  // Arşivleme mantığı `listItemsPage` ile aynı: üst seçildiğinde altları da.
+  const catIds = categoryId === null ? null : await resolveCategoryFilterIds(categoryId);
+  const filter =
+    categoryId === null ? 'WHERE ' + where : `WHERE ic.category_id IN (${(catIds ?? []).map((_, i) => `$${i + 1}`).join(',')})`;
+  const params: unknown[] = categoryId === null ? [] : (catIds ?? []);
   const totals = await db.select<{ count: number }[]>(
     `SELECT COUNT(*) as count FROM items i ${join} ${filter}`,
     params,

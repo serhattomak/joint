@@ -39,6 +39,8 @@ export interface Tag {
 export interface Category {
   id: string;
   name: string;
+  /** Üst kategorinin id'si; null ise bu bir kök (üst seviye) kategoridir. */
+  parent_id: string | null;
   user_id: string | null;
   created_at: string;
   updated_at: string;

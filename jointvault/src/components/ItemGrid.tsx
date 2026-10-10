@@ -470,6 +470,7 @@ export function ItemGrid({
                 item={item}
                 tags={tagsByItem[item.id] ?? []}
                 categories={catsByItem[item.id] ?? []}
+                allCategories={categories}
                 collectionLabel={collectionLabel(item.collection_id)}
                 selected={selected.has(item.id)}
                 index={0}
@@ -495,6 +496,7 @@ export function ItemGrid({
                 item={item}
                 tags={tagsByItem[item.id] ?? []}
                 categories={catsByItem[item.id] ?? []}
+                allCategories={categories}
                 collectionLabel={collectionLabel(item.collection_id)}
                 selected={selected.has(item.id)}
                 index={i}

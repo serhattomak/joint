@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collapseToExisting,
   matchExisting,
   matchTaxonomyInText,
   normalizeKey,
@@ -55,8 +56,11 @@ describe('resolveCategories', () => {
 
 describe('resolveTags', () => {
   it('# söker, tekilleştirir, sınırlar', () => {
+    /* Beklenen sonuç TEK mevcut etiket: bu davranışın sözleşmesi artık
+       "yalnızca mevcut", eski test ise sınırsız yeni üretimi doğruluyordu
+       (taksonomi şişmesi). Yeni etiket için ayrı senaryo aşağıda. */
     const r = resolveTags(['#Python', 'python', 'Rust', 'Go', 'C', 'Java'], ['Python']);
-    expect(r).toEqual(['Python', 'rust', 'go', 'c', 'java']);
+    expect(r).toEqual(['Python']);
   });
 });
 
@@ -92,24 +96,48 @@ describe('normalizeTag — boşluk sonrası hash', () => {
 
 describe('normalizeLlmSuggestion', () => {
   it('boş/eksik yanıtta çökmeden varsayılan döner', () => {
-    expect(normalizeLlmSuggestion({})).toEqual({
+    const empty = {
       categories: [],
       tags: [],
       summary: '',
       confidence: 0,
-    });
-    expect(normalizeLlmSuggestion(null)).toEqual({
-      categories: [],
-      tags: [],
-      summary: '',
-      confidence: 0,
-    });
+      newCategory: null,
+      newTagReason: {},
+    };
+    expect(normalizeLlmSuggestion({})).toEqual(empty);
+    expect(normalizeLlmSuggestion(null)).toEqual(empty);
   });
 
   it('geçerli alanları korur, yanlış tipleri atar', () => {
     expect(
-      normalizeLlmSuggestion({ categories: ['A'], tags: [1, 'b'], confidence: 0.9 }),
-    ).toEqual({ categories: ['A'], tags: ['b'], summary: '', confidence: 0.9 });
+      normalizeLlmSuggestion({ kategori: 'A', tags: [1, 'b'], confidence: 0.9 }),
+    ).toEqual({
+      categories: ['A'],
+      tags: ['b'],
+      summary: '',
+      confidence: 0.9,
+      newCategory: null,
+      newTagReason: {},
+    });
+  });
+
+  it('yeni kategori hiyerarşisini okur', () => {
+    const r = normalizeLlmSuggestion({ yeni: { ust: 'Yemek', alt: 'Risotto' }, confidence: 0.8 });
+    expect(r.newCategory).toEqual({ parent: 'Yemek', child: 'Risotto' });
+  });
+
+  it('eksik hiyerarşi (yalnız ust) yeni kategori sayılmaz', () => {
+    expect(normalizeLlmSuggestion({ yeni: { ust: 'Yemek' } }).newCategory).toBeNull();
+  });
+
+  it('yeni etiketi gerekçesiyle birlikte ayırır', () => {
+    const r = normalizeLlmSuggestion({
+      tags: ['hamur'],
+      yeni_etiket: 'italyan',
+      yeni_etiket_gerekce: 'mutfak belirleyici',
+    });
+    expect(r.tags).toEqual(['hamur', 'italyan']);
+    expect(r.newTagReason).toEqual({ italyan: 'mutfak belirleyici' });
   });
 });
 
@@ -137,5 +165,133 @@ describe('resolveCategories — toplam tavan', () => {
       maxTotal: 2,
     });
     expect(r.names).toEqual(['A', 'B']);
+  });
+});
+
+describe('collapseToExisting — kopyayı var olan adına indirger', () => {
+  it('"Pizza Tarifi" → "Pizza" (kullanıcının bildirdiği asıl hata)', () => {
+    expect(collapseToExisting('Pizza Tarifi', ['Pizza', 'Çorba'])).toBe('Pizza');
+  });
+
+  it('"pizza yapımı" → "Pizza" (aksan/harf duyarsız)', () => {
+    expect(collapseToExisting('pizza yapımı', ['Pizza'])).toBe('Pizza');
+  });
+
+  it('fazlalık 2 token\'ı aşarsa indirgemez', () => {
+    expect(collapseToExisting('İtalyan Pizza Tarifi ve Sos', ['Pizza'])).toBeNull();
+  });
+
+  it('tam eşleşme bu fonksiyonun işi değildir', () => {
+    expect(collapseToExisting('Pizza', ['Pizza'])).toBeNull();
+  });
+
+  it('mevcut ad çok kısaysa kararsız eşleşme yapmaz', () => {
+    expect(collapseToExisting('Yapay Zeka Notları', ['AI'])).toBeNull();
+  });
+
+  it('ilgisiz adı eşlemez', () => {
+    expect(collapseToExisting('Türk Mutfağı', ['Pizza'])).toBeNull();
+  });
+});
+
+describe('resolveCategories — hiyerarşi', () => {
+  const parents = new Map([
+    ['Pizza', 'Yemek'],
+    ['Çorba', 'Yemek'],
+  ]);
+
+  it('altı olmayan üst kategoriyi reddeder (kayıt tek yerde durur)', () => {
+    /* "Yemek"i atamak, kaydın hangi çocuğa ait olduğunu belirsiz bırakır. */
+    const r = resolveCategories(['Yemek'], ['Yemek', 'Pizza', 'Çorba'], {
+      confidence: 1,
+      minConfidence: 0.6,
+      parents,
+    });
+    expect(r.names).toEqual([]);
+  });
+
+  it('çocuk önerilirse kabul eder', () => {
+    const r = resolveCategories(['Pizza'], ['Yemek', 'Pizza', 'Çorba'], {
+      confidence: 1,
+      minConfidence: 0.6,
+      parents,
+    });
+    expect(r.names).toEqual(['Pizza']);
+  });
+
+  it('önce üst, sonra çocuk gelirse yalnız çocuğu alır', () => {
+    const r = resolveCategories(['Yemek', 'Çorba'], ['Yemek', 'Pizza', 'Çorba'], {
+      confidence: 1,
+      minConfidence: 0.6,
+      parents,
+    });
+    expect(r.names).toEqual(['Çorba']);
+  });
+
+  it('hiyerarşi verilmezse düz davranış korunur (geriye dönük uyum)', () => {
+    const r = resolveCategories(['Yemek'], ['Yemek'], {
+      confidence: 1,
+      minConfidence: 0.6,
+    });
+    expect(r.names).toEqual(['Yemek']);
+  });
+
+  it('kopyayı içerme ile var olan çocuğa indirger', () => {
+    const r = resolveCategories(['Pizza Tarifi'], ['Yemek', 'Pizza'], {
+      confidence: 1,
+      minConfidence: 0.6,
+      parents,
+    });
+    expect(r.names).toEqual(['Pizza']);
+    expect(r.newNames).toEqual([]);
+  });
+});
+
+describe('resolveTags — son tercih', () => {
+  it('mevcut etiketleri her zaman alır', () => {
+    const r = resolveTags(['python', 'rust'], ['python', 'rust']);
+    expect(r).toEqual(['python', 'rust']);
+  });
+
+  it('güven/gerekçe verilmedikçe yeni etiket üretmez', () => {
+    /* Varsayılan davranış: taksonomi şişmez. */
+    const r = resolveTags(['yeni-etiket'], ['python']);
+    expect(r).toEqual([]);
+  });
+
+  it('güven + gerekçe birlikte sağlanırsa 1 yeni etiket kabul eder', () => {
+    const r = resolveTags(['yeni-etiket'], ['python'], {
+      minConfidence: 0.6,
+      confidence: 0.9,
+      reasons: { 'yeni-etiket': 'kaydın ana konusu' },
+    });
+    expect(r).toEqual(['yeni-etiket']);
+  });
+
+  it('gerekçe boşsa yeni etiket reddedilir', () => {
+    const r = resolveTags(['yeni-etiket'], ['python'], {
+      minConfidence: 0.6,
+      confidence: 0.9,
+      reasons: { 'yeni-etiket': '   ' },
+    });
+    expect(r).toEqual([]);
+  });
+
+  it('düşük güvende yeni etiket reddedilir', () => {
+    const r = resolveTags(['yeni-etiket'], ['python'], {
+      minConfidence: 0.6,
+      confidence: 0.3,
+      reasons: { 'yeni-etiket': 'gerekçe' },
+    });
+    expect(r).toEqual([]);
+  });
+
+  it('mevcut etiketler sınıra rağmen korunur', () => {
+    const r = resolveTags(
+      ['python', 'rust', 'go', 'yeni'],
+      ['python', 'rust', 'go'],
+      { minConfidence: 0.6, confidence: 0.9, reasons: { yeni: 'gerekçe' }, max: 2 },
+    );
+    expect(r).toEqual(['python', 'rust']);
   });
 });

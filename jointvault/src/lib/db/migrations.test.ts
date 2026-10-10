@@ -180,6 +180,90 @@ describe('runMigrations — eski (sürümsüz) arşiv', () => {
   });
 });
 
+describe('runMigrations — göç 8 (kategori hiyerarşisi)', () => {
+  it('mevcut kategorileri ve item bağlarını KORUR', async () => {
+    /* Hiyerarşi eklemek veri kaybettirmemeli; `item_categories` satırları
+       kritik — yanlış bir tablo yeniden kurma onları CASCADE ile silerdi. */
+    // Arrange
+    const db = schemaAtVersionZero();
+    db.exec("INSERT INTO categories (id, name, created_at, updated_at) VALUES ('c1','Pizza','2026-01-01','2026-01-01')");
+    db.exec("INSERT INTO categories (id, name, created_at, updated_at) VALUES ('c2','Yemek','2026-01-01','2026-01-01')");
+    db.exec("INSERT INTO items (id, url, platform, created_at, updated_at) VALUES ('i1','https://a','x','2026-01-01','2026-01-01')");
+    db.exec("INSERT INTO item_categories (item_id, category_id) VALUES ('i1','c1')");
+
+    // Act
+    await runMigrations(sqliteExecutor(db));
+
+    // Assert
+    const cats = db.prepare('SELECT id, name, parent_id FROM categories ORDER BY name').all();
+    expect(cats).toEqual([
+      { id: 'c1', name: 'Pizza', parent_id: null },
+      { id: 'c2', name: 'Yemek', parent_id: null },
+    ]);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM item_categories').get()).toEqual({ n: 1 });
+  });
+
+  it('parent_id kolonunu ekler ve alt kategoriyi üste bağlar', async () => {
+    // Arrange
+    const db = new DatabaseSync(':memory:');
+    await runMigrations(sqliteExecutor(db));
+    db.exec("INSERT INTO categories (id, name, created_at, updated_at) VALUES ('p1','Yemek','2026-01-01','2026-01-01')");
+
+    // Act
+    db.exec("INSERT INTO categories (id, name, parent_id, created_at, updated_at) VALUES ('c1','Pizza','p1','2026-01-01','2026-01-01')");
+
+    // Assert
+    const rows = db
+      .prepare("SELECT id FROM categories WHERE parent_id = 'p1'")
+      .all()
+      .map((r) => String((r as { id: unknown }).id));
+    expect(rows).toEqual(['c1']);
+  });
+
+  it('ad benzersiz kalır: aynı ad iki üst altında da yazılamaz', async () => {
+    /* Tasarım kararı: `name UNIQUE` KALIR. Aynı ad iki yerde durmak zaten
+       hatadır ("Pizza" hem Yemek hem Test'te) ve kısıt, AI'ın tam olarak
+       bu tür kopyayı üretmesini de engeller. Göçün gerekçesi migrations.ts'de. */
+    // Arrange
+    const db = new DatabaseSync(':memory:');
+    await runMigrations(sqliteExecutor(db));
+    db.exec("INSERT INTO categories (id, name, created_at, updated_at) VALUES ('p1','Yemek','2026-01-01','2026-01-01')");
+    db.exec("INSERT INTO categories (id, name, created_at, updated_at) VALUES ('p2','Test','2026-01-01','2026-01-01')");
+    db.exec("INSERT INTO categories (id, name, parent_id, created_at, updated_at) VALUES ('c1','Pizza','p1','2026-01-01','2026-01-01')");
+
+    // Act + Assert
+    expect(() =>
+      db.exec("INSERT INTO categories (id, name, parent_id, created_at, updated_at) VALUES ('c2','Pizza','p2','2026-01-01','2026-01-01')"),
+    ).toThrow(/UNIQUE/i);
+  });
+
+  it('aynı ad AYNI üst altında ikinci kez yazılamaz', async () => {
+    // Arrange
+    const db = new DatabaseSync(':memory:');
+    await runMigrations(sqliteExecutor(db));
+    db.exec("INSERT INTO categories (id, name, created_at, updated_at) VALUES ('p1','Yemek','2026-01-01','2026-01-01')");
+    db.exec("INSERT INTO categories (id, name, parent_id, created_at, updated_at) VALUES ('c1','Pizza','p1','2026-01-01','2026-01-01')");
+
+    // Act + Assert
+    expect(() =>
+      db.exec("INSERT INTO categories (id, name, parent_id, created_at, updated_at) VALUES ('c2','Pizza','p1','2026-01-01','2026-01-01')"),
+    ).toThrow(/UNIQUE/i);
+  });
+
+  it('sürümsüz arşivde (kolon zaten varsa) hata vermez', async () => {
+    /* `schemaAtVersionZero` bugünkü şemayı taşır; göç `duplicate column name`
+       görür ve yok saymalıdır. */
+    // Arrange
+    const db = schemaAtVersionZero();
+
+    // Act
+    const result = await runMigrations(sqliteExecutor(db));
+
+    // Assert
+    expect(result.to).toBe(LATEST);
+  });
+});
+
 describe('runMigrations — yedek kancası', () => {
   it('bekleyen göç varsa beforeApply bir kez çağrılır', async () => {
     // Arrange

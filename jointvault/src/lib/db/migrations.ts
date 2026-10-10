@@ -131,6 +131,23 @@ export const MIGRATIONS: Migration[] = [
       )`,
     ],
   },
+  {
+    version: 8,
+    description: 'kategori hiyerarşisi (üst/alt)',
+    statements: [
+      // Tablo YENİDEN KURULMAZ: `foreign_keys = ON` iken `DROP TABLE categories`
+      // `item_categories` ve `notebook_summaries` satırlarını CASCADE ile siler
+      // (SQLite: DROP TABLE, örtük DELETE'i FK aksiyonlarını tetikler). Geri
+      // alınamaz veri kaybı. Yalnızca kolon eklenir.
+      //
+      // `name` UNIQUE kalır: aynı ad iki farklı üst altında anlamsız olurdu
+      // ("Pizza" hem Yemek hem Test'te) ve kısıt, AI'ın ikisine birden
+      // yazmasını da engelliyor.
+      'ALTER TABLE categories ADD COLUMN parent_id TEXT REFERENCES categories(id) ON DELETE SET NULL',
+      'CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)',
+    ],
+    ignore: /duplicate column name/i,
+  },
 ];
 
 /** Sürümü `current` olan bir arşivden sonra uygulanacak göçleri sırayla döndürür. */
