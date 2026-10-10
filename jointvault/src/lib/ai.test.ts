@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAiEnabled, planItemCategorization, type AiStatus } from './ai';
+import { isAiEnabled, planCategoryCandidates, planItemCategorization, type AiStatus } from './ai';
 import type { Category } from './db/types';
 import { resolveCategories, validNewCategory } from './taxonomy';
 
@@ -129,6 +129,34 @@ describe('validNewCategory', () => {
   it('öneri yoksa (null/undefined) false', () => {
     expect(validNewCategory(null, cats)).toBe(false);
     expect(validNewCategory(undefined, cats)).toBe(false);
+  });
+});
+
+/*
+ * Model `kategori: null` + `yeni: {ust, alt}` döndürdüğünde çocuk adı ADAY
+ * havuzuna girmeli; aksi halde `resolveCategories` onu hiç görmez ve kayıt
+ * kategorisiz kalır (kullanıcı bildirimi: "Risotto" hiç oluşmuyordu).
+ */
+describe('planCategoryCandidates', () => {
+  it('yeni-only yanıt: çocuk adı aday havuzuna girer', () => {
+    expect(planCategoryCandidates([], [], 'Sütlü Tatlı')).toEqual(['Sütlü Tatlı']);
+  });
+
+  it('deterministik + LLM önerileri korunur, çocuk sona eklenir', () => {
+    expect(planCategoryCandidates(['Pizza'], ['Çorba'], 'Sütlü Tatlı')).toEqual([
+      'Pizza',
+      'Çorba',
+      'Sütlü Tatlı',
+    ]);
+  });
+
+  it('çocuk zaten öneride varsa çift eklenmez (harf duyarsız)', () => {
+    expect(planCategoryCandidates([], ['Pizza'], 'pizza')).toEqual(['Pizza']);
+    expect(planCategoryCandidates(['Pizza'], [], 'Pizza')).toEqual(['Pizza']);
+  });
+
+  it('çocuk yoksa havuz yalnız mevcut önerilerdir', () => {
+    expect(planCategoryCandidates(['Pizza'], [], undefined)).toEqual(['Pizza']);
   });
 });
 

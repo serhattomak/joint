@@ -92,9 +92,9 @@ export function CategoryTree({ nodes, selectedId, onSelect, search, emptyLabel }
               className="flex-1"
             >
               <span className="truncate">{node.name}</span>
-              {hasChildren && (
+              {(node.count !== undefined || hasChildren) && (
                 <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
-                  {node.children.length}
+                  {node.count ?? node.children.length}
                 </span>
               )}
             </OptionRow>
@@ -106,17 +106,18 @@ export function CategoryTree({ nodes, selectedId, onSelect, search, emptyLabel }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      {filtered.length === 0 ? (
+      <ul className="divide-y divide-border/70">
+        <li>
+          <OptionRow active={selectedId === 'all'} onClick={() => onSelect('all')}>
+            <span className="truncate text-muted-foreground">{emptyLabel}</span>
+          </OptionRow>
+        </li>
+        {renderNodes(filtered, 0)}
+      </ul>
+      {/* Eşleşme yoksa sıfırlama satırı YİNE de görünür kalır (üstte); bu yalnız
+          ek bir ipucudur ki kullanıcı seçimini geri alabileceğini bilsin. */}
+      {filtered.length === 0 && (
         <p className="px-3 py-3 text-xs text-muted-foreground">Bulunamadı.</p>
-      ) : (
-        <ul className="divide-y divide-border/70">
-          <li>
-            <OptionRow active={selectedId === 'all'} onClick={() => onSelect('all')}>
-              <span className="truncate text-muted-foreground">{emptyLabel}</span>
-            </OptionRow>
-          </li>
-          {renderNodes(filtered, 0)}
-        </ul>
       )}
     </div>
   );

@@ -11,6 +11,8 @@ export interface CategoryTreeNode {
   id: string;
   name: string;
   parent_id: string | null;
+  /** Kayıt sayısı: yalnız `CategoryWithCount` girdisinde dolu (Notebook). */
+  count?: number;
   children: CategoryTreeNode[];
 }
 
@@ -20,11 +22,16 @@ export interface CategoryTreeNode {
  * Hiyerarşi öncesi arşivlerde tüm satırlar köktür (`parent_id` null) ve
  * `children` hep boş döner — eski veri kendi kendini gösterir.
  * Üstü olmayan satır (sarkan referans) yine kök sayılır.
+ *
+ * Girdi satırı `count` taşıyorsa (Koleksiyonlar/Notebook) düğüme aktarılır;
+ * düz `Category[]` girdisinde `undefined` kalır ve görünüm eskiye döner.
  */
-export function categoryTreeOf(categories: Category[]): CategoryTreeNode[] {
+export function categoryTreeOf(
+  categories: (Category & { count?: number })[],
+): CategoryTreeNode[] {
   const byId = new Map(categories.map((c) => [c.id, c]));
-  const childrenOf = new Map<string, Category[]>();
-  const roots: Category[] = [];
+  const childrenOf = new Map<string, (Category & { count?: number })[]>();
+  const roots: (Category & { count?: number })[] = [];
 
   for (const c of categories) {
     if (c.parent_id && byId.has(c.parent_id)) {
@@ -36,10 +43,11 @@ export function categoryTreeOf(categories: Category[]): CategoryTreeNode[] {
     }
   }
 
-  const build = (node: Category): CategoryTreeNode => ({
+  const build = (node: Category & { count?: number }): CategoryTreeNode => ({
     id: node.id,
     name: node.name,
     parent_id: node.parent_id,
+    ...(typeof node.count === 'number' ? { count: node.count } : {}),
     children: (childrenOf.get(node.id) ?? []).map(build),
   });
 

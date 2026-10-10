@@ -50,6 +50,28 @@ describe('categoryTreeOf', () => {
   });
 });
 
+describe('categoryTreeOf — kayıt sayısı aktarımı', () => {
+  it('sayı taşıyan girdilerde düğüme count yazılır (Notebook)', () => {
+    const tree = categoryTreeOf([
+      { ...cat('p1', 'Yemek'), count: 7 },
+      { ...cat('c1', 'Pizza', 'p1'), count: 3 },
+    ]);
+    expect(tree[0].count).toBe(7);
+    expect(tree[0].children[0].count).toBe(3);
+  });
+
+  it('sıfır sayı korunur (yanlışlıkla düşmez)', () => {
+    const tree = categoryTreeOf([{ ...cat('p1', 'Yemek'), count: 0 }]);
+    expect(tree[0].count).toBe(0);
+  });
+
+  it('count taşımayan düz Category[] girdisinde count undefined kalır (filtre/move)', () => {
+    const tree = categoryTreeOf([cat('p1', 'Yemek'), cat('c1', 'Pizza', 'p1')]);
+    expect(tree[0].count).toBeUndefined();
+    expect(tree[0].children[0].count).toBeUndefined();
+  });
+});
+
 describe('categoryPathLabel', () => {
   const cats = [cat('p1', 'Yemek'), cat('c1', 'Pizza', 'p1')];
 

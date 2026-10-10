@@ -784,6 +784,26 @@ function categoryTreeText(cats: Category[], names: string[] = []): string {
 }
 
 /**
+ * Kategori aday havuzunu kurar: deterministik + LLM önerileri, üstüne modelin
+ * `{ust, alt}` önerisinden gelen YENİ çocuk (yalnızca güven kapısını geçtiyse).
+ *
+ * Çocuk adı havuza girmezse `resolveCategories` onu hiç görmez ve kayıt
+ * kategorisiz kalır — eski hata: `kategori: null` + `yeni: {ust, alt}` yanıtı
+ * hiçbir kategori yaratmıyordu. Aynı ad zaten öneride varsa çift eklenmez.
+ */
+export function planCategoryCandidates(
+  detCats: string[],
+  llmCats: string[],
+  newChild?: string,
+): string[] {
+  const out = [...detCats, ...llmCats];
+  if (newChild && !out.some((c) => normalizeKey(c) === normalizeKey(newChild))) {
+    out.push(newChild);
+  }
+  return out;
+}
+
+/**
  * Tek bir öğeyi Qwen 2.5 ile analiz eder, mevcut kategoriler ve etiketler öncelikli olacak
  * şekilde en uygun kategori ve etiketleri önerir.
  */
@@ -847,21 +867,29 @@ export async function categorizeAndTagItem(
     }
   }
 
-  const suggestedCats = [...det.categories, ...(llmValid ? llm.categories : [])];
   const suggestedTags = [...det.tags, ...(llmValid ? llm.tags : [])];
 
   const llmConfidence = llmValid ? llm.confidence : 0;
   const threshold = readTagThreshold();
 
-  // LLM mevcut bir çocuk bulamadıysa ve `{ust, alt}` önerdiyse, aday havuzuna
-  // alt adı ekle: `resolveCategories` güven eşiğiyle onu yeni kabul eder,
-  // taksonomide "Risotto" adı gerçekten oluşur.
-  const newChild = llmValid ? llm.newCategory?.child : undefined;
-  const catsForResolve = newChild && !cats.some((c) => normalizeKey(c) === normalizeKey(newChild))
-    ? [...cats, newChild]
-    : cats;
+  // Yeni hiyerarşik öneri güven eşiğini geçtiyse ve önerilen `ust` ağaçta
+  // gerçekten VARSA kaydedilecek ad çifti döndürülür (uydurma dal yasak).
+  const proposedNew = llmValid ? llm.newCategory : null;
+  const newCategory =
+    proposedNew && llmConfidence >= threshold && validNewCategory(proposedNew, cats)
+      ? proposedNew
+      : null;
 
-  const resolvedCats = resolveCategories(suggestedCats, catsForResolve, {
+  // Onaylanan çocuk adı ADAY havuzuna girer; `resolveCategories` onu ancak
+  // böyle görür ve (güven eşiği zaten geçildiği için) yeni kabul eder. Var olan
+  // adlar `existing` havuzudur; çocuk orada olmadığından gerçekten yenidir.
+  const suggestedCats = planCategoryCandidates(
+    det.categories,
+    llmValid ? llm.categories : [],
+    newCategory?.child,
+  );
+
+  const resolvedCats = resolveCategories(suggestedCats, cats, {
     confidence: llmConfidence,
     minConfidence: threshold,
     maxNew: 1,
@@ -874,14 +902,6 @@ export async function categorizeAndTagItem(
     confidence: llmConfidence,
     ...(llmValid ? { reasons: llm.newTagReason } : {}),
   });
-
-  // Yeni hiyerarşik öneri güven eşiğini geçtiyse ve önerilen `ust` ağaçta
-  // gerçekten VARSA kaydedilecek ad çifti döndürülür (uydurma dal yasak).
-  const proposedNew = llmValid ? llm.newCategory : null;
-  const newCategory =
-    proposedNew && llmConfidence >= threshold && validNewCategory(proposedNew, cats)
-      ? proposedNew
-      : null;
 
   const detHasAny = det.categories.length > 0 || det.tags.length > 0;
   const confidence = detHasAny ? 1 : llmValid ? llm.confidence : 0;

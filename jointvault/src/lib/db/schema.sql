@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS item_tags (
 CREATE TABLE IF NOT EXISTS categories (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  -- Hiyerarşi: null = üst seviye, doluysa üst kategorinin id'si (iki seviye).
+  -- Hiyerarşi: null = üst seviye, doluysa üst kategorinin id'si (en fazla 5 seviye).
   -- Göç 8 mevcut arşivlere bu kolonu ekler; buradaki tanım yalnızca taze
   -- arşivler içindir ve aynı kısıtları taşır.
   parent_id TEXT NULL REFERENCES categories(id) ON DELETE SET NULL,

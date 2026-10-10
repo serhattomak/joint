@@ -223,7 +223,7 @@ export function CollectionsView({
   };
 
   /*
-   * Yeniden yapılandırma: düz taksonomiyi iki seviyeye indirger.
+   * Yeniden yapılandırma: düz taksonomiyi en fazla 5 seviyeli hiyerarşiye indirger.
    * İki adımlı — önce ÖNERİ (hiçbir şey yazılmaz), sonra kullanıcı onayıyla
    * uygulama. Geri alınamaz olduğu için ikinci adım yedek alır ve onay ister.
    */
@@ -1162,7 +1162,7 @@ export function CollectionsView({
             ))}
           </div>
 
-          {/* Hiyerarşi: düz taksonomiyi iki seviyeye indirgemek (tek seferlik) */}
+          {/* Hiyerarşi: düz taksonomiyi en fazla 5 seviyeli düzene indirgemek (tek seferlik) */}
           {maintKind === 'categories' && (
             <div className="flex flex-col gap-2 border-t border-border pt-3">
               <div className="flex items-center justify-between">
