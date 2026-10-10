@@ -164,6 +164,26 @@ describe('expandBatchEntry — kısa şema, toleranslı ayrıştırıcı', () =>
     expect(short.tags).toEqual(long.tags);
     expect(short.confidence).toEqual(long.confidence);
   });
+
+  it('ALAN ATLAMA: yalnız dolu alanlar gelirse de geçerli öneri üretir', () => {
+    /* Prompt artık "boş alanı hiç yazma" diyor. En yalın girdi bile
+       (yalnız i, k, c) kategorili, etiketsiz geçerli bir sonuç vermeli —
+       aksi halde alan atlama sessiz toplu kayba döner. */
+    const r = normalizeLlmSuggestion(expandBatchEntry({ i: 7, k: 'Sütlü Tatlı', c: 0.95 }));
+    expect(r.categories).toEqual(['Sütlü Tatlı']);
+    expect(r.tags).toEqual([]);
+    expect(r.summary).toBe('');
+    expect(r.confidence).toBe(0.95);
+    expect(r.newCategory).toBeNull();
+  });
+
+  it('ALAN ATLAMA: yalnız yeni kategori varsa (k yok) onu taşır', () => {
+    const r = normalizeLlmSuggestion(
+      expandBatchEntry({ i: 2, e: { ust: 'Tatlı', alt: 'Muhallebi' }, c: 0.8 }),
+    );
+    expect(r.categories).toEqual([]);
+    expect(r.newCategory).toEqual({ parent: 'Tatlı', child: 'Muhallebi' });
+  });
 });
 
 describe('normalizeLlmSuggestion', () => {

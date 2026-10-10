@@ -1515,10 +1515,12 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
             Hiçbiri kaydı gerçekten tanımlamıyorsa etiket ÜRETME; en fazla 1 yeni etiket `y` alanına, nedenini `g` alanına yaz.\n\n\
          ÇIKTI: SADECE {n} elemanlı geçerli JSON DİZİSİ döndür, markdown yok.\n\
          Eleman sırası KAYIT 0..{last} ile BİREBİR aynı olmalı.\n\
-         Alanlar: i=sıra no, k=kategori adı (uyan yoksa null), e={{ust,alt}} yeni kategori (yoksa null),\n\
-         t=etiket dizisi, y=yeni etiket (yoksa null), g=yeni etiket gerekçesi (yoksa null), c=güven 0.0-1.0.\n\
-         Örnek tek eleman:\n\
-         {{\"i\":0,\"k\":\"Sütlü Tatlı\",\"e\":null,\"t\":[\"süt\"],\"y\":null,\"g\":null,\"c\":0.95}}\n\n\
+         Alanlar: i=sıra no, k=kategori adı, e={{\"ust\":\"<üst>\",\"alt\":\"<alt>\"}} yeni kategori, t=etiket dizisi, y=yeni etiket, g=yeni etiket gerekçesi, c=güven 0.0-1.0.\n\
+         BOŞ ALANI HİÇ YAZMA — null değeri üretme, alanı satırdan çıkar. Yalnız dolu alanları yaz.\n\
+         Örnekler:\n\
+         {{\"i\":0,\"k\":\"Sütlü Tatlı\",\"t\":[\"süt\"],\"c\":0.95}}\n\
+         {{\"i\":1,\"k\":\"Pizza\",\"c\":0.9}}\n\
+         {{\"i\":2,\"e\":{{\"ust\":\"Tatlı\",\"alt\":\"Muhallebi\"}},\"c\":0.8}}\n\n\
          {records}",
         n = items.len(),
         last = items.len().saturating_sub(1),
