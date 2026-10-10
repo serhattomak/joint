@@ -36,7 +36,7 @@ import {
   setChunkEmbeddingsBatch,
   setTagsForItem,
 } from './db/client';
-import type { HybridSearchResult, Item } from './db/types';
+import type { Category, HybridSearchResult, Item } from './db/types';
 import { buildCategoryDigest } from './notebook';
 import { invalidateVectorIndex } from './vector-cache';
 import {
@@ -48,10 +48,13 @@ import {
   shouldAutoApply,
 } from './taxonomy';
 import {
+  categoryPathOf,
+  mergeContextLines,
   parseMergeSuggestions,
   parseRestructPlan,
   type RestructMove,
   type RestructPlan,
+  validateMergeGroups,
 } from './taxonomy-maintenance';
 import {
   buildHistoryWindow,
@@ -1285,12 +1288,17 @@ export async function applyRestructPlan(plan: RestructPlan): Promise<void> {
 /**
  * Taksonomide yakın-anlamlı öğeleri gruplar (LLM önerisi). Yalnızca ÖNERİ üretir;
  * uygulama kullanıcı onayındadır. AI kapalıysa boş döner.
+ *
+ * Modele düz ad listesi değil **tam yol + kayıt sayısı** verilir; dönen gruplar
+ * `validateMergeGroups`'tan geçer, böylece bir üstü kendi altıyla birleştiren
+ * (ağacı kendini yiyecek) öneri asla kullanıcıya ulaşmaz.
  */
 export async function suggestTaxonomyMerges(
   kind: 'tags' | 'categories',
-  names: string[],
+  categories: Category[],
+  counts: Map<string, number>,
 ): Promise<string[][]> {
-  if (names.length < 2) return [];
+  if (categories.length < 2) return [];
 
   const status = await getAiStatus();
   if (!isAiEnabled(status) || !status.llm_ready || !status.engine_available) return [];
@@ -1300,8 +1308,9 @@ export async function suggestTaxonomyMerges(
     'Sen bir taksonomi düzenleme asistanısın. Yalnızca geçerli bir JSON dizisi döndür; başka metin yazma.';
   const prompt =
     `Aşağıdaki ${label} listesinde AYNI KAVRAMI taşıyan (yakın anlamlı) öğeleri grupla.\n` +
-    'Yalnızca listede geçen adları kullan. Tek elemanlı grupları yazma.\n' +
-    `Liste: ${names.join(', ')}\n` +
+    'Her satır tam yolu ve kayıt sayısını verir; bir üst ile altını AYNI gruba KOYMA.\n' +
+    'Yalnızca yolun SON parçasındaki adları kullan. Tek elemanlı grupları yazma.\n' +
+    `Liste:\n${mergeContextLines(categories, counts).join('\n')}\n` +
     'Yanıt biçimi (yalnız JSON): [["ad1","ad2"],["ad3","ad4"]]';
 
   try {
@@ -1310,7 +1319,12 @@ export async function suggestTaxonomyMerges(
       [{ role: 'user', content: prompt }],
       system,
     );
-    return parseMergeSuggestions(text, names);
+    const names = categories.map((c) => c.name);
+    const groups = parseMergeSuggestions(text, names);
+    const paths = new Map(
+      categories.map((c) => [c.name, categoryPathOf(categories, c.id) ?? [c.name]]),
+    );
+    return validateMergeGroups(groups, paths);
   } catch {
     return [];
   }

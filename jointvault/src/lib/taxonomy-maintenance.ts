@@ -4,6 +4,7 @@
  * Yinelenen kategori/etiket adlarını gruplar ve LLM'in önerdiği yakın-anlam
  * gruplarını savunmacı biçimde ayrıştırır. DB/IPC yoktur; Node'da test edilir.
  */
+import type { Category } from './db/types';
 import { normalizeKey } from './taxonomy';
 
 /* --- Yeniden yapılandırma planı (tek seferlik, kullanıcı onaylı) --- */
@@ -239,6 +240,81 @@ export function parseMergeSuggestions(text: string, known: string[]): string[][]
       if (canon && !names.includes(canon)) names.push(canon);
     }
     if (names.length >= 2) out.push(names);
+  }
+  return out;
+}
+
+/* --- Hiyerarşiye bağlamlı birleştirme (SAF) --- */
+
+/**
+ * Kategorinin kökten yaprağa tam yolu; bilinmeyen id = `null`.
+ *
+ * `parent_id` bozuksa (kendine/çevrime işaret, ya da silinmiş satıra) yürüyüş
+ * `seen` ile durur ve ulaşılamayan üst **kök sayılır** — kategori kaybolmaz,
+ * yalnızca kısalmış yolla görünür. `taxonomy-tree.depthOf` ile aynı kabul.
+ */
+export function categoryPathOf(categories: Category[], id: string): string[] | null {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  if (!byId.has(id)) return null;
+
+  const seen = new Set<string>();
+  const names: string[] = [];
+  let cur: string | null = id;
+  while (cur && byId.has(cur) && !seen.has(cur)) {
+    seen.add(cur);
+    names.push(byId.get(cur)!.name);
+    cur = byId.get(cur)!.parent_id;
+  }
+  return names.reverse();
+}
+
+/**
+ * LLM'e verilecek bağlam satırları: `"Yemek › Tatlı — 12 kayıt"`.
+ * Tam yol, modelin bir üstü kendi altıyla karıştırmasını önler.
+ */
+export function mergeContextLines(
+  categories: Category[],
+  counts: Map<string, number>,
+): string[] {
+  return categories.map((c) => {
+    const path = categoryPathOf(categories, c.id) ?? [c.name];
+    return `${path.join(' › ')} — ${counts.get(c.id) ?? 0} kayıt`;
+  });
+}
+
+/** `a`, `b`'nin gerçek ön eki mi (kendisi hariç)? */
+function isStrictPrefix(a: string[], b: string[]): boolean {
+  if (a.length >= b.length) return false;
+  return a.every((part, i) => part === b[i]);
+}
+
+/**
+ * Ata-torun çifti içeren grupları **düşürür**; tek elemanlılar da düşer.
+ *
+ * Yanlış birleştirme geri alınamaz veri kaybıdır: bir grup ancak tüm üyeleri
+ * birbirinden bağımsız (biri diğerinin yol ön eki değil) ve yolu bilinir
+ * olduğunda geçer. Bu yüzden sessizce elenir, kullanıcıya gösterilmez.
+ */
+export function validateMergeGroups(
+  groups: string[][],
+  paths: Map<string, string[]>,
+): string[][] {
+  const out: string[][] = [];
+  for (const group of groups) {
+    if (group.length < 2) continue;
+    let unsafe = false;
+    for (let i = 0; i < group.length && !unsafe; i++) {
+      const pi = paths.get(group[i]);
+      for (let j = i + 1; j < group.length; j++) {
+        const pj = paths.get(group[j]);
+        // Yolu bilinmiyorsa kanıtlanamaz → güvenli sayılmaz.
+        if (!pi || !pj || isStrictPrefix(pi, pj) || isStrictPrefix(pj, pi)) {
+          unsafe = true;
+          break;
+        }
+      }
+    }
+    if (!unsafe) out.push(group);
   }
   return out;
 }

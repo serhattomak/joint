@@ -189,8 +189,12 @@ export function CollectionsView({
     setSuggestBusy(true);
     setSuggestions([]);
     try {
-      const names = maintList(maintKind).map((x) => x.name);
-      const groups = await suggestTaxonomyMerges(maintKind, names);
+      // Etiketler düz (hiyerarşisiz): parent_id yok, yol tek elemanlı kalır.
+      const items =
+        maintKind === 'tags' ? tags.map((t) => ({ ...t, parent_id: null })) : categories;
+      const list = maintKind === 'tags' ? tags : categories;
+      const counts = new Map(list.map((x) => [x.id, x.count]));
+      const groups = await suggestTaxonomyMerges(maintKind, items, counts);
       setSuggestions(groups);
     } finally {
       setSuggestBusy(false);

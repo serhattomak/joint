@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import type { Category } from './db/types';
 import {
+  categoryPathOf,
   duplicateGroups,
+  mergeContextLines,
   parseMergeSuggestions,
   parseRestructPlan,
   preferCanonical,
   turkishScore,
+  validateMergeGroups,
   validateRestructPlan,
 } from './taxonomy-maintenance';
 
@@ -203,5 +207,73 @@ describe('validateRestructPlan — onay öncesi kapı', () => {
     const check = validateRestructPlan(known, plan);
     expect(check.ok).toBe(false);
     expect(check.duplicated).toEqual(['pizza tarifi']);
+  });
+});
+
+/* --- Bağlamlı birleştirme: yol, özet satırı ve ata-torun kapısı --- */
+
+const cat = (id: string, name: string, parent_id: string | null = null): Category => ({
+  id,
+  name,
+  parent_id,
+  user_id: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+});
+
+describe('categoryPathOf', () => {
+  it('kökten yaprağa tam yolu döndürür', () => {
+    const cats = [cat('1', 'Yemek'), cat('2', 'Tatlı', '1'), cat('3', 'Sütlü Tatlı', '2')];
+    expect(categoryPathOf(cats, '3')).toEqual(['Yemek', 'Tatlı', 'Sütlü Tatlı']);
+  });
+
+  it('sarkan üstü kök sayar — kategori kaybolmaz', () => {
+    expect(categoryPathOf([cat('1', 'Pizza', 'yok')], '1')).toEqual(['Pizza']);
+  });
+
+  it('bilinmeyen id için null', () => {
+    expect(categoryPathOf([cat('1', 'Pizza')], 'yok')).toBeNull();
+  });
+
+  it('döngüde kilitlenmez', () => {
+    // Bozuk veri: a → b → a. Sonsuz döngü olmamalı.
+    const cats = [cat('a', 'A', 'b'), cat('b', 'B', 'a')];
+    expect(categoryPathOf(cats, 'a')).toBeDefined();
+  });
+});
+
+describe('validateMergeGroups', () => {
+  const paths = new Map([
+    ['Yemek', ['Yemek']],
+    ['Tatlı', ['Yemek', 'Tatlı']],
+    ['Tatlılar', ['Tatlılar']],
+    ['Yazılım', ['Yazılım']],
+  ]);
+
+  it('ata-torun grubunu DÜŞÜRÜR (ağaç kendini yiyemez)', () => {
+    // "Yemek" ile "Tatlı" (Yemek'in altı) birleştirilemez.
+    expect(validateMergeGroups([['Yemek', 'Tatlı']], paths)).toEqual([]);
+  });
+
+  it('kardeş/ayrı grupları geçirir', () => {
+    expect(validateMergeGroups([['Tatlılar', 'Tatlı'], ['Yazılım']], paths))
+      .toEqual([['Tatlılar', 'Tatlı']]);
+  });
+
+  it('tek elemanlı grubu düşürür', () => {
+    expect(validateMergeGroups([['Yazılım']], paths)).toEqual([]);
+  });
+});
+
+describe('mergeContextLines', () => {
+  it('tam yolu ve kayıt sayısını yazar', () => {
+    const cats = [cat('1', 'Yemek'), cat('2', 'Tatlı', '1')];
+    const lines = mergeContextLines(cats, new Map([['1', 5], ['2', 12]]));
+    expect(lines).toContain('Yemek — 5 kayıt');
+    expect(lines).toContain('Yemek › Tatlı — 12 kayıt');
+  });
+
+  it('sayısı olmayan kategori 0 kayıt okur', () => {
+    expect(mergeContextLines([cat('1', 'Yemek')], new Map())).toEqual(['Yemek — 0 kayıt']);
   });
 });
