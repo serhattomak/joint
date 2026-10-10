@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildParentMap, isAiEnabled, planItemCategorization, type AiStatus } from './ai';
+import { isAiEnabled, planItemCategorization, type AiStatus } from './ai';
+import type { Category } from './db/types';
 import { resolveCategories } from './taxonomy';
+
+/** Test kategorisi: ağaç alanları dolu, kalanı sahte. */
+function cat(id: string, name: string, parent_id: string | null = null): Category {
+  return { id, name, parent_id, user_id: null, created_at: '', updated_at: '' };
+}
 
 /*
  * `isAiEnabled` bir GÜVENLİK kapısıdır: `true` dönerse backend ~9 GB'lık model
@@ -62,34 +68,19 @@ describe('isAiEnabled', () => {
  */
 describe('kategori hiyerarşisi (uçtan uca)', () => {
   const cats = [
-    { id: 'p1', name: 'Yemek', parent_id: null },
-    { id: 'c1', name: 'Pizza', parent_id: 'p1' },
-    { id: 'c2', name: 'Çorba', parent_id: 'p1' },
-    { id: 'p2', name: 'Teknoloji', parent_id: null },
+    cat('p1', 'Yemek'),
+    cat('c1', 'Pizza', 'p1'),
+    cat('c2', 'Çorba', 'p1'),
+    cat('p2', 'Teknoloji'),
   ];
-
-  it('child → parent haritası üretir', () => {
-    expect(buildParentMap(cats)).toEqual(
-      new Map([
-        ['Pizza', 'Yemek'],
-        ['Çorba', 'Yemek'],
-      ]),
-    );
-  });
-
-  it('hiyerarşi öncesi düz arşivde boş harita döner (çökmez)', () => {
-    expect(buildParentMap([{ id: 'x', name: 'Pizza', parent_id: null }]).size).toBe(0);
-  });
+  const names = cats.map((c) => c.name);
 
   it('pizza kaydı Yemek > Pizza olarak tek çocuğa iner', () => {
-    const parents = buildParentMap(cats);
-    const names = cats.map((c) => c.name);
-
     const r = resolveCategories(['Pizza Tarifi'], names, {
       confidence: 0.9,
       minConfidence: 0.6,
       maxTotal: 1,
-      parents,
+      categories: cats,
     });
 
     // "Pizza Tarifi" yeni bir kategori DEĞİLDİR — mevcut "Pizza"ya indirgenir.
@@ -97,36 +88,28 @@ describe('kategori hiyerarşisi (uçtan uca)', () => {
     expect(r.newNames).toEqual([]);
   });
 
-  it('LLM üst + çocuk önerirse yalnız çocuk atanır', () => {
-    const parents = buildParentMap(cats);
-    const names = cats.map((c) => c.name);
-
+  it('LLM üst + çocuk önerirse yalnız en derin (çocuk) atanır', () => {
     const r = resolveCategories(['Yemek', 'Çorba'], names, {
       confidence: 0.9,
       minConfidence: 0.6,
       maxTotal: 1,
-      parents,
+      categories: cats,
     });
 
     expect(r.names).toEqual(['Çorba']);
   });
 
-  it('iç içe geçmiş taksonomide en derin çocuk kazanır', () => {
-    const parents = buildParentMap(cats);
-    // Model altın adıyla önce üstü önermiş olabilir.
-    const r = resolveCategories(['Yemek', 'Pizza'], names2(cats), {
+  it('yaprak olmayan düğüm artık atanabilir (Yemek)', () => {
+    const r = resolveCategories(['Yemek'], names, {
       confidence: 0.9,
       minConfidence: 0.6,
       maxTotal: 1,
-      parents,
+      categories: cats,
     });
-    expect(r.names).toEqual(['Pizza']);
+
+    expect(r.names).toEqual(['Yemek']);
   });
 });
-
-function names2(cats: { name: string }[]): string[] {
-  return cats.map((c) => c.name);
-}
 
 /*
  * AI kapalıyken toplu kategorizasyonun kural tabanlı turu: LLM çağrılmaz,
@@ -175,5 +158,19 @@ describe('planItemCategorization — AI kapalı deterministik', () => {
       minConfidence: 0.6,
     });
     expect(plan.kind).toBe('deterministic');
+  });
+
+  it('deterministik dal ağaç bağlamıyla EN DERİN kategoriyi seçer', () => {
+    // Metinde hem "Yemek" hem "Çorba" geçiyor; kayıt "Yemek"e değil "Çorba"ya düşmeli.
+    const catRows = [cat('1', 'Yemek'), cat('2', 'Çorba', '1')];
+    const plan = planItemCategorization('Yemek ve çorba tarifi', ['Yemek', 'Çorba'], [], {
+      aiOn: false,
+      minConfidence: 0.6,
+      categories: catRows,
+    });
+    expect(plan.kind).toBe('deterministic');
+    if (plan.kind === 'deterministic') {
+      expect(plan.result.categories).toEqual(['Çorba']);
+    }
   });
 });

@@ -18,7 +18,7 @@ import {
   setItemAnalysisStatus,
   upsertItemAnalysis,
 } from './db/item_analysis';
-import type { ItemAnalysis, RecipeText } from './db/types';
+import type { Category, ItemAnalysis, RecipeText } from './db/types';
 import { resolveCategories, resolveTags } from './taxonomy';
 
 /** Rust `analyze_media` dönen JSON'un şekli (serde PascalCase değil, snake_case). */
@@ -94,13 +94,15 @@ export function resolveAnalysisTaxonomy(
   existingTags: string[],
   confidence: number,
   minConfidence: number,
+  categories?: Category[],
 ): { categories: string[]; tags: string[] } {
-  const categories = resolveCategories(topics, existingCats, {
+  const resolved = resolveCategories(topics, existingCats, {
     confidence,
     minConfidence,
     maxNew: 1,
-    // Kayıt tek çocuk kategoriye bağlanır (iki seviyeli taksonomi).
+    // Kayıt tek kategoriye bağlanır; birden çok uyanda EN DERİN olan seçilir.
     maxTotal: 1,
+    ...(categories ? { categories } : {}),
   }).names;
   // Etiket son tercihtir: güven eşiğini geçse bile yeni etiket gerekçesiz
   // kabul edilmez. Anahtar kelimelerden türetilen adlar çoğunlukla mevcut
@@ -110,7 +112,7 @@ export function resolveAnalysisTaxonomy(
     minConfidence,
     confidence,
   });
-  return { categories, tags };
+  return { categories: resolved, tags };
 }
 
 /** Rust yanıtını domain alanlarına eşler. SAF (Rust alan adları zaten hizalı). */
@@ -213,6 +215,7 @@ export async function analyzeItem(
       allTags.map((t) => t.name),
       m.confidence,
       readTagThreshold(),
+      allCats,
     );
 
     await upsertItemAnalysis({

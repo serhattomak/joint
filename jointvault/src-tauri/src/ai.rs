@@ -1315,20 +1315,22 @@ pub async fn ai_categorize_and_tag(app: AppHandle, payload: Value) -> Result<Val
     let platform = payload.get("platform").and_then(|v| v.as_str()).unwrap_or("");
     let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
 
-    let existing_categories: Vec<String> = serde_json::from_value(
-        payload.get("existing_categories").cloned().unwrap_or(Value::Array(vec![])),
-    )
-    .unwrap_or_default();
+    let existing_category_tree = payload
+        .get("existing_category_tree")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     let existing_tags: Vec<String> = serde_json::from_value(
         payload.get("existing_tags").cloned().unwrap_or(Value::Array(vec![])),
     )
     .unwrap_or_default();
 
-    let existing_cat_str = if existing_categories.is_empty() {
+    let cat_tree_str = if existing_category_tree.is_empty() {
         "Henüz kategori yok".to_string()
     } else {
-        existing_categories.join(", ")
+        existing_category_tree
     };
 
     let existing_tag_str = if existing_tags.is_empty() {
@@ -1345,30 +1347,25 @@ pub async fn ai_categorize_and_tag(app: AppHandle, payload: Value) -> Result<Val
 
     let prompt = format!(
         "Aşağıdaki medya kaydını analiz et, en uygun KATEGORİYİ ve etiketleri belirle.\n\n\
+        TAKSONOMİ (girinti = seviye; yalnız bu ağaçtaki adlar geçerlidir):\n\
+        {cat_tree_str}\n\n\
         TAKSONOMİ KURALLARI:\n\
-        1. KATEGORİ — tam olarak 1 adet, SADECE alt (child) seviyeden:\n\
-           [{existing_cat_str}]\n\
-           - Kayıt bir yemek tarifi ve \"Yemek > Pizza\" varsa sadece \"Pizza\" seç. \"Yemek\" SEÇME.\n\
-           - Listede \"Pizza\" varsa \"Pizza Tarifi\", \"Pizza Yapımı\", \"Ev Yapımı Pizza\" gibi\n\
-             YENİ adlar KURMA. Mevcut tam adı kullan. Aynı anlama gelen ayrı kategori\n\
-             üretmek yasaktır.\n\
-           - Hiçbiri uymuyorsa `yeni` alanını doldur: en genel geçer üst + en somut alt\n\
-             ad (örn: {{\"ust\":\"Yemek\",\"alt\":\"Risotto\"}}). Yeni üst yalnızca gerçekten\n\
-             gerekliyse önerilir.\n\
-        2. ETİKET — son tercih:\n\
-           - Önce mevcut listeden uygun olanı seç: [{existing_tag_str}]\n\
-           - Mevcut etiketlerden hiçbiri kaydı gerçekten TANIMLAMIYORSA yeni etiket\n\
-             üretme; `tags` boş, `yeni_etiket` null döndür.\n\
-           - Yalnızca kaydın kimliği etiketle tanımlanıyorsa EN FAZLA 1 tane üret ve\n\
-             `yeni_etiket_gerekce` alanına bu etiket neden gerekliğini yaz.\n\
-           - Etiketlerin başına '#' koyma, küçük harf ve sade tut.\n\
-        3. ÖZET: İçeriği tek cümleyle net bir şekilde özetle.\n\
-        4. GÜVEN SKORU: Önerinin içeriğe uygunluğuna 0.0 ile 1.0 arasında bir confidence ver.\n\n\
+        1. Kayda uyan EN DERİN düğümü seç. \"Sütlaç\" tarifi geldiyse \"Sütlü Tatlı\" seç\n\
+           (\"Tatlı\" değil; ikisi de uymuyorsa en derin uyanı).\n\
+        2. Mevcut düğümlerin altına YENİ ara seviye kurma (\"Tatlı\" varken \"Sütlü Tatlı\"yı\n\
+           yalnız kayıt gerçekten sütlü ise öner).\n\
+        3. Hiçbiri uymuyorsa `yeni` alanını doldur: {{\"ust\":\"...\",\"alt\":\"...\"}} — `ust`\n\
+           ağaçta VAR OLAN bir düğüm olmalı; yoksa düğüm önerilmez (uydurma dal yasak).\n\
+        4. ETİKET — son tercih: önce mevcut listeden uygun olanı seç [{existing_tag_str}].\n\
+           Hiçbiri kaydı gerçekten TANIMLAMIYORSA etiket üretme; en fazla 1 yeni etiket\n\
+           üret ve `yeni_etiket_gerekce` alanına nedenini yaz. Başına '#' koyma, sade tut.\n\n\
+        5. ÖZET: İçeriği tek cümleyle net bir şekilde özetle.\n\
+        6. GÜVEN SKORU: Önerinin içeriğe uygunluğuna 0.0 ile 1.0 arasında bir confidence ver.\n\n\
         ÇIKTI FORMATI: Yanıt olarak SADECE geçerli bir JSON nesnesi döndür.\n\
         Örnek (mevcut kategori):\n\
-        {{\"kategori\":\"Pizza\",\"ust\":null,\"yeni\":null,\"tags\":[\"hamur\"],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Margherita pizza tarifi.\",\"confidence\":0.95}}\n\
+        {{\"kategori\":\"Sütlü Tatlı\",\"ust\":null,\"yeni\":null,\"tags\":[\"süt\"],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Sütlaç tarifi.\",\"confidence\":0.95}}\n\
         Örnek (hiçbir şey uymuyor, yeni kategori):\n\
-        {{\"kategori\":null,\"ust\":null,\"yeni\":{{\"ust\":\"Yemek\",\"alt\":\"Risotto\"}},\"tags\":[],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Risotto tarifi.\",\"confidence\":0.8}}\n\n\
+        {{\"kategori\":null,\"ust\":null,\"yeni\":{{\"ust\":\"Tatlı\",\"alt\":\"Muhallebi\"}},\"tags\":[],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Muhallebi tarifi.\",\"confidence\":0.8}}\n\n\
         KAYIT DETAYLARI:\n\
         - Başlık: {title}\n\
         - Platform / Kaynak: {platform}\n\
@@ -1466,23 +1463,22 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
         return Ok(serde_json::json!([]));
     }
 
-    let existing_categories: Vec<String> = serde_json::from_value(
-        payload
-            .get("existing_categories")
-            .cloned()
-            .unwrap_or(Value::Array(vec![])),
-    )
-    .unwrap_or_default();
+    let existing_category_tree = payload
+        .get("existing_category_tree")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     let existing_tags: Vec<String> = serde_json::from_value(
         payload.get("existing_tags").cloned().unwrap_or(Value::Array(vec![])),
     )
     .unwrap_or_default();
 
-    let existing_cat_str = if existing_categories.is_empty() {
+    let cat_tree_str = if existing_category_tree.is_empty() {
         "Henüz kategori yok".to_string()
     } else {
-        existing_categories.join(", ")
+        existing_category_tree
     };
     let existing_tag_str = if existing_tags.is_empty() {
         "Henüz etiket yok".to_string()
@@ -1510,19 +1506,22 @@ pub async fn ai_categorize_batch(app: AppHandle, payload: Value) -> Result<Value
     let prompt = format!(
         "Aşağıdaki {n} medya kaydını analiz et. Her kayıt için TAM OLARAK 1 kategori ve\n\
          en fazla 4 etiket belirle.\n\n\
+         TAKSONOMİ (girinti = seviye; yalnız bu ağaçtaki adlar geçerlidir):\n\
+         {cat_tree_str}\n\n\
          KURALLAR (her kayıt için ayrı ayrı uygula):\n\
-         1. KATEGORİ — SADECE alt (child) seviyeden seç: [{existing_cat_str}]\n\
-            - \"Yemek > Pizza\" varsa ve kayıt pizza ise sadece \"Pizza\" seç, \"Yemek\" SEÇME.\n\
-            - Listede \"Pizza\" varsa \"Pizza Tarifi\"/\"Pizza Yapımı\" gibi YENİ ad KURMA.\n\
-            - Hiçbiri uymuyorsa `yeni` alanını doldur: {{\"ust\":\"...\",\"alt\":\"...\"}}.\n\
-         2. ETİKET — son tercih. Önce mevcut listeden: [{existing_tag_str}]\n\
-            - Hiçbiri kaydı gerçekten tanımlamıyorsa ETİKET ÜRETME.\n\
-            - En fazla 1 yeni etiket; `yeni_etiket_gerekce` alanına nedenini yaz.\n\
-         3. ÖZET ve GÜVEN (confidence 0.0-1.0).\n\n\
+         1. Kayda uyan EN DERİN düğümü seç. \"Sütlaç\" tarifi için \"Sütlü Tatlı\" seç (\"Tatlı\" değil).\n\
+         2. Mevcut düğümlerin altına YENİ ara seviye kurma; yalnız kayıt gerçekten gerektiriyorsa öner.\n\
+         3. Hiçbiri uymuyorsa `yeni` alanını doldur: {{\"ust\":\"...\",\"alt\":\"...\"}} — `ust` ağaçta\n\
+            VAR OLAN bir düğüm olmalı; yoksa düğüm önerilmez (uydurma dal yasak).\n\
+         4. ETİKET — son tercih: önce mevcut listeden uygun olanı seç [{existing_tag_str}].\n\
+            Hiçbiri kaydı gerçekten tanımlamıyorsa ETİKET ÜRETME; en fazla 1 yeni etiket ve\n\
+            `yeni_etiket_gerekce` alanına nedenini yaz. Mevcut tam adı kullan, aynı anlama\n\
+            gelen yeni ad KURMA.\n\
+         5. ÖZET ve GÜVEN (confidence 0.0-1.0).\n\n\
          ÇIKTI FORMATI: SADECE {n} elemanlı geçerli JSON DİZİSİ döndür, markdown yok.\n\
          Eleman sırası KAYIT 0..{last} ile BİREBİR aynı olmalı.\n\
          Örnek tek eleman:\n\
-         {{\"index\":0,\"kategori\":\"Pizza\",\"ust\":null,\"yeni\":null,\"tags\":[\"hamur\"],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Margherita pizza tarifi.\",\"confidence\":0.95}}\n\n\
+         {{\"index\":0,\"kategori\":\"Sütlü Tatlı\",\"ust\":null,\"yeni\":null,\"tags\":[\"süt\"],\"yeni_etiket\":null,\"yeni_etiket_gerekce\":null,\"summary\":\"Sütlaç tarifi.\",\"confidence\":0.95}}\n\n\
          {records}",
         n = items.len(),
         last = items.len().saturating_sub(1),

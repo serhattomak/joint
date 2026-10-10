@@ -56,6 +56,7 @@ import {
   type RestructPlan,
   validateMergeGroups,
 } from './taxonomy-maintenance';
+import { indentedTaxonomyTree } from './taxonomy-view';
 import {
   buildHistoryWindow,
   mergeQueryPayload,
@@ -184,18 +185,6 @@ export interface CategorizeAndTagResult {
 }
 
 export const TAG_THRESHOLD_KEY = 'jv-ai-tag-threshold';
-
-/** Kategori satırlarından "child → parent" haritası üretir (üstü olmayanlar kök). */
-export function buildParentMap(
-  cats: { id: string; name: string; parent_id: string | null }[],
-): Map<string, string> {
-  const byId = new Map(cats.map((c) => [c.id, c.name]));
-  const map = new Map<string, string>();
-  for (const c of cats) {
-    if (c.parent_id && byId.has(c.parent_id)) map.set(c.name, byId.get(c.parent_id)!);
-  }
-  return map;
-}
 
 /** Ayarlardan güven eşiği (yoksa 0.6). */
 export function readTagThreshold(): number {
@@ -777,6 +766,22 @@ export async function getItemTranscriptText(item: Item): Promise<string | null> 
 }
 
 /**
+ * Ağaç bağlamından prompt için girintili kategori ağacı üretir.
+ * DB satırları varsa gerçek hiyerarşi; yoksa (dışarıdan ad listesi geldiyse)
+ * düz adlar kullanılır. Satır yoksa boş dize döner; Rust tarafı
+ * "Henüz kategori yok" ile değiştirir.
+ */
+function categoryTreeText(cats: Category[], names: string[] = []): string {
+  const paths =
+    cats.length > 0
+      ? cats
+          .map((c) => categoryPathOf(cats, c.id))
+          .filter((p): p is string[] => p !== null)
+      : names.map((n) => [n]);
+  return indentedTaxonomyTree(paths);
+}
+
+/**
  * Tek bir öğeyi Qwen 2.5 ile analiz eder, mevcut kategoriler ve etiketler öncelikli olacak
  * şekilde en uygun kategori ve etiketleri önerir.
  */
@@ -787,12 +792,12 @@ export async function categorizeAndTagItem(
 ): Promise<CategorizeAndTagResult> {
   // Mevcut taksonomiyi yükle (verilmediyse DB'den çek)
   let cats = existingCategories;
-  let parents: Map<string, string> | undefined;
+  let dbCats: Category[] = [];
   if (!cats) {
-    const dbCats = await listCategories();
+    dbCats = await listCategories();
     cats = dbCats.map((c) => c.name);
-    parents = buildParentMap(dbCats);
   }
+  const catTree = categoryTreeText(dbCats, cats);
 
   let tags = existingTags;
   if (!tags) {
@@ -823,7 +828,7 @@ export async function categorizeAndTagItem(
             .join('\n\n'),
           platform: item.platform || '',
           url: item.url || '',
-          existing_categories: cats,
+          existing_category_tree: catTree,
           existing_tags: tags,
         },
       });
@@ -858,8 +863,8 @@ export async function categorizeAndTagItem(
     confidence: llmConfidence,
     minConfidence: threshold,
     maxNew: 1,
-    maxTotal: 1, // kayıt YALNIZCA çocuk kategoriye bağlanır
-    ...(parents ? { parents } : {}),
+    maxTotal: 1, // kayıt TEK kategoriye bağlanır (en derin uyan)
+    ...(dbCats.length > 0 ? { categories: dbCats } : {}),
   });
   const resolvedTags = resolveTags(suggestedTags, tags, {
     max: 5,
@@ -868,11 +873,14 @@ export async function categorizeAndTagItem(
     ...(llmValid ? { reasons: llm.newTagReason } : {}),
   });
 
-  // Yeni hiyerarşik öneri güven eşiğini geçtiyse ve adı taksonomide yoksa
-  // kaydedilecek ad çifti döndürülür (üst ayrıca `applyCategorization` açar).
+  // Yeni hiyerarşik öneri güven eşiğini geçtiyse ve önerilen `ust` ağaçta
+  // gerçekten VARSA kaydedilecek ad çifti döndürülür (uydurma dal yasak).
+  const proposedNew = llmValid ? llm.newCategory : null;
   const newCategory =
-    llmValid && llm.newCategory && llmConfidence >= threshold
-      ? llm.newCategory
+    proposedNew &&
+    llmConfidence >= threshold &&
+    cats.some((c) => normalizeKey(c) === normalizeKey(proposedNew.parent))
+      ? proposedNew
       : null;
 
   const detHasAny = det.categories.length > 0 || det.tags.length > 0;
@@ -976,7 +984,7 @@ export function planItemCategorization(
   text: string,
   categories: string[],
   tags: string[],
-  opts: { aiOn: boolean; minConfidence: number },
+  opts: { aiOn: boolean; minConfidence: number; categories?: Category[] },
 ): ItemCategorizationPlan {
   const det = matchTaxonomyInText(text, categories, tags);
   const fullDet = det.categories.length > 0 && det.tags.length >= 2;
@@ -987,6 +995,7 @@ export function planItemCategorization(
       confidence: 1,
       minConfidence: opts.minConfidence,
       maxTotal: 1,
+      ...(opts.categories ? { categories: opts.categories } : {}),
     });
     const resolvedTags = resolveTags(det.tags, tags, { max: 5 });
     return {
@@ -1034,6 +1043,7 @@ export async function batchCategorizeItems(
 }> {
   const dbCats = await listCategories();
   const allCats = dbCats.map((c) => c.name);
+  const catTree = categoryTreeText(dbCats);
   const allTags = (await listTags()).map((t) => t.name);
 
   const cfg = await getAiStatus();
@@ -1090,6 +1100,7 @@ export async function batchCategorizeItems(
     const plan = planItemCategorization(text, allCats, allTags, {
       aiOn,
       minConfidence: threshold,
+      categories: dbCats,
     });
 
     if (plan.kind === 'deterministic') {
@@ -1128,7 +1139,7 @@ export async function batchCategorizeItems(
             platform: items[i].platform || '',
             url: items[i].url || '',
           })),
-          existing_categories: allCats,
+          existing_category_tree: catTree,
           existing_tags: allTags,
         },
       });
@@ -1177,13 +1188,12 @@ export async function batchCategorizeItems(
           ? [...allCats, newChild]
           : allCats;
 
-      const parents = buildParentMap(dbCats);
       const resolvedCats = resolveCategories(suggestedCats, catsForResolve, {
         confidence: llm.confidence,
         minConfidence: threshold,
         maxNew: 1,
         maxTotal: 1,
-        parents,
+        categories: dbCats,
       });
       const resolvedTags = resolveTags(suggestedTags, allTags, {
         max: 5,
@@ -1192,13 +1202,22 @@ export async function batchCategorizeItems(
         reasons: llm.newTagReason,
       });
 
+      // Uydurma dal yasak: önerilen `ust` ağaçta yoksa yeni kategori düşer.
+      const proposedNew = llm.newCategory;
+      const newCategory =
+        llm.confidence >= threshold &&
+        proposedNew &&
+        allCats.some((c) => normalizeKey(c) === normalizeKey(proposedNew.parent))
+          ? proposedNew
+          : null;
+
       await settle(it, {
         categories: resolvedCats.names,
         tags: resolvedTags,
         summary: llm.summary,
         confidence: llm.confidence,
         source: det.categories.length > 0 ? 'both' : 'llm',
-        newCategory: llm.confidence >= threshold ? llm.newCategory : null,
+        newCategory,
       });
     }
   }

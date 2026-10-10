@@ -5,6 +5,7 @@
  * duyarsız biçimde bağlamak, çoğalmayı önlemek ve deterministik ön geçişle
  * LLM'siz eşleşme sağlamak. Ağ/DB yoktur; Node'da test edilebilir.
  */
+import type { Category } from './db/types';
 
 const FOLD: Record<string, string> = {
   ı: 'i', ş: 's', ğ: 'g', ü: 'u', ö: 'o', ç: 'c', â: 'a', î: 'i', û: 'u',
@@ -80,13 +81,14 @@ export interface TaxonomyCategory {
  * Kategori önerilerini mevcuda eşler; eşleşmeyenleri **yalnızca** güven eşiği
  * üstündeyse ve `maxNew` sınırında yeni olarak kabul eder.
  *
- * Hiyerarşi kuralı: **bir kayıt yalnızca çocuk kategoriye bağlanır.** Öneri
- * bir üst kategori adıysa ve o üstün altı varsa, üst reddedilir — çünkü
- * kayıt, üstün altındaki hangi çocuğa ait olacağı belirsizdir. Böylece
- * "Yemek" ve "Pizza" aynı anda atanmaz, veri tek yerde durur.
+ * Hiyerarşi kuralı: **en derin uyan kazanır.** Öneri hem bir üstü hem altını
+ * işaret ediyorsa kayıt ALT (daha derin) düğüme bağlanır; seçilmiş bir adayın
+ * atası düşer — böylece `Yemek > Çorba` ağacında `['Yemek','Çorba']` önerisi
+ * `['Çorba']` verir. Yaprak olmayan düğüme atama ARTIK geçerlidir (genel bir
+ * "tatlı" kaydı `Tatlı`da durabilir).
  *
- * `parents` verilmezse hiyerarşi denetimi yapılmaz (düz taksonomi, geriye
- * dönük uyum).
+ * `categories` verilmezse hiyerarşi bağlamı yoktur; düz davranış (öneri sırası
+ * korunur) geçerli olur — geriye dönük uyum.
  */
 export function resolveCategories(
   suggested: string[],
@@ -96,29 +98,45 @@ export function resolveCategories(
     minConfidence: number;
     maxNew?: number;
     maxTotal?: number;
-    /** Kategori adı → üst adı. Üstü olmayanlar köktür. */
-    parents?: Map<string, string>;
+    /** Ağaç bağlamı: düğüm derinliği ve ata ilişkisi buradan çözülür. */
+    categories?: Category[];
   },
 ): { names: string[]; newNames: string[] } {
   const maxNew = opts.maxNew ?? 1;
   const maxTotal = opts.maxTotal ?? 2;
-  const parents = opts.parents;
-  const names: string[] = [];
-  const newNames: string[] = [];
+  const cats = opts.categories;
+
+  // normalizeKey(ad) → derinlik (kök = 1) ve → ata anahtar kümesi.
+  const depthOf = new Map<string, number>();
+  const ancestorsOf = new Map<string, Set<string>>();
+  if (cats) {
+    const byId = new Map(cats.map((c) => [c.id, c]));
+    for (const c of cats) {
+      const chain: string[] = [];
+      const visited = new Set<string>();
+      let cur: string | null = c.id;
+      // Bozuk `parent_id` (çevrim/sarkan) yürüyüşü `visited` durdurur; kök sayılır.
+      while (cur && byId.has(cur) && !visited.has(cur)) {
+        visited.add(cur);
+        chain.push(byId.get(cur)!.name);
+        cur = byId.get(cur)!.parent_id;
+      }
+      const key = normalizeKey(c.name);
+      depthOf.set(key, chain.length);
+      ancestorsOf.set(key, new Set(chain.slice(1).map(normalizeKey)));
+    }
+  }
+
+  interface Candidate {
+    name: string;
+    key: string;
+    isNew: boolean;
+    depth: number;
+  }
+  const candidates: Candidate[] = [];
   const seen = new Set<string>();
 
-  /** Üst adı, en az bir altı varsa atama için elenir. */
-  const isBareParent = (name: string): boolean => {
-    if (!parents) return false;
-    const key = normalizeKey(name);
-    for (const [child, parent] of parents) {
-      if (normalizeKey(parent) === key && normalizeKey(child) !== key) return true;
-    }
-    return false;
-  };
-
   for (const s of suggested) {
-    if (names.length >= maxTotal) break;
     const raw = String(s ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) continue;
 
@@ -127,16 +145,40 @@ export function resolveCategories(
     const name = existingMatch ?? raw.slice(0, 60).trim();
     const key = normalizeKey(name);
     if (!key || seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({
+      name,
+      key,
+      isNew: !existingMatch,
+      depth: depthOf.get(key) ?? 0,
+    });
+  }
 
-    if (existingMatch) {
-      if (isBareParent(name)) continue;
-      seen.add(key);
-      names.push(existingMatch);
-    } else if (opts.confidence >= opts.minConfidence && newNames.length < maxNew) {
-      seen.add(key);
-      names.push(name);
-      newNames.push(name);
+  // En derin önce: üst, çocuk seçildikten sonra "atası" diye düşer. Eşit
+  // derinlikte öneri sırası korunur (V8 sort kararlı).
+  const ordered = [...candidates].sort((a, b) => b.depth - a.depth);
+
+  const names: string[] = [];
+  const newNames: string[] = [];
+  const selected: string[] = [];
+
+  for (const c of ordered) {
+    if (names.length >= maxTotal) break;
+    if (c.isNew) {
+      if (opts.confidence < opts.minConfidence) continue;
+      if (newNames.length >= maxNew) continue;
     }
+    // Seçilmiş bir adayın atası ya da altıysa atla (kayıt tek dala oturur).
+    const related = selected.some(
+      (s) =>
+        ancestorsOf.get(c.key)?.has(s) === true ||
+        ancestorsOf.get(s)?.has(c.key) === true,
+    );
+    if (related) continue;
+
+    names.push(c.name);
+    selected.push(c.key);
+    if (c.isNew) newNames.push(c.name);
   }
 
   return { names, newNames };

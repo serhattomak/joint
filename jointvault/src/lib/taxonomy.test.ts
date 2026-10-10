@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { Category } from './db/types';
+import { indentedTaxonomyTree } from './taxonomy-view';
 import {
   collapseToExisting,
   matchExisting,
@@ -10,6 +12,11 @@ import {
   resolveTags,
   shouldAutoApply,
 } from './taxonomy';
+
+/** Test kategorisi: yalnız ağaç alanları dolu (kalanı sahte). */
+function cat(id: string, name: string, parent_id: string | null = null): Category {
+  return { id, name, parent_id, user_id: null, created_at: '', updated_at: '' };
+}
 
 describe('normalizeKey', () => {
   it('tr büyük/küçük + aksan + tire/noktalama', () => {
@@ -194,56 +201,59 @@ describe('collapseToExisting — kopyayı var olan adına indirger', () => {
   });
 });
 
-describe('resolveCategories — hiyerarşi', () => {
-  const parents = new Map([
-    ['Pizza', 'Yemek'],
-    ['Çorba', 'Yemek'],
-  ]);
+describe('resolveCategories — N seviye', () => {
+  // Yemek > Tatlı > Sütlü Tatlı ; Yemek > Çorba ; Yazılım
+  const cats = [
+    cat('1', 'Yemek'), cat('2', 'Tatlı', '1'), cat('3', 'Sütlü Tatlı', '2'),
+    cat('5', 'Çorba', '1'), cat('4', 'Yazılım'),
+  ];
 
-  it('altı olmayan üst kategoriyi reddeder (kayıt tek yerde durur)', () => {
-    /* "Yemek"i atamak, kaydın hangi çocuğa ait olduğunu belirsiz bırakır. */
-    const r = resolveCategories(['Yemek'], ['Yemek', 'Pizza', 'Çorba'], {
-      confidence: 1,
-      minConfidence: 0.6,
-      parents,
+  it('YAPRAK OLMAYAN düğüme atamayı kabul eder (eski isBareParent kalktı)', () => {
+    const r = resolveCategories(['Tatlı'], cats.map((c) => c.name), {
+      confidence: 0.9, minConfidence: 0.6, maxTotal: 1, categories: cats,
     });
-    expect(r.names).toEqual([]);
+    expect(r.names).toEqual(['Tatlı']);
   });
 
-  it('çocuk önerilirse kabul eder', () => {
-    const r = resolveCategories(['Pizza'], ['Yemek', 'Pizza', 'Çorba'], {
-      confidence: 1,
-      minConfidence: 0.6,
-      parents,
-    });
-    expect(r.names).toEqual(['Pizza']);
-  });
-
-  it('önce üst, sonra çocuk gelirse yalnız çocuğu alır', () => {
-    const r = resolveCategories(['Yemek', 'Çorba'], ['Yemek', 'Pizza', 'Çorba'], {
-      confidence: 1,
-      minConfidence: 0.6,
-      parents,
+  it('BİRDEN ÇOK uyan öneri geldiğinde EN DERİN olanı seçer', () => {
+    // Model hem üstü hem çocuğu önermiş olabilir; atası asla kazanmaz.
+    const r = resolveCategories(['Yemek', 'Çorba'], cats.map((c) => c.name), {
+      confidence: 0.9, minConfidence: 0.6, maxTotal: 1, categories: cats,
     });
     expect(r.names).toEqual(['Çorba']);
   });
 
-  it('hiyerarşi verilmezse düz davranış korunur (geriye dönük uyum)', () => {
-    const r = resolveCategories(['Yemek'], ['Yemek'], {
-      confidence: 1,
-      minConfidence: 0.6,
+  it('en derin uyan seçildiğinde onu korur', () => {
+    const r = resolveCategories(['Sütlü Tatlı'], cats.map((c) => c.name), {
+      confidence: 0.9, minConfidence: 0.6, maxTotal: 1, categories: cats,
     });
-    expect(r.names).toEqual(['Yemek']);
+    expect(r.names).toEqual(['Sütlü Tatlı']);
+  });
+
+  it('bağlam verilmezse düz davranış korunur (geriye dönük)', () => {
+    const r = resolveCategories(['Tatlı'], ['Tatlı'], { confidence: 1, minConfidence: 0.6 });
+    expect(r.names).toEqual(['Tatlı']);
   });
 
   it('kopyayı içerme ile var olan çocuğa indirger', () => {
     const r = resolveCategories(['Pizza Tarifi'], ['Yemek', 'Pizza'], {
       confidence: 1,
       minConfidence: 0.6,
-      parents,
+      categories: [cat('1', 'Yemek'), cat('2', 'Pizza', '1')],
     });
     expect(r.names).toEqual(['Pizza']);
     expect(r.newNames).toEqual([]);
+  });
+});
+
+describe('indentedTaxonomyTree', () => {
+  it('seviyeyi girintiyle yazar', () => {
+    expect(indentedTaxonomyTree([['Yemek'], ['Yemek', 'Tatlı'], ['Yazılım']]))
+      .toBe('Yemek\n  Tatlı\nYazılım');
+  });
+  it('kardeşleri ve derin dalları sırayla yazar', () => {
+    expect(indentedTaxonomyTree([['Yemek'], ['Yemek', 'Tatlı'], ['Yemek', 'Çorba'], ['Yemek', 'Tatlı', 'Sütlü Tatlı']]))
+      .toBe('Yemek\n  Tatlı\n    Sütlü Tatlı\n  Çorba');
   });
 });
 

@@ -47,6 +47,43 @@ export function categoryTreeOf(categories: Category[]): CategoryTreeNode[] {
   return roots.sort(byName).map(build);
 }
 
+/**
+ * Yol listesini girintili ağaca çevirir (prompt biçimi; SAF).
+ *
+ * Her yol `derinlik × 2 boşluk` ile yazılır. Girdi yolları herhangi bir sırada
+ * gelebilir: önce düğüm ağacı kurulur, sonra kökten derine gezinilir, böylece
+ * her çocuk üstünün HEMEN ardından gelir (kardeşler ilk görülme sırasında).
+ * Modelin bir üstü kendi altıyla karıştırmaması için yol bağlamı korunur.
+ */
+export function indentedTaxonomyTree(paths: string[][]): string {
+  interface Node {
+    name: string;
+    children: Map<string, Node>;
+  }
+  const roots = new Map<string, Node>();
+  for (const path of paths) {
+    let level = roots;
+    for (const name of path) {
+      let node = level.get(name);
+      if (!node) {
+        node = { name, children: new Map() };
+        level.set(name, node);
+      }
+      level = node.children;
+    }
+  }
+
+  const lines: string[] = [];
+  const walk = (level: Map<string, Node>, depth: number): void => {
+    for (const node of level.values()) {
+      lines.push('  '.repeat(depth) + node.name);
+      walk(node.children, depth + 1);
+    }
+  };
+  walk(roots, 0);
+  return lines.join('\n');
+}
+
 /** Kategoriyi "Üst › Alt › Torun" tam yolu olarak döndürür; kökte yalnız ad. */
 export function categoryPathLabel(
   categories: Category[],

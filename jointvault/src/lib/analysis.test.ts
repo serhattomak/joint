@@ -6,6 +6,12 @@ import {
   shouldSkipAnalysis,
   summarizeBatch,
 } from './analysis';
+import type { Category } from './db/types';
+
+/** Test kategorisi: ağaç alanları dolu, kalanı sahte. */
+function cat(id: string, name: string, parent_id: string | null = null): Category {
+  return { id, name, parent_id, user_id: null, created_at: '', updated_at: '' };
+}
 
 describe('summarizeBatch', () => {
   it('sonuçları sayar', () => {
@@ -87,6 +93,11 @@ describe('resolveAnalysisTaxonomy', () => {
   it('etiket mevcut adla eşlenir (kanonik)', () => {
     const r = resolveAnalysisTaxonomy([], ['kek'], [], ['Kek'], 0.9, 0.6);
     expect(r.tags).toEqual(['Kek']);
+  });
+  it('ağaç bağlamıyla en derin kategori seçilir', () => {
+    const cats = [cat('1', 'Yemek'), cat('2', 'Çorba', '1')];
+    const r = resolveAnalysisTaxonomy(['Yemek', 'Çorba'], [], ['Yemek', 'Çorba'], [], 0.9, 0.6, cats);
+    expect(r.categories).toEqual(['Çorba']);
   });
 });
 
