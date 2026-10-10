@@ -84,6 +84,9 @@ export function NotebookView({ refreshKey = 0, onOpenItem, onOpenSettings }: Not
     setLoadState('loading');
     setError(null);
     try {
+      // Sayfa kapsamı (seçilen kategori + TÜM torunları) `listNotebookItems`
+      // içindeki `resolveCategoryFilterIds` ile SQL'de genişler; buraya
+      // istemci tarafı bir torun toplama EKLEME — çift kural drift eder.
       const [res, tags, summaryRow] = await Promise.all([
         listNotebookItems(selected, PAGE_SIZE, page * PAGE_SIZE, sort),
         getAllTagsByItem(),
