@@ -320,10 +320,35 @@ Seçim tek bir **`Filtrele`** düğmesinden yapılır; ama **yürürlükteki kur
   seçenekler (TR-duyarlı süzme, `Bulunamadı` durumu).
 - **Aktif filtreler şeritte çip olarak kalır** (`YouTube ✕`) ve tek tıkla kaldırılır. Seçim panele,
   durum şeride aittir.
+- **Kategori paneli iki sütunludur** (üst, alt başlık altında `›` ile). Üst seçilince
+  **altları da kapsanır** — "Yemek" seçiliyken Pizza ve Çorba kayıtları gelir. Arama
+  alt adıyla da tutturur: "pizza" yazınca Yemek'in altındaki Pizza bulunur.
 - Sağda sıralama + `N kayıt` sayımı (`data-num`) sabittir.
 
 **The Kural-Görünür-Kalır Kuralı.** Bir filtre ya da ayar yürürlükteyse, onu açan panel kapalıyken
 de görünür olmalıdır (çip, damga, etiket). Durum asla yalnızca panel içinde kalmaz.
+
+## Kategori ve etiket
+
+Kavramlar karışmaz; ikisi de kaydı tamamlar ama işleri farklıdır.
+
+| | Kategori | Etiket |
+|---|---|---|
+| Hiyerarşi | **İki seviye**: Üst > Alt | Yok, düz |
+| Kayda atanma | Yalnızca **alt** (bir kayıt bir yerde durur) | Birden çok |
+| Sıra | Kanonik (Yemek > Pizza) — kayıt künyede `Yemek › Pizza` | Kullanım sırasına göre |
+
+- **Kayıt yalnızca alt kategoriye bağlanır.** Üst, sorgu katmanında çözülür
+  (`resolveCategoryFilterIds`); "Yemek" seçmek Pizza'yı da kapsar.
+- **Taksonomide aynı anlama gelen iki ad durmaz.** Asistan mevcut listede
+  yakın bir ad varsa (`Pizza`) yenisiyle (`Pizza Tarifi`) değiştirmez; `collapseToExisting`
+  adı var olanın altına indirger. Bu, şişmeyi baştan keser.
+- **Etiket son tercihtir.** Mevcut etiketler her zaman kullanılabilir; yeni etiket
+  ancak **güven eşiğini** ve **gerekçeyi** birlikte geçerse önerilir. Gerekçesiz
+  etiket taksonomiye girmez — her işlenen kayıtla kası bir etiket büyümez.
+- Yeniden yapılandırma (**Koleksiyonlar › Taksonomi bakımı › Plan Oluştur**) yalnızca
+  **önerir**: kullanıcı önizlemeyi görüp onaylayana kadar hiçbir şey değişmez. Onay
+  geri alınamaz; önce yedek alınır.
 
 ## Materials
 
@@ -517,7 +542,7 @@ Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük 
 | Yerel yapay zekâ sohbeti | **Asistan** |
 | Kategorilere göre derlenmiş okunabilir derlem | **Defter** |
 
-"Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz. Defter birimleri: kategori başına bir **sayfa**; ikinci bir eşanlamlı ("bölüm", "kale") girmez.
+"Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz. Defter birimleri: kategori başına bir **sayfa**; ikinci bir eşanlamlı ("bölüm", "kale") girmez. Kategori hiyerarşisinde "üst/alt" denir; "ana kategori", "bölüm", "klasör" girmez.
 
 ## Primitives (koddaki sözlük — yeniden icat etme)
 

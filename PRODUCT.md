@@ -16,6 +16,12 @@ Kullanım sahnesi: masaüstü (Windows), varsayılan 1280×800 pencere, sık sı
 
 JointVault kişisel medya arşividir: linkleri tek tek veya toplu kaydeder, tarayıcı eklentisiyle X/Instagram/YouTube'dan içe aktarır, yt-dlp ile indirir, ffmpeg ile dönüştürür/kırpar/altyazılar, yinelenenleri bulur ve hepsini koleksiyon/kategori/etiket ile düzenler. Amaç, dağınık platform kayıtlarını kaybolmayan, aranabilir, üzerinde iş yapılabilir tek bir yerel arşive dönüştürmek. Arşivin üstünde kategori başına okunabilir bir **İçerik Defteri** derlenir: kayıtların tam metinleri, görselleri ve linkleri defter sayfaları gibi tek yerde toplanır.
 
+**Taksonomi kuralı:** Kategori iki seviyelidir (Üst > Alt) ve bir kayıt **yalnızca alt**
+kategoriye bağlanır — üst seçildiğinde altları kapsanır. Taksonomide aynı kavramı
+taşıyan iki ad bulunmaz: asistan mevcut bir ad varsa yenisiyle değiştirmez
+("Pizza Tarifi" ve "Pizza Yapımı" ayrı kategori olmaz, ikisi de `Pizza`). Etiket
+son tercihtir: mevcut etiketler kullanılır, yeni etiket ancak gerekçesiyle önerilir.
+
 Başarı ölçütü (kullanıcı tarafından onaylandı):
 1. Bir şeyi kaydetmek tek hareket olur — gözle aranmaz.
 2. Arşivi gezmek keyif verir; kapaklar bir koleksiyon gibi durur.
@@ -69,6 +75,7 @@ Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük 
 | Yerel medyayı işleyen araçlar bölümü | **Araçlar** |
 | Yerel yapay zekâ sohbeti | **Asistan** |
 | Kategorilere göre derlenmiş okunabilir derlem | **Defter** |
+| Taksonomiyi üst/alt olarak yeniden düzenleyen öneri | **Plan Oluştur** |
 
 "Kasa", "fiş", "araç kutusu", "yer imi", "gönderi" kullanılmaz.
 
