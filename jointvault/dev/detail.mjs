@@ -1,11 +1,8 @@
-import { chromium } from 'playwright-core';
-import { mkdirSync } from 'node:fs';
+import { ensureOutDir, launchEvidenceBrowser } from './lib/browser.mjs';
 
-const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const OUT = 'D:/serhatdev/joint/.impeccable/review';
-mkdirSync(OUT, { recursive: true });
+const OUT = ensureOutDir('detail');
 
-const browser = await chromium.launch({ executablePath: EDGE });
+const browser = await launchEvidenceBrowser();
 const ctx = await browser.newContext({
   viewport: { width: 1280, height: 1000 },
   deviceScaleFactor: 2,
