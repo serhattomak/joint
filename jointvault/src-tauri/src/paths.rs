@@ -39,16 +39,46 @@ pub fn allowed_roots(app: &AppHandle) -> Vec<PathBuf> {
     roots
 }
 
-/// Bir yolun gerçek (çözümlenmiş) hâlini bulur. Hedef henüz yoksa **ebeveynini**
-/// çözümler: yazma yolu çoğu zaman henüz oluşmamış bir dosyadır.
+/// Yol `..` bileşeni taşıyor mu?
+///
+/// Neden reddedilir: `canonicalize` edilmemiş bir yolda `starts_with` **bileşen
+/// bazlıdır**, yani `C:\kök\alt\..\..\gizli` yolu `C:\kök` ile başlıyor
+/// *görünür* — kaçış yakalanmaz. Uygulamanın ürettiği yollar `..` içermez;
+/// içeren bir yol ya hatadır ya da kaçış denemesidir.
+fn has_parent_dir(path: &Path) -> bool {
+    path.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+/// Bir yolun gerçek (çözümlenmiş) hâlini bulur.
+///
+/// Hedef henüz yoksa **ilk var olan atası** çözümlenir ve kalan bileşenler ona
+/// eklenir. Yalnızca bir üst seviyeye bakmak yetmez: `<kök>/Video/dosya.zip`
+/// gibi henüz oluşmamış ara klasörler (kategori klasörleri) aksi hâlde "izinli
+/// değil" sayılırdı.
 fn real(path: &Path) -> Option<PathBuf> {
-    if let Ok(c) = path.canonicalize() {
-        return Some(c);
+    if let Ok(canonical) = path.canonicalize() {
+        return Some(canonical);
     }
-    let parent = path.parent()?;
-    let canon_parent = parent.canonicalize().ok()?;
-    let name = path.file_name()?;
-    Some(canon_parent.join(name))
+    if has_parent_dir(path) {
+        return None;
+    }
+    let mut current = path;
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    loop {
+        let parent = current.parent()?;
+        if let Some(name) = current.file_name() {
+            tail.push(name.to_os_string());
+        }
+        if let Ok(canonical_parent) = parent.canonicalize() {
+            let mut out = canonical_parent;
+            for part in tail.iter().rev() {
+                out.push(part);
+            }
+            return Some(out);
+        }
+        current = parent;
+    }
 }
 
 /// Yol izinli köklerden birinin ALTINDA mı?
@@ -80,7 +110,7 @@ pub fn ensure_allowed(app: &AppHandle, path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::real;
+    use super::{has_parent_dir, real};
     use std::path::Path;
 
     /// `starts_with` yol bileşeni bazlıdır: benzer önekli kardeş dizin kapsama GİRMEZ.
@@ -92,11 +122,29 @@ mod tests {
         assert!(!Path::new("C:\\data-evil\\file.txt").starts_with(root));
     }
 
-    /// Var olmayan hedef: ebeveyni üzerinden çözümlenir (yazma yolu henüz yok).
+    /// Var olmayan hedef: ilk var olan ata çözümlenir ve kalan bileşenler eklenir.
+    /// (Kategori klasörleri henüz oluşmamışken de yol kökün altında kalmalı.)
+    ///
+    /// Not: Windows'ta `canonicalize` sonucu `\\?\` uzun-yol öneki taşır. Bu önek
+    /// hem hedefe hem köklere aynı biçimde uygulandığı için `starts_with`
+    /// karşılaştırması bozulmaz ve önek kullanıcıya gösterilen bir yol değildir;
+    /// burada ölçülen şey **kökten sonraki bileşenlerin korunması**dır.
     #[test]
-    fn real_resolves_missing_target_via_parent() {
-        let missing = Path::new("C:\\definitely\\not\\here\\file.txt");
-        // Ebeveyn de yoksa `None` döner: uydurma bir yol üretilmez.
-        assert!(real(missing).is_none());
+    fn real_walks_up_to_first_existing_ancestor() {
+        let tail = Path::new("definitely").join("not").join("here").join("file.txt");
+        let resolved = real(Path::new("C:\\definitely\\not\\here\\file.txt"))
+            .expect("kök var olduğu için çözümlenmeli");
+        assert!(
+            resolved.ends_with(&tail),
+            "kökten sonraki bileşenler korunmalı: {resolved:?}"
+        );
+    }
+
+    /// `..` içeren yol hiç çözümlenmez: bileşen bazlı `starts_with` bunu
+    /// yakalayamaz, o yüzden kapı burada kapanır.
+    #[test]
+    fn real_rejects_parent_dir_components() {
+        assert!(has_parent_dir(Path::new("C:\\data\\..\\evil.exe")));
+        assert!(real(Path::new("C:\\data\\..\\evil.exe")).is_none());
     }
 }
