@@ -4,6 +4,8 @@ import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
 import { Toolbar } from '@/components/Toolbar';
 import { ClipboardWatcher } from '@/components/ClipboardWatcher';
+import { DownloadCaptureBridge } from '@/components/DownloadCaptureBridge';
+import { DownloadStrip } from '@/components/DownloadStrip';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
 import { ComponentInstallerProvider } from '@/components/ComponentInstaller';
 import { ConverterStudio } from '@/components/ConverterStudio';
@@ -539,6 +541,9 @@ function App() {
             onForward={goForward}
           />
 
+          {/* İndirme şeridi: araç çubuğunun hemen altında, yalnız iş varken çizilir. */}
+          <DownloadStrip onOpen={goDownloads} />
+
           <div className="flex flex-1">
             {sidebarOpen && <Sidebar {...sidebarProps} />}
 
@@ -604,6 +609,7 @@ function App() {
                         });
                     }}
                     onPlayMedia={handlePlayMedia}
+                    onPickFormat={(t) => setFormatTarget(t)}
                   />
                 </div>
               ) : syncOnly ? (
@@ -749,7 +755,10 @@ function App() {
             onOpenItem={(item) => openRecord(item, 'detail')}
           />
           <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
-          <XSyncReviewDialog onDone={refresh} />
+          <XSyncReviewDialog
+            onDone={refresh}
+            onPickFormat={(t) => setFormatTarget(t)}
+          />
           <WelcomeDialog open={tourOpen} onOpenChange={setTourOpen} />
           <OnboardingWizard
             open={wizardOpen}
@@ -772,6 +781,8 @@ function App() {
               setQuickDlOpen(true);
             }}
           />
+          {/* Tarayıcı eklentisinin devrettiği indirmeler: diyalog yok, doğrudan kuyruk. */}
+          <DownloadCaptureBridge onStarted={refresh} />
           <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
         </div>
       </TooltipProvider>

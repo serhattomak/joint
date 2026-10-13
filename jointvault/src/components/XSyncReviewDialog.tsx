@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useNotice } from '@/components/ui/notice';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { createItem, listItems } from '@/lib/db/client';
-import { startDownload, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
+import type { FormatTarget } from '@/components/FormatDialog';
+import {
+  getDefaultQuality,
+  startDownload,
+  type DownloadKind,
+  type DownloadQuality,
+} from '@/lib/downloads';
 import { detectPlatform, fetchPreview } from '@/lib/platform';
 import { scrapeAndStoreArticle } from '@/lib/scraper';
 import { canonicalizeUrl, isKnownUrl } from '@/lib/urls';
@@ -28,6 +35,8 @@ interface XSyncPayload {
   mode?: string | null;
   kind?: string | null;
   quality?: string | null;
+  /** Diyaloğu açmadan hemen indir (eklentinin "sormadan indir" menüsü). */
+  silent?: boolean | null;
 }
 
 interface XSyncRow {
@@ -46,13 +55,105 @@ interface XSyncRow {
 
 interface XSyncReviewDialogProps {
   onDone?: () => void;
+  /**
+   * İndirilecek kayıt **tek** olduğunda çağrılır: linkin gerçek formatlarını
+   * sunan `FormatDialog` açılır. Verilmezse (ya da birden çok kayıt varsa)
+   * preset kaliteyle indirilir. İki diyalog üst üste binmesin diye yalnız tek
+   * kayıtta devreye girer.
+   */
+  onPickFormat?: (target: FormatTarget) => void;
 }
 
-export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
+export function XSyncReviewDialog({ onDone, onPickFormat }: XSyncReviewDialogProps) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<XSyncRow[]>([]);
   const [running, setRunning] = useState(false);
-  const [finished, setFinished] = useState(false);
+  /** Diyaloğu açmadan koşma isteği (eklentinin "sormadan indir" menüsü). */
+  const [silentRequest, setSilentRequest] = useState(false);
+  const notice = useNotice();
+
+  /**
+   * Ortak yürütme: hem diyalogdan onaylanınca hem "sormadan" istendiğinde
+   * aynı iş koşar. Ayrı kopyalar zamanla ayrışırdı.
+   *
+   * `pickFormat` açıkken **tek** indirilecek kayıt varsa indirme başlatılmaz;
+   * çağıran gerçek format listesini (FormatDialog) açar. Bu, IDM'in "Download
+   * File Info" adımının karşılığıdır: kullanıcı kaliteyi/formatı seçer.
+   */
+  const runRows = useCallback(
+    async (
+      targets: XSyncRow[],
+      pickFormat: boolean,
+    ): Promise<{ ok: number; failed: number; skipped: number }> => {
+      setRunning(true);
+      const downloadRows = targets.filter((r) => r.wantDownload && !r.skipped);
+      const singleDownload = pickFormat && downloadRows.length === 1;
+      let ok = 0;
+      let failed = 0;
+      let skipped = 0;
+      // ponytail: sequential loop, same as bulk — small batches, simplicity wins.
+      for (let i = 0; i < targets.length; i++) {
+        if (targets[i].skipped) {
+          skipped += 1;
+          continue;
+        }
+        const row = targets[i];
+        const platform = detectPlatform(row.url);
+        try {
+          let title = row.title;
+          let thumbnail = row.thumbnail;
+          if (!title || !thumbnail) {
+            let preview: { title: string | null; thumbnail: string | null } | null = null;
+            try {
+              preview = await fetchPreview(row.url);
+            } catch {
+              preview = null;
+            }
+            title ??= preview?.title ?? null;
+            thumbnail ??= preview?.thumbnail ?? null;
+          }
+          const item = await createItem({ url: row.url, platform, title, thumbnail });
+          // Arka planda tweet/post içeriğini kazı ve FTS5'e indeksle
+          void scrapeAndStoreArticle(item.id, row.url).catch(() => {});
+
+          if (row.wantDownload && singleDownload && onPickFormat) {
+            onPickFormat({ id: item.id, url: row.url, title });
+          } else if (row.wantDownload) {
+            // startDownload never throws — failures land in download_error state.
+            await startDownload(item.id, row.url, row.kind, row.quality);
+          }
+          ok += 1;
+          setRows((prev) => prev.map((r, j) => (j === i ? { ...r, state: 'ok' } : r)));
+        } catch (e) {
+          console.error('[x-sync]', e);
+          failed += 1;
+          const reason =
+            typeof e === 'string' ? e : e instanceof Error ? e.message : 'Kaydetme başarısız.';
+          setRows((prev) => prev.map((r, j) => (j === i ? { ...r, state: 'fail', reason } : r)));
+        }
+      }
+      setRunning(false);
+      onDone?.();
+      return { ok, failed, skipped };
+    },
+    [onDone, onPickFormat],
+  );
+
+  /** "Sormadan indir": diyalog açılmaz, iş hemen koşar ve sonuç bildirimle duyurulur. */
+  useEffect(() => {
+    if (!silentRequest) return;
+    setSilentRequest(false);
+    void runRows(rows, false).then(({ ok }) => {
+      notice.push(
+        ok > 0
+          ? {
+              text: `${ok} içerik arşive eklendi ve inmeye başladı.`,
+              tone: 'ok',
+            }
+          : { text: 'İçerik zaten arşivdeydi; yeni bir şey eklenmedi.', tone: 'info' },
+      );
+    });
+  }, [silentRequest, rows, runRows, notice]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -64,11 +165,14 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
       if (metas.length === 0) return;
       const wantDownload = payload.mode === 'download';
       const kind: DownloadKind = payload.kind === 'audio' ? 'audio' : 'video';
-      const quality: DownloadQuality = (['360', '480', '720', '1080', '1440', '2160'] as const).includes(
-        payload.quality as DownloadQuality,
-      )
-        ? (payload.quality as DownloadQuality)
-        : '720';
+      // Kalite verilmediyse uygulamanın varsayılan kalite ayarı geçerlidir
+      // (Ayarlar → İndirme). Eklentinin "sormadan indir" menüsü kalite göndermez.
+      const wanted = payload.quality;
+      const quality: DownloadQuality = (
+        ['360', '480', '720', '1080', '1440', '2160'] as const
+      ).includes(wanted as DownloadQuality)
+        ? (wanted as DownloadQuality)
+        : getDefaultQuality();
       // Snapshot existing items once — dedupe + skip-already-downloaded.
       let existing: { url: string; status: string }[] = [];
       try {
@@ -99,7 +203,11 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
         };
       });
       setRows(next);
-      setFinished(false);
+      // "Sormadan indir": diyalog hiç açılmaz, aşağıdaki etki işi hemen koşar.
+      if (wantDownload && payload.silent) {
+        setSilentRequest(true);
+        return;
+      }
       setOpen(true);
     };
 
@@ -117,55 +225,31 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
 
   const savable = rows.filter((r) => !r.skipped);
   const skippedCount = rows.filter((r) => r.skipped).length;
-  const okCount = rows.filter((r) => r.state === 'ok').length;
-  const failCount = rows.filter((r) => r.state === 'fail').length;
+  /** Onaydan sonra format seçimi mi gelecek? Düğme bunu söyler. */
+  const willAskFormat =
+    Boolean(onPickFormat) && rows.filter((r) => r.wantDownload && !r.skipped).length === 1;
 
   const handleConfirm = async (): Promise<void> => {
-    setRunning(true);
-    setFinished(false);
-    // ponytail: sequential loop, same as bulk — small batches, simplicity wins.
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].skipped) continue;
-      const row = rows[i];
-      const platform = detectPlatform(row.url);
-      try {
-        let title = row.title;
-        let thumbnail = row.thumbnail;
-        if (!title || !thumbnail) {
-          let preview: { title: string | null; thumbnail: string | null } | null = null;
-          try {
-            preview = await fetchPreview(row.url);
-          } catch {
-            preview = null;
-          }
-          title ??= preview?.title ?? null;
-          thumbnail ??= preview?.thumbnail ?? null;
-        }
-        const item = await createItem({ url: row.url, platform, title, thumbnail });
-        // Arka planda tweet/post içeriğini kazı ve FTS5'e indeksle
-        void scrapeAndStoreArticle(item.id, row.url).catch(() => {});
-
-        if (row.wantDownload) {
-          // startDownload never throws — failures land in download_error state.
-          await startDownload(item.id, row.url, row.kind, row.quality);
-        }
-        setRows((prev) => prev.map((r, j) => (j === i ? { ...r, state: 'ok' } : r)));
-      } catch (e) {
-        console.error('[x-sync]', e);
-        const reason = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Kaydetme başarısız.';
-        setRows((prev) => prev.map((r, j) => (j === i ? { ...r, state: 'fail', reason } : r)));
-      }
-    }
+    const { ok, failed, skipped } = await runRows(rows, true);
+    // Özet diyalogda kalmaz: onay bitti, pop-up kapanır ve sonuç bildirimle
+    // duyurulur (IDM de onaydan sonra penceresini açık tutmaz).
+    notice.push(
+      failed > 0
+        ? { text: `${ok} kaydedildi, ${failed} başarısız.`, tone: 'error' }
+        : {
+            text: `${ok} kaydedildi${skipped > 0 ? `, ${skipped} atlandı` : ''}.`,
+            tone: 'ok',
+          },
+    );
     setRunning(false);
-    setFinished(true);
-    onDone?.();
+    setOpen(false);
+    setRows([]);
   };
 
   const handleOpenChange = (next: boolean): void => {
     if (!next && !running) {
       setOpen(false);
       setRows([]);
-      setFinished(false);
     } else if (next) {
       setOpen(true);
     }
@@ -207,21 +291,13 @@ export function XSyncReviewDialog({ onDone }: XSyncReviewDialogProps) {
             </li>
           ))}
         </ul>
-        {finished && (
-          <p className="text-sm">
-            {okCount} kaydedildi{skippedCount > 0 && `, ${skippedCount} atlandı`}
-            {failCount > 0 && `, ${failCount} başarısız`}.
-          </p>
-        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={running}>
-            {finished ? 'Kapat' : 'Vazgeç'}
+            Vazgeç
           </Button>
-          {!finished && (
-            <Button onClick={() => void handleConfirm()} disabled={running || savable.length === 0}>
-              {running ? 'İşleniyor…' : 'Onayla ve kaydet'}
-            </Button>
-          )}
+          <Button onClick={() => void handleConfirm()} disabled={running || savable.length === 0}>
+            {running ? 'İşleniyor…' : willAskFormat ? 'Devam et (format seç)' : 'Onayla ve kaydet'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

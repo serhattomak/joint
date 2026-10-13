@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useOpenTarget } from '@/lib/open-target';
 import {
   Archive,
   ArrowLeft,
-  CheckCircle2,
   Download,
   FileCode,
   FileText,
@@ -16,6 +15,7 @@ import {
   Pencil,
   Play,
   Plus,
+  RotateCw,
   Scissors,
   Search,
   Trash2,
@@ -53,30 +53,44 @@ import {
 } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
-import { formatBytes } from '@/lib/downloads';
+import { formatBytes, useDownloadProgress, DOWNLOADS_CHANGED_EVENT, startDownload } from '@/lib/downloads';
+import { Stamp } from '@/components/ui/stamp';
+import { Progress } from '@/components/ui/progress';
 import { missingComponentText, parseMissingComponent } from '@/lib/components';
 import {
   cancelTurboDownload,
   formatEta,
   formatSpeed,
+  getDownloadSettings,
   pauseTurboDownload,
   startTurboDownload,
   useTurboProgressListener,
   type ChunkProgress,
+  type DownloadSettings,
   type TurboProgressPayload,
 } from '@/lib/turbo_download';
+
+/**
+ * Oturum başına bir kez çalışır. Önceki oturumdan 'active' kalmış işler
+ * gerçekte çalışmıyordur (hiçbir motor yok); bir kez kuyruğa alınırlar.
+ * Bu bayrak olmadan, görünüm yeniden bağlandığında **çalışan** işler de
+ * kuyruğa alınır ve iki motor aynı part dosyalarına yazardı.
+ */
+let reconciledThisSession = false;
 
 export interface DownloadsViewProps {
   onClose?: () => void;
   onOpenItem?: (item: Item) => void;
   onConvert?: (item: Item) => void;
   onPlayMedia?: (item: Item) => void;
+  /** Hatalı/yeniden indirmelerde linkin gerçek formatlarını seçtirir. */
+  onPickFormat?: (target: { id: string; url: string; title?: string | null }) => void;
 }
 
 type FilterStatus = 'all' | 'active' | 'queued' | 'completed' | 'paused' | 'error';
 type FilterCategory = 'all' | DownloadCategory;
 
-export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: DownloadsViewProps) {
+export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onPickFormat }: DownloadsViewProps) {
   const { open, reveal } = useOpenTarget();
   const installer = useComponentInstaller();
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
@@ -96,6 +110,20 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
 
   // Canlı Parça (Chunk) Durumları (Hafızada tutulur: jobId -> chunks[])
   const [liveChunks, setLiveChunks] = useState<Record<string, ChunkProgress[]>>({});
+
+  // İndirme ayarları (hız sınırı, eşzamanlılık) — yalnız gösterim için.
+  const [dlSettings, setDlSettings] = useState<DownloadSettings | null>(null);
+  // Motora gönderilmiş kuyruk işleri: aynı iş iki kez başlatılmaz.
+  const dispatchedRef = useRef<Set<string>>(new Set());
+  // İlerlemenin DB'ye son yazılma anı (iş başına) — ≈3 sn'de bir.
+  const lastPersistRef = useRef<Record<string, number>>({});
+  // İş başına kendiliğinden yeniden deneme sayacı.
+  const attemptsRef = useRef<Record<string, number>>({});
+  // İlerleme olayı, listede olmayan bir işi işaret edebilir: yakalanan indirme
+  // bu görünüm açıkken başlatılmıştır. O an listeyi tazeleriz.
+  const jobsRef = useRef<DownloadJob[]>([]);
+  // Ayarlar, `useCallback([])` içinden okunur: ref üzerinden güncel tutulur.
+  const settingsRef = useRef<DownloadSettings | null>(null);
 
   // Diyaloglar
   const [quickOpen, setQuickOpen] = useState(false);
@@ -117,16 +145,36 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
   const reloadJobs = async () => {
     try {
       setLoading(true);
-      const list = await listDownloadJobs();
+      let list = await listDownloadJobs();
+      // Çökme/kesinti sonrası uzlaştırma: 'active' kalan iş gerçekte
+      // çalışmıyordur. Part dosyaları yerinde olduğu için kuyruğa alınması
+      // kaldığı yerden devam etmesi demektir (IDM'in kesinti sonrası davranışı).
+      if (!reconciledThisSession) {
+        reconciledThisSession = true;
+        const stale = list.filter((j) => j.status === 'active');
+        for (const j of stale) {
+          await updateDownloadJob(j.id, { status: 'queued', speed_bps: 0, eta_secs: 0 });
+        }
+        if (stale.length > 0) {
+          list = list.map((j) =>
+            j.status === 'active' ? { ...j, status: 'queued' as DownloadStatus } : j,
+          );
+        }
+      }
       setJobs(list);
     } finally {
       setLoading(false);
     }
   };
 
-  const reloadVaultItems = async () => {
+  /**
+   * `silent` = arka plan tazelemesi: "yükleniyor…" yer tutucusunu göstermez.
+   * İndirme olayları bu listeyi sık tazelediği için şart — yoksa liste her
+   * olayda bir anlığına kaybolurdu.
+   */
+  const reloadVaultItems = async (silent = false) => {
     try {
-      setVaultLoading(true);
+      if (!silent) setVaultLoading(true);
       const items = await listDownloadedItems();
       setVaultItems(items);
       // Eğer Arşivde henüz indirme yok ama turbo kuyruğunda varsa turbo sekmesine geç
@@ -134,17 +182,138 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
         setSourceTab('turbo');
       }
     } finally {
-      setVaultLoading(false);
+      if (!silent) setVaultLoading(false);
     }
   };
+
+  /**
+   * Arşiv medyası indirmelerinin canlı yüzdesi. `download-progress` yüzdeyi
+   * verir ama **bitişi vermez**; bitiş `DOWNLOADS_CHANGED_EVENT` ile gelir ve
+   * liste o an tazelenir (damga "iniyor" → "yerel" geçer).
+   */
+  const [vaultPercent, setVaultPercent] = useState<Record<string, number>>({});
+  const [vaultMeta, setVaultMeta] = useState<
+    Record<string, { speed?: string | null; eta?: string | null }>
+  >({});
+  const markedActiveRef = useRef<Set<string>>(new Set());
+  const vaultItemsRef = useRef<Item[]>([]);
+
+  useEffect(() => {
+    vaultItemsRef.current = vaultItems;
+  }, [vaultItems]);
+
+  useDownloadProgress(
+    useCallback((e: { itemId: string; percent: number; speed?: string | null; eta?: string | null }) => {
+      setVaultPercent((p) => ({ ...p, [e.itemId]: e.percent }));
+      setVaultMeta((m) => ({ ...m, [e.itemId]: { speed: e.speed, eta: e.eta } }));
+      // İlk olay kuyruk→iniyor geçişini yazar (indirme başına bir kez).
+      if (!markedActiveRef.current.has(e.itemId)) {
+        markedActiveRef.current.add(e.itemId);
+        void setDownloadState(e.itemId, { status: 'active' }).then((updated) => {
+          setVaultItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+        });
+      }
+      // Listede yoksa (başka ekrandan başlatılmış) listeyi tazele.
+      if (!vaultItemsRef.current.some((it) => it.id === e.itemId)) void reloadVaultItems(true);
+    }, []),
+  );
+
+  // Başladı/bitti bildirimi: liste ve damgalar tazelenir (yer tutucu göstermeden).
+  useEffect(() => {
+    const onChanged = (): void => void reloadVaultItems(true);
+    window.addEventListener(DOWNLOADS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DOWNLOADS_CHANGED_EVENT, onChanged);
+  }, []);
 
   useEffect(() => {
     void reloadJobs();
     void reloadVaultItems();
+    void getDownloadSettings().then(setDlSettings).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
+
+  useEffect(() => {
+    settingsRef.current = dlSettings;
+  }, [dlSettings]);
+
+  /** Bir işi motora verir. Kuyruk akışı, devam ve yeniden deneme buradan geçer. */
+  const startJob = useCallback(async (job: DownloadJob): Promise<void> => {
+    await updateDownloadJob(job.id, { status: 'active', error_message: null });
+    try {
+      await startTurboDownload({
+        jobId: job.id,
+        url: job.url,
+        filename: job.filename,
+        destinationPath: job.destination_path,
+        fileSize: job.file_size,
+        threads: job.threads,
+      });
+    } catch (e) {
+      await updateDownloadJob(job.id, {
+        status: 'error',
+        error_message: typeof e === 'string' ? e : 'İndirme başlatılamadı.',
+      });
+    }
+  }, []);
+
+  // Kuyruk kendiliğinden akar: 'queued' işler motora verilir, motor da
+  // eşzamanlılık kapısında bekletir ve sıra gelince başlatır (IDM kuyruğu).
+  // (`startJob` tanımından sonra durur: blok kapsamlı değişken önce okunamaz.)
+  useEffect(() => {
+    for (const job of jobs) {
+      if (job.status !== 'queued') continue;
+      if (dispatchedRef.current.has(job.id)) continue;
+      dispatchedRef.current.add(job.id);
+      void startJob(job);
+    }
+  }, [jobs, startJob]);
+
+  /**
+   * Hata sonrası kendiliğinden yeniden deneme (IDM'in davranışı).
+   * Kalıcı hatalarda (`retryable === false`) denenmez; parça dosyaları yerinde
+   * kaldığı için deneme **kaldığı yerden** sürer.
+   */
+  const scheduleRetry = useCallback(
+    (jobId: string, retryable: boolean): void => {
+      const limit = settingsRef.current?.retry_count ?? 0;
+      if (!retryable || limit <= 0) return;
+      const used = attemptsRef.current[jobId] ?? 0;
+      if (used >= limit) return;
+      attemptsRef.current[jobId] = used + 1;
+      window.setTimeout(
+        () => {
+          const job = jobsRef.current.find((j) => j.id === jobId);
+          if (job) void startJob(job);
+        },
+        3000 * (used + 1),
+      );
+    },
+    [startJob],
+  );
+
+  /** İndirme sonrası eylem: hiçbir şey · dosyayı aç · klasörde göster. */
+  const runAfterComplete = useCallback(
+    (jobId: string): void => {
+      const action = settingsRef.current?.after_complete ?? 'none';
+      if (action === 'none') return;
+      const path = jobsRef.current.find((j) => j.id === jobId)?.destination_path;
+      if (!path) return;
+      if (action === 'open') open(path);
+      else reveal(path);
+    },
+    [open, reveal],
+  );
 
   // Canlı İlerleme Dinleyicisi
   const handleProgress = useCallback((payload: TurboProgressPayload) => {
+    // Yakalanan (tarayıcıdan devralınan) indirme, bu görünüm açıkken başlamış
+    // olabilir: listede yoksa DB'den tazele, yoksa ilerleme görünmez.
+    if (!jobsRef.current.some((j) => j.id === payload.job_id)) {
+      void reloadJobs();
+    }
     setJobs((prev) =>
       prev.map((j) => {
         if (j.id !== payload.job_id) return j;
@@ -167,8 +336,12 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
       }));
     }
 
-    // Durum değişimlerini DB'ye periyodik kaydet
-    if (payload.status === 'completed' || payload.status === 'paused' || payload.status === 'error') {
+    const terminal =
+      payload.status === 'completed' ||
+      payload.status === 'paused' ||
+      payload.status === 'error';
+    if (terminal) {
+      delete lastPersistRef.current[payload.job_id];
       void updateDownloadJob(payload.job_id, {
         status: payload.status as DownloadStatus,
         downloaded_size: payload.downloaded_size,
@@ -176,8 +349,29 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
         eta_secs: 0,
         error_message: payload.error ?? null,
       });
+      if (payload.status === 'completed') {
+        delete attemptsRef.current[payload.job_id];
+        runAfterComplete(payload.job_id);
+      } else if (payload.status === 'error') {
+        scheduleRetry(payload.job_id, payload.retryable !== false);
+      }
+      return;
     }
-  }, []);
+    // Kuyrukta bekleyen iş 'active' yazılmaz; durum yalan olur.
+    if (payload.status !== 'active') return;
+
+    // İlerleme ≈3 sn'de bir DB'ye yazılır: uygulama çökerse liste doğru
+    // durumu gösterir (IDM de durumu sık sık kaydeder).
+    const now = Date.now();
+    if (now - (lastPersistRef.current[payload.job_id] ?? 0) < 3000) return;
+    lastPersistRef.current[payload.job_id] = now;
+    void updateDownloadJob(payload.job_id, {
+      status: 'active',
+      downloaded_size: payload.downloaded_size,
+      speed_bps: payload.speed_bps,
+      eta_secs: payload.eta_secs,
+    });
+  }, [runAfterComplete, scheduleRetry]);
 
   useTurboProgressListener(handleProgress);
 
@@ -194,15 +388,22 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
     setJobs((prev) =>
       prev.map((j) => (j.id === job.id ? { ...j, status: 'active', error_message: null } : j)),
     );
-    await updateDownloadJob(job.id, { status: 'active', error_message: null });
-    await startTurboDownload({
-      jobId: job.id,
-      url: job.url,
-      filename: job.filename,
-      destinationPath: job.destination_path,
-      fileSize: job.file_size,
-      threads: job.threads,
-    });
+    await startJob(job);
+  };
+
+  /**
+   * Hatalı arşiv indirmesini yeniden dener. Tür **tahmin edilmez**: linkin
+   * gerçek formatları sunulur — tahmin, ses kaydını video sanıp indirmeyi kırardı.
+   */
+  const retryVaultDownload = async (item: Item): Promise<void> => {
+    markedActiveRef.current.delete(item.id);
+    setVaultItems((prev) =>
+      prev.map((it) =>
+        it.id === item.id ? { ...it, download_status: 'queued', download_error: null } : it,
+      ),
+    );
+    if (onPickFormat) onPickFormat({ id: item.id, url: item.url, title: item.title });
+    else await startDownload(item.id, item.url, 'video');
   };
 
   // Arşiv Medyası Silme İşlemi (Diskten ve/veya Arşivden)
@@ -440,6 +641,16 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                   {formatSpeed(totalSpeed)}
                 </span>
               </div>
+              {dlSettings && dlSettings.speed_limit_bps > 0 && (
+                <span className="border-l border-border pl-2.5 font-mono text-2xs text-muted-foreground">
+                  sınır {formatSpeed(dlSettings.speed_limit_bps)}
+                </span>
+              )}
+              {dlSettings && (
+                <span className="border-l border-border pl-2.5 font-mono text-2xs text-muted-foreground">
+                  {activeCount}/{dlSettings.max_concurrent} eşzamanlı
+                </span>
+              )}
             </div>
           )}
 
@@ -531,9 +742,6 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                     <span className="absolute top-2 left-2 rounded-md bg-black/75 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-xs">
                       {PLATFORM_META[item.platform as Platform]?.label ?? item.platform}
                     </span>
-                    <span className="absolute top-2 right-2 rounded-md bg-emerald-600/90 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-xs flex items-center gap-1">
-                      <CheckCircle2 className="size-2.5" /> İndirildi
-                    </span>
                   </div>
 
                   <div className="flex flex-1 flex-col p-4 gap-2.5">
@@ -544,6 +752,39 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia }: D
                     >
                       {item.title || item.url}
                     </h4>
+
+                    {/* Durum damgası + canlı ilerleme: arşiv satırındaki sözlüğün aynısı.
+                        (Eskiden burada koşulsuz "İndirildi" yazıyordu — iniş sürerken bile.) */}
+                    {item.download_status === 'queued' || item.download_status === 'active' ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Stamp state={item.download_status === 'queued' ? 'queued' : 'active'} />
+                          <span data-num className="text-2xs text-muted-foreground">
+                            %{Math.round(vaultPercent[item.id] ?? 0)}
+                            {vaultMeta[item.id]?.speed ? ` · ${vaultMeta[item.id]?.speed}` : ''}
+                            {vaultMeta[item.id]?.eta ? ` · kalan ${vaultMeta[item.id]?.eta}` : ''}
+                          </span>
+                        </div>
+                        <Progress value={vaultPercent[item.id] ?? 0} />
+                      </div>
+                    ) : item.download_status === 'error' ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Stamp state="error" />
+                        <span className="min-w-0 flex-1 truncate text-2xs text-destructive" title={item.download_error ?? ''}>
+                          {item.download_error ?? 'İndirme başarısız.'}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-2xs"
+                          onClick={() => void retryVaultDownload(item)}
+                        >
+                          <RotateCw className="size-3" /> Yeniden dene
+                        </Button>
+                      </div>
+                    ) : (
+                      <Stamp state="local" />
+                    )}
 
                     {item.local_path && (
                       <p

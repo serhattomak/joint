@@ -17,7 +17,7 @@ export interface ChunkProgress {
 
 export interface TurboProgressPayload {
   job_id: string;
-  status: 'active' | 'paused' | 'completed' | 'error';
+  status: 'queued' | 'active' | 'paused' | 'completed' | 'error';
   downloaded_size: number;
   file_size: number;
   percent: number;
@@ -25,10 +25,49 @@ export interface TurboProgressPayload {
   eta_secs: number;
   chunks: ChunkProgress[];
   error?: string | null;
+  /** Hata kalıcı mı? `false` ise yeniden denemek anlamsızdır. */
+  retryable?: boolean;
 }
 
-export async function probeUrl(url: string): Promise<ProbeResult> {
-  return invoke<ProbeResult>('turbo_probe_url', { url });
+/** Tarayıcıdan gelen istek başlıkları; korunan sunucularda indirme bunlarsız 403 döner. */
+export interface RequestHeaders {
+  referer?: string | null;
+  cookie?: string | null;
+  user_agent?: string | null;
+}
+
+export interface DownloadSettings {
+  /** Toplam hız sınırı, bayt/sn. 0 = sınırsız. */
+  speed_limit_bps: number;
+  /** Aynı anda indirilecek en fazla iş; fazlası kuyrukta bekler. */
+  max_concurrent: number;
+  /** Yeni indirmelerde varsayılan kanal (parça) sayısı. */
+  default_connections: number;
+  /** Hedefi kategoriye göre alt klasöre ayır (`Video`, `Ses`, `Program`…). */
+  category_folders: boolean;
+  /** İndirme tamamlanınca ne yapılsın: `none` · `open` · `reveal`. */
+  after_complete: 'none' | 'open' | 'reveal';
+  /** Hata sonrası kendiliğinden yeniden deneme sayısı (0 = kapalı). */
+  retry_count: number;
+  /** Tarayıcıdan devralınan indirmede pencere öne gelsin mi. */
+  raise_on_capture: boolean;
+  /** Format seçildikten sonra format ekranı kendiliğinden kapansın mı. */
+  close_format_after_pick: boolean;
+}
+
+export const DEFAULT_DOWNLOAD_SETTINGS: DownloadSettings = {
+  speed_limit_bps: 0,
+  max_concurrent: 3,
+  default_connections: 8,
+  category_folders: true,
+  after_complete: 'none',
+  retry_count: 2,
+  raise_on_capture: true,
+  close_format_after_pick: false,
+};
+
+export async function probeUrl(url: string, headers?: RequestHeaders): Promise<ProbeResult> {
+  return invoke<ProbeResult>('turbo_probe_url', { url, headers: headers ?? null });
 }
 
 export async function startTurboDownload(params: {
@@ -38,6 +77,7 @@ export async function startTurboDownload(params: {
   destinationPath: string;
   fileSize: number;
   threads: number;
+  headers?: RequestHeaders;
 }): Promise<void> {
   await invoke('turbo_start_download', {
     payload: {
@@ -47,8 +87,19 @@ export async function startTurboDownload(params: {
       destination_path: params.destinationPath,
       file_size: params.fileSize,
       threads: params.threads,
+      headers: params.headers ?? null,
     },
   });
+}
+
+export async function getDownloadSettings(): Promise<DownloadSettings> {
+  return invoke<DownloadSettings>('get_download_settings');
+}
+
+export async function setDownloadSettings(
+  settings: DownloadSettings,
+): Promise<DownloadSettings> {
+  return invoke<DownloadSettings>('set_download_settings', { settings });
 }
 
 export async function pauseTurboDownload(jobId: string): Promise<void> {

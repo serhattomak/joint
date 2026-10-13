@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { setDownloadState } from '@/lib/db/client';
+import { setDownloadState, type DownloadCategory } from '@/lib/db/client';
 
 export type DownloadKind = 'video' | 'audio';
 
@@ -47,6 +47,17 @@ export interface DownloadProgressEvent {
  */
 export type StoredDownloadError = string;
 
+/**
+ * İndirme durumu değişti (başladı/bitti/hata). `download-progress` olayı
+ * **bitişi bildirmez** (yt-dlp son satırı yazar, sonra süreç kapanır); şerit ve
+ * indirme listesi bu bildirimle tazelenir.
+ */
+export const DOWNLOADS_CHANGED_EVENT = 'jv-downloads-changed';
+
+export function notifyDownloadsChanged(): void {
+  window.dispatchEvent(new Event(DOWNLOADS_CHANGED_EVENT));
+}
+
 // Frontend owns queued/active/done/error via setDownloadState. Resolves done,
 // maps the reject string into error state; never throws.
 // Rust komutu tek `payload` nesnesi alır (sürüm kaymalarına dayanıklı);
@@ -63,6 +74,7 @@ export async function startDownload(
   },
 ): Promise<string | null> {
   await setDownloadState(itemId, { status: 'queued', error: null });
+  notifyDownloadsChanged();
   try {
     const out = await invoke<string>('download_media', {
       payload: {
@@ -85,6 +97,8 @@ export async function startDownload(
     const message = typeof e === 'string' ? e : e instanceof Error ? e.message : 'İndirme başarısız.';
     await setDownloadState(itemId, { status: 'error', error: message });
     return null;
+  } finally {
+    notifyDownloadsChanged();
   }
 }
 
@@ -107,6 +121,47 @@ export function formatBytes(n: number | null): string {
   if (n == null) return '?';
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * Hedefte aynı adlı dosya varsa `ad (2).uzantı` döner — üzerine yazmaz.
+ * Varlık kontrolü Rust tarafında yapılır (dosya sistemi orada) ve yol izinli
+ * köklerle sınırlanır.
+ */
+export async function uniqueDownloadPath(path: string): Promise<string> {
+  return invoke<string>('unique_path', { path });
+}
+
+/**
+ * Kategori → klasör adı. IDM'in Video/Music/Programs/Documents/Compressed
+ * düzeni; adlar arayüzün sözlüğüyle (indirme filtresi etiketleri) aynıdır.
+ */
+export const CATEGORY_FOLDER: Record<DownloadCategory, string> = {
+  video: 'Video',
+  audio: 'Ses',
+  archive: 'Sıkıştırılmış',
+  document: 'Belge',
+  program: 'Program',
+  other: 'Diğer',
+};
+
+/**
+ * Hedef yol. `separateFolders` açıkken dosya kendi kategorisinin alt klasörüne
+ * iner; kapalıyken doğrudan indirme köküne.
+ *
+ * Klasör henüz yoksa sorun değil: `unique_path` yolu en yakın var olan atadan
+ * çözümler, motor da indirmeye başlarken klasörü açar.
+ */
+export function destinationPath(
+  dir: string,
+  filename: string,
+  category: DownloadCategory,
+  separateFolders: boolean,
+): string {
+  const root = dir.replace(/[/\\]+$/, '');
+  return separateFolders
+    ? `${root}/${CATEGORY_FOLDER[category]}/${filename}`
+    : `${root}/${filename}`;
 }
 
 // Single 'download-progress' subscription; unlistens on unmount.

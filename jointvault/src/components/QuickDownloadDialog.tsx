@@ -30,8 +30,15 @@ import {
   detectCategoryFromFilename,
   type DownloadCategory,
 } from '@/lib/db/client';
-import { formatBytes } from '@/lib/downloads';
-import { probeUrl, startTurboDownload, type ProbeResult } from '@/lib/turbo_download';
+import { formatBytes, destinationPath, uniqueDownloadPath } from '@/lib/downloads';
+import {
+  DEFAULT_DOWNLOAD_SETTINGS,
+  getDownloadSettings,
+  probeUrl,
+  startTurboDownload,
+  type DownloadSettings,
+  type ProbeResult,
+} from '@/lib/turbo_download';
 
 interface QuickDownloadDialogProps {
   open: boolean;
@@ -58,26 +65,12 @@ export function QuickDownloadDialog({
   const [probeData, setProbeData] = useState<ProbeResult | null>(null);
   const [filename, setFilename] = useState('');
   const [destDir, setDestDir] = useState('');
-  const [threads, setThreads] = useState('16');
+  const [threads, setThreads] = useState('8');
   const [category, setCategory] = useState<DownloadCategory>('other');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // İndirme klasörünü varsayılandan çek
-  useEffect(() => {
-    if (open) {
-      void invoke<string>('get_download_dir').then((d) => setDestDir(d)).catch(() => {});
-      if (initialUrl) {
-        setUrl(initialUrl);
-        void handleProbe(initialUrl);
-      } else {
-        setUrl('');
-        setProbeData(null);
-        setFilename('');
-        setError(null);
-      }
-    }
-  }, [open, initialUrl]);
+  // Motor ayarları: kanal sayısı + kategori klasörleri.
+  const [settings, setSettings] = useState<DownloadSettings | null>(null);
 
   const handleProbe = async (targetUrl: string) => {
     if (!targetUrl.trim() || !targetUrl.startsWith('http')) return;
@@ -99,6 +92,30 @@ export function QuickDownloadDialog({
     }
   };
 
+  // İndirme klasörünü ve varsayılan kanal sayısını ayarlardan çek. Ayarlar
+  // yoklamadan ÖNCE okunur; yoklama parça desteği yoksa kanalı 1'e çeker.
+  useEffect(() => {
+    if (!open) return;
+    void invoke<string>('get_download_dir').then((d) => setDestDir(d)).catch(() => {});
+    void (async () => {
+      const settings2 = await getDownloadSettings().catch(() => null);
+      if (settings2) {
+        setSettings(settings2);
+        setThreads(String(settings2.default_connections));
+      }
+      if (initialUrl) {
+        setUrl(initialUrl);
+        void handleProbe(initialUrl);
+      } else {
+        setUrl('');
+        setProbeData(null);
+        setFilename('');
+        setError(null);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialUrl]);
+
   const pickFolder = async () => {
     try {
       const selected = await openDialog({
@@ -119,12 +136,16 @@ export function QuickDownloadDialog({
     setBusy(true);
     try {
       const targetDir = destDir || (await invoke<string>('get_download_dir'));
-      const fullPath = `${targetDir.replace(/[/\\]+$/, '')}/${filename}`;
+      const separate = settings?.category_folders ?? DEFAULT_DOWNLOAD_SETTINGS.category_folders;
+      // Aynı ada sahip dosya varsa üzerine yazılmaz; ` (2)` eklenir.
+      const fullPath = await uniqueDownloadPath(
+        destinationPath(targetDir, filename, category, separate),
+      );
       const threadCount = Number.parseInt(threads, 10) || 8;
 
       const job = await createDownloadJob({
         url: url.trim(),
-        filename: filename.trim(),
+        filename: fullPath.split(/[/\\]/).pop() ?? filename.trim(),
         destination_path: fullPath,
         file_size: probeData?.file_size ?? 0,
         threads: threadCount,

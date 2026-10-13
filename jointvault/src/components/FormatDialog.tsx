@@ -4,10 +4,12 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatBytes, listFormats, startDownload, type RemoteFormat } from '@/lib/downloads';
+import { getDownloadSettings } from '@/lib/turbo_download';
 
 export interface FormatTarget {
   id: string;
@@ -31,35 +33,36 @@ function fmtLabel(f: RemoteFormat): string {
 export function FormatDialog({ target, onClose, onDone }: FormatDialogProps) {
   const [formats, setFormats] = useState<RemoteFormat[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  /** Başlatılan son indirme: ekranda kalırken ne olduğunu söyler. */
+  const [started, setStarted] = useState<string | null>(null);
+  /** Ayarlar: kapalıyken ekran açık kalır ve elle kapatılır (varsayılan kapalı). */
+  const [autoClose, setAutoClose] = useState(false);
 
   useEffect(() => {
     if (!target) return;
     setFormats(null);
     setError(null);
-    setBusyId(null);
+    setStarted(null);
     void listFormats(target.url)
       .then(setFormats)
       .catch((e: unknown) =>
         setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Formatlar okunamadı.'),
       );
+    void getDownloadSettings()
+      .then((s) => setAutoClose(s.close_format_after_pick))
+      .catch(() => setAutoClose(false));
   }, [target]);
 
-  const pick = async (f: RemoteFormat): Promise<void> => {
-    if (!target || busyId) return;
-    setBusyId(f.id);
-    const kind = f.vcodec !== 'none' ? ('video' as const) : ('audio' as const);
-    await startDownload(target.id, target.url, kind, '720', f.id);
-    onDone();
-    onClose();
-  };
-
-  const presetFallback = async (): Promise<void> => {
-    if (!target || busyId) return;
-    setBusyId('preset');
-    await startDownload(target.id, target.url, 'video', '720');
-    onDone();
-    onClose();
+  /**
+   * İndirmeyi **beklemeden** başlatır: `startDownload` yt-dlp bitene kadar
+   * çözülür, beklemek ekranı indirme boyunca kilitler ve çıkış yolu bırakmaz.
+   * Bitince `onDone` ile arşiv tazelenir; ilerleme zaten şeritte ve listede.
+   */
+  const start = (kind: 'video' | 'audio', formatId: string | undefined, label: string): void => {
+    if (!target) return;
+    setStarted(label);
+    void startDownload(target.id, target.url, kind, '720', formatId).then(() => onDone());
+    if (autoClose) onClose();
   };
 
   const videos = (formats ?? []).filter((f) => f.vcodec !== 'none').sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
@@ -78,8 +81,12 @@ export function FormatDialog({ target, onClose, onDone }: FormatDialogProps) {
         {error && (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-destructive">{error}</p>
-            <Button variant="outline" size="sm" onClick={() => void presetFallback()} disabled={busyId !== null}>
-              {busyId ? 'Başlatılıyor…' : 'Preset ile devam (720p)'}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => start('video', undefined, 'Preset (720p)')}
+            >
+              Preset ile devam (720p)
             </Button>
           </div>
         )}
@@ -91,12 +98,11 @@ export function FormatDialog({ target, onClose, onDone }: FormatDialogProps) {
                 <li key={f.id}>
                   <button
                     type="button"
-                    onClick={() => void pick(f)}
-                    disabled={busyId !== null}
-                    className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm transition hover:bg-muted disabled:opacity-60"
+                    onClick={() => start('video', f.id, fmtLabel(f))}
+                    className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm transition hover:bg-muted"
                   >
                     <span>{fmtLabel(f)}</span>
-                    <span className="text-xs text-muted-foreground">{busyId === f.id ? '…' : 'İndir'}</span>
+                    <span className="text-xs text-muted-foreground">İndir</span>
                   </button>
                 </li>
               ))}
@@ -111,20 +117,27 @@ export function FormatDialog({ target, onClose, onDone }: FormatDialogProps) {
                 <li key={f.id}>
                   <button
                     type="button"
-                    onClick={() => void pick(f)}
-                    disabled={busyId !== null}
-                    className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm transition hover:bg-muted disabled:opacity-60"
+                    onClick={() => start('audio', f.id, `Ses · ${f.ext}`)}
+                    className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm transition hover:bg-muted"
                   >
                     <span>
                       {f.ext} · {formatBytes(f.filesize)}
                     </span>
-                    <span className="text-xs text-muted-foreground">{busyId === f.id ? '…' : 'İndir'}</span>
+                    <span className="text-xs text-muted-foreground">İndir</span>
                   </button>
                 </li>
               ))}
             </ul>
           </div>
         )}
+        <DialogFooter className="items-center gap-2 sm:justify-between">
+          <span className="min-w-0 flex-1 truncate text-micro text-muted-foreground" title={started ?? ''}>
+            {started ? `İndirme başladı: ${started} · arka planda sürüyor` : ''}
+          </span>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Kapat
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

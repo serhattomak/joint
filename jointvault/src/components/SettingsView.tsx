@@ -39,6 +39,12 @@ import {
 import { createBackup } from '@/lib/db/backup';
 import { QUALITY_OPTIONS, getDefaultQuality, setDefaultQuality, type DownloadQuality } from '@/lib/downloads';
 import {
+  DEFAULT_DOWNLOAD_SETTINGS,
+  getDownloadSettings,
+  setDownloadSettings,
+  type DownloadSettings,
+} from '@/lib/turbo_download';
+import {
   WHISPER_MODELS,
   downloadModel,
   downloadWhisperEngine,
@@ -183,6 +189,39 @@ const CHAT_MODELS: readonly { id: string; label: string }[] = [
   { id: 'ai-model-llm', label: 'Qwen 2.5 14B (sohbet)' },
 ];
 
+/** Hız sınırı seçenekleri (bayt/sn). 0 = sınırsız. */
+const SPEED_LIMIT_OPTIONS = [
+  { value: '0', label: 'Sınırsız' },
+  { value: String(1024 * 1024), label: '1 MB/s' },
+  { value: String(2 * 1024 * 1024), label: '2 MB/s' },
+  { value: String(4 * 1024 * 1024), label: '4 MB/s' },
+  { value: String(8 * 1024 * 1024), label: '8 MB/s' },
+  { value: String(16 * 1024 * 1024), label: '16 MB/s' },
+];
+
+const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 5].map((n) => ({
+  value: String(n),
+  label: `${n} indirme`,
+}));
+
+const CONNECTION_OPTIONS = [
+  { value: '4', label: '4 kanal' },
+  { value: '8', label: '8 kanal (önerilen)' },
+  { value: '16', label: '16 kanal' },
+  { value: '32', label: '32 kanal' },
+];
+
+const AFTER_COMPLETE_OPTIONS = [
+  { value: 'none', label: 'Hiçbir şey' },
+  { value: 'open', label: 'Dosyayı aç' },
+  { value: 'reveal', label: 'Klasörde göster' },
+];
+
+const RETRY_OPTIONS = [0, 1, 2, 3, 5].map((n) => ({
+  value: String(n),
+  label: n === 0 ? 'Kapalı' : `${n} deneme`,
+}));
+
 export function SettingsView(props: SettingsViewProps) {
   const { pageSize, pageSizes, onPageSizeChange, onReplayTour, onClose, initialTab = 'ai' } = props;
   const { open, reveal } = useOpenTarget();
@@ -196,6 +235,9 @@ export function SettingsView(props: SettingsViewProps) {
   const [dirBusy, setDirBusy] = useState(false);
   const [dirError, setDirError] = useState<string | null>(null);
   const [quality, setQuality] = useState<DownloadQuality>(() => getDefaultQuality());
+  // İndirme motoru ayarları (IDM'in "Connection" sekmesinin karşılığı).
+  const [dlSettings, setDlSettings] = useState<DownloadSettings>(DEFAULT_DOWNLOAD_SETTINGS);
+  const [dlSettingsError, setDlSettingsError] = useState<string | null>(null);
   // Eşleşme anahtarı
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -283,6 +325,9 @@ export function SettingsView(props: SettingsViewProps) {
     void invoke<string>('get_pairing_token')
       .then(setToken)
       .catch((e: unknown) => setTokenError(String(e)));
+    void getDownloadSettings()
+      .then(setDlSettings)
+      .catch((e: unknown) => setDlSettingsError(String(e)));
   }, [refreshComponentStatus]);
 
   // Eklenti sekmesi her açıldığında tazelenir: kullanıcı eklentiyi bağlar ve
@@ -314,6 +359,21 @@ export function SettingsView(props: SettingsViewProps) {
       setDirError(String(e));
     } finally {
       setDirBusy(false);
+    }
+  };
+
+  /**
+   * İndirme motoru ayarını yazar. İyimser güncelleme: anahtar anında oynar,
+   * sonra backend'e yazılır ve motor sınırları aynı çağrıda tazelenir.
+   */
+  const updateDlSettings = async (patch: Partial<DownloadSettings>): Promise<void> => {
+    const next = { ...dlSettings, ...patch };
+    setDlSettings(next);
+    setDlSettingsError(null);
+    try {
+      setDlSettings(await setDownloadSettings(next));
+    } catch (e: unknown) {
+      setDlSettingsError(String(e));
     }
   };
 
@@ -1915,6 +1975,108 @@ export function SettingsView(props: SettingsViewProps) {
                   />
                 </SettingRow>
                 <SettingRow
+                  label="Eşzamanlı indirme"
+                  hint="Aynı anda indirilecek en fazla dosya sayısı. Fazlası kuyrukta bekler ve sırası gelince kendiliğinden başlar."
+                >
+                  <Select
+                    label="Eşzamanlı indirme"
+                    className="w-40"
+                    value={String(dlSettings.max_concurrent)}
+                    onValueChange={(v) => void updateDlSettings({ max_concurrent: Number(v) })}
+                    options={CONCURRENCY_OPTIONS}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Varsayılan kanal sayısı"
+                  hint="Dosya kaç parçaya bölünerek indirilir. Sunucu izin verirse kanallar boşa çıktıkça en büyük parça ikiye bölünür (dinamik parçalama)."
+                >
+                  <Select
+                    label="Kanal sayısı"
+                    className="w-44"
+                    value={String(dlSettings.default_connections)}
+                    onValueChange={(v) =>
+                      void updateDlSettings({ default_connections: Number(v) })
+                    }
+                    options={CONNECTION_OPTIONS}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Toplam hız sınırı"
+                  hint="Tüm indirmelerin paylaştığı üst sınır. Yavaş bir bağlantıda arşivi gezerken bant genişliğini serbest bırakmak için kullanılır."
+                >
+                  <Select
+                    label="Hız sınırı"
+                    className="w-40"
+                    value={String(dlSettings.speed_limit_bps)}
+                    onValueChange={(v) => void updateDlSettings({ speed_limit_bps: Number(v) })}
+                    options={SPEED_LIMIT_OPTIONS}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Kategori klasörleri"
+                  hint="İndirilen dosya türüne göre alt klasöre ayrılır (Video, Ses, Sıkıştırılmış, Belge, Program, Diğer). Kapalıyken hepsi indirme köküne iner."
+                >
+                  <Switch
+                    checked={dlSettings.category_folders}
+                    onCheckedChange={(checked) =>
+                      void updateDlSettings({ category_folders: checked })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="İndirme tamamlanınca"
+                  hint="İndirme bittiğinde ne yapılsın. IDM'deki 'start downloading now / open file' davranışının karşılığı."
+                >
+                  <Select
+                    label="Tamamlanınca"
+                    className="w-40"
+                    value={dlSettings.after_complete}
+                    onValueChange={(v) =>
+                      void updateDlSettings({
+                        after_complete: v as DownloadSettings['after_complete'],
+                      })
+                    }
+                    options={AFTER_COMPLETE_OPTIONS}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Hata sonrası yeniden deneme"
+                  hint="Bağlantı kopması gibi geçici hatalarda indirme kendiliğinden yeniden denenir ve kaldığı yerden sürer. Kalıcı hatalarda (ör. 404) denenmez."
+                >
+                  <Select
+                    label="Yeniden deneme"
+                    className="w-40"
+                    value={String(dlSettings.retry_count)}
+                    onValueChange={(v) => void updateDlSettings({ retry_count: Number(v) })}
+                    options={RETRY_OPTIONS}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Format seçince pencere kapansın"
+                  hint="Kapalıyken indirme başladıktan sonra format ekranı açık kalır (Kapat ile kapatırsın, indirme arka planda sürer). Açıkken ekran kendiliğinden kapanır."
+                >
+                  <Switch
+                    checked={dlSettings.close_format_after_pick}
+                    onCheckedChange={(checked) =>
+                      void updateDlSettings({ close_format_after_pick: checked })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Tarayıcıdan indirince pencere öne gelsin"
+                  hint="Tarayıcıda başlattığın indirmeyi uygulama devraldığında pencere öne gelir (IDM'in indirme penceresi gibi). Sayfanın kendiliğinden başlattığı indirmelerde de geçerlidir; rahatsız ederse kapat."
+                >
+                  <Switch
+                    checked={dlSettings.raise_on_capture}
+                    onCheckedChange={(checked) =>
+                      void updateDlSettings({ raise_on_capture: checked })
+                    }
+                  />
+                </SettingRow>
+                {dlSettingsError && (
+                  <p className="pt-2 text-sm text-destructive">{dlSettingsError}</p>
+                )}
+                <SettingRow
                   label="Pencere kapatma davranışı"
                   hint="Pencere [X] ile kapatıldığında uygulamanın ne yapacağını belirler."
                   htmlFor="set-close-mode"
@@ -1966,6 +2128,21 @@ export function SettingsView(props: SettingsViewProps) {
                     ) : (
                       'Eklenti bu kurulumda henüz bağlanmadı.'
                     )}
+                  </p>
+                </div>
+
+                {/* Tarayıcı indirmelerini devralma (IDM'in "download takeover"ı). */}
+                <div className="flex flex-col gap-2 settings-card p-4">
+                  <span className="text-sm font-medium">Tarayıcıdan indirme devralma</span>
+                  <p className="text-xs text-muted-foreground">
+                    Eklenti kuruluyken tarayıcıda başlatılan indirmeler JointVault'a devredilir: tarayıcının
+                    indirmesi iptal edilir ve dosya çok kanallı motorla, kaldığı yerden devam edebilen bir
+                    indirmeyle iner. Adresin <span className="font-mono text-micro">Referer</span>'i ve
+                    çerezleri de taşınır, böylece oturum gerektiren bağlantılar da çalışır.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Hangi uzantıların devralınacağını ve devralmayı açıp kapatmayı eklentinin kendi
+                    penceresinden ayarlarsın. Uygulama kapalıyken devralma olmaz; indirme tarayıcıda iner.
                   </p>
                 </div>
 
