@@ -1,16 +1,21 @@
 {
   "manifest_version": 3,
   "name": "JointVault Collector",
-  "version": "1.0.0",
-  "description": "Collect X bookmarks into JointVault for review.",
-  "permissions": ["activeTab", "scripting", "storage", "cookies", "alarms"],
+  "version": "1.1.0",
+  "description": "X/Instagram/YouTube listelerini aktarır, tarayıcı indirmelerini devralır, sayfa kaynaklarını bulur ve sağ tık menüsü sunar.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "cookies",
+    "alarms",
+    "downloads",
+    "contextMenus",
+    "webRequest"
+  ],
   "host_permissions": [
     "http://127.0.0.1:48120/*",
-    "*://*.x.com/*",
-    "*://*.twitter.com/*",
-    "*://*.instagram.com/*",
-    "*://*.youtube.com/*",
-    "*://*.google.com/*"
+    "*://*/*"
   ],
   "action": {
     "default_popup": "popup.html"
@@ -18,5 +23,11 @@
   "background": {
     "service_worker": "background.js",
     "type": "module"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["fonts/*.woff2"],
+      "matches": ["*://*/*"]
+    }
+  ]
 }

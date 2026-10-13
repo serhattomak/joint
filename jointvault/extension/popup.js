@@ -326,6 +326,233 @@ document.getElementById("collect").addEventListener("click", async () => {
   }
 });
 
+// Tarayıcıdan devralma: anahtar + uzantı listesi (IDM'in "File Types" ayarı).
+(() => {
+  const toggleEl = document.getElementById("capture-toggle");
+  const extEl = document.getElementById("capture-ext");
+  const badgeEl = document.getElementById("captureBadge");
+  const lastEl = document.getElementById("captureLast");
+  if (!toggleEl || !extEl) return;
+
+  // Liste boş bırakılırsa arka plan varsayılan listeyi kullanır; burada
+  // varsayılanlar TEKRAR EDİLMEZ (tek gerçek arka plandadır).
+  const readStored = () =>
+    new Promise((res) => chrome.storage.local.get({ capture: null, lastCapture: null }, res));
+
+  const paintBadge = () => {
+    const on = toggleEl.checked;
+    if (badgeEl) {
+      badgeEl.textContent = on ? "Açık" : "Kapalı";
+      if (on) badgeEl.dataset.tone = "local";
+      else delete badgeEl.dataset.tone;
+    }
+  };
+
+  const paintLast = (last) => {
+    if (!lastEl) return;
+    if (!last) {
+      lastEl.textContent = "Son devralınan: —";
+      return;
+    }
+    const when = new Date(last.at || Date.now()).toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const state =
+      last.outcome === "ok"
+        ? "devralındı"
+        : last.outcome === "offline"
+          ? "uygulama kapalıydı"
+          : "devredilemedi";
+    lastEl.textContent = `Son devralınan: ${last.filename || last.url} · ${state} · ${when}`;
+  };
+
+  const save = () => {
+    const extensions = extEl.value
+      .split(",")
+      .map((s) => s.trim().replace(/^\./, "").toLowerCase())
+      .filter(Boolean);
+    chrome.storage.local.set({ capture: { enabled: toggleEl.checked, extensions } });
+    paintBadge();
+  };
+
+  void readStored().then((cfg) => {
+    toggleEl.checked = cfg.capture ? cfg.capture.enabled !== false : true;
+    extEl.value =
+      cfg.capture && Array.isArray(cfg.capture.extensions) ? cfg.capture.extensions.join(", ") : "";
+    paintBadge();
+    paintLast(cfg.lastCapture);
+  });
+
+  toggleEl.addEventListener("change", save);
+  extEl.addEventListener("change", save);
+})();
+
+// Sağ tık menüsü ayarları: her öğe ayrı açılıp kapatılabilir.
+(() => {
+  const badgeEl = document.getElementById("menuBadge");
+  const cardEl = document.getElementById("menuCard");
+  if (!cardEl) return;
+
+  // Varsayılanlar arka plandadır (tek gerçek orada); burada yalnız anahtarlar.
+  const KEYS = ["link", "image", "media", "selection", "pageAsk", "pageSilent", "batch"];
+  const inputs = {};
+  for (const key of KEYS) {
+    const el = document.getElementById(`menu-${key}`);
+    if (el) inputs[key] = el;
+  }
+
+  const paint = (menus) => {
+    let on = 0;
+    for (const key of KEYS) {
+      const value = menus[key] !== false;
+      if (inputs[key]) inputs[key].checked = value;
+      if (value) on += 1;
+    }
+    if (badgeEl) badgeEl.textContent = `${on}/${KEYS.length}`;
+  };
+
+  const save = () => {
+    const menus = {};
+    for (const key of KEYS) menus[key] = inputs[key] ? inputs[key].checked : true;
+    chrome.storage.local.set({ menus });
+    paint(menus);
+  };
+
+  for (const key of KEYS) inputs[key]?.addEventListener("change", save);
+
+  void chrome.storage.local
+    .get({ menus: null })
+    .then((cfg) => paint(cfg.menus || {}))
+    .catch(() => paint({}));
+})();
+
+// Sayfadaki kaynaklar (koklama): sekme başına liste, panelin tam hâli.
+(() => {
+  const cardEl = document.getElementById("sniffCard");
+  const listEl = document.getElementById("sniffList");
+  const badgeEl = document.getElementById("sniffBadge");
+  const hintEl = document.getElementById("sniffHint");
+  const allBtn = document.getElementById("sniff-all");
+  if (!cardEl || !listEl) return;
+
+  const KIND_LABEL = {
+    video: "Video",
+    audio: "Ses",
+    archive: "Arşiv",
+    document: "Belge",
+    program: "Program",
+    other: "Dosya",
+  };
+
+  let tabId = null;
+  let tabUrl = "";
+  let items = [];
+
+  const nameOf = (resource) => {
+    try {
+      const last = new URL(resource.url).pathname.split("/").filter(Boolean).pop() || "";
+      return decodeURIComponent(last) || resource.url;
+    } catch {
+      return resource.url;
+    }
+  };
+
+  const sizeOf = (bytes) => {
+    if (!bytes) return "";
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  };
+
+  /** Devral: uygulama kabul ederse dosya çok kanallı motorla iner. */
+  async function handOff(url, button) {
+    if (button) button.disabled = true;
+    let accepted = "rejected";
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: "jv-handoff",
+        url,
+        referer: tabUrl,
+      });
+      if (res && res.outcome === "ok") accepted = "ok";
+      else if (res && res.outcome === "offline") accepted = "offline";
+    } catch {
+      accepted = "offline";
+    }
+    if (button) {
+      button.textContent =
+        accepted === "ok" ? "Devralındı" : accepted === "offline" ? "Uygulama kapalı" : "Reddedildi";
+      if (accepted === "ok") button.dataset.done = "ok";
+      else button.disabled = false;
+    }
+    if (accepted === "offline") {
+      statusEl.dataset.state = "error";
+      statusText.textContent =
+        "JointVault kapalı görünüyor: devralınan indirme başlatılamadı. Uygulamayı açıp tekrar dene.";
+    } else if (accepted === "ok") {
+      statusEl.dataset.state = "ok";
+      statusText.textContent = `JointVault'a devredildi: ${nameOf({ url })}`;
+    }
+    return accepted;
+  }
+
+  function render() {
+    cardEl.hidden = items.length === 0;
+    badgeEl.textContent = String(items.length);
+    allBtn.hidden = items.length < 2;
+    hintEl.hidden = items.length > 0;
+    listEl.replaceChildren();
+
+    for (const item of items.slice().reverse()) {
+      const li = document.createElement("li");
+      const info = document.createElement("span");
+      info.className = "sniff-info";
+      const name = document.createElement("span");
+      name.className = "sniff-name";
+      name.textContent = nameOf(item);
+      name.title = item.url;
+      const meta = document.createElement("span");
+      meta.className = "sniff-meta";
+      meta.textContent = [KIND_LABEL[item.kind] || "Dosya", sizeOf(item.size)]
+        .filter(Boolean)
+        .join(" · ");
+      info.append(name, meta);
+
+      const go = document.createElement("button");
+      go.className = "btn btn-outline btn-compact";
+      go.type = "button";
+      go.textContent = "Devral";
+      go.addEventListener("click", () => void handOff(item.url, go));
+
+      li.append(info, go);
+      listEl.append(li);
+    }
+  }
+
+  allBtn?.addEventListener("click", async () => {
+    allBtn.disabled = true;
+    for (const item of items) await handOff(item.url, null);
+    allBtn.disabled = false;
+  });
+
+  void chrome.tabs
+    .query({ active: true, currentWindow: true })
+    .then(async ([tab]) => {
+      tabId = tab && typeof tab.id === "number" ? tab.id : null;
+      tabUrl = (tab && tab.url) || "";
+      if (tabId === null) return;
+      const res = await chrome.runtime
+        .sendMessage({ type: "jv-resources", tabId })
+        .catch(() => null);
+      items = (res && res.items) || [];
+      render();
+    })
+    .catch(() => {
+      cardEl.hidden = true;
+    });
+})();
+
 // Çerezleri Aktar butonu
 document.getElementById("sync-cookies")?.addEventListener("click", async () => {
   const btn = document.getElementById("sync-cookies");

@@ -609,8 +609,122 @@
       margin-top: 12px;
     }
 
-    /* --- Bildirim: uygulamanın tek geri bildirim kanalı. İkon + sözcük; renk yalnız değil. --- */
-    #status {
+    /* --- Koklanan kaynak listesi: hairline satırlar, mono ölçüm. --- */
+    .sniff-list {
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      max-height: 228px;
+      overflow-y: auto;
+    }
+
+    .sniff-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .sniff-list li:last-child {
+      border-bottom: 0;
+    }
+
+    .sniff-info {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .sniff-name {
+      display: block;
+      font-size: 0.75rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sniff-meta {
+      display: block;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.6875rem;
+      letter-spacing: 0.02em;
+      color: var(--color-muted-foreground);
+    }
+
+    .btn-compact {
+      width: auto;
+      height: 26px;
+      padding: 0 9px;
+      font-size: 0.75rem;
+    }
+
+    .btn-compact[data-done="ok"] {
+      border-color: color-mix(in oklab, var(--color-state-acquired) 50%, transparent);
+      color: var(--color-state-acquired);
+    }
+
+    /* --- Anahtar (switch): uygulamanın anahtar yuvası dili (hap yuva + daire). --- */
+    .switch {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .switch input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .switch-track {
+      position: relative;
+      width: 38px;
+      height: 22px;
+      flex-shrink: 0;
+      border-radius: 999px;
+      background: var(--color-input);
+      transition: background-color 150ms var(--ease-out);
+    }
+
+    .switch-track::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+      transition: transform 200ms var(--ease-out);
+    }
+
+    .switch input:checked + .switch-track {
+      background: var(--color-primary);
+    }
+
+    .switch input:checked + .switch-track::after {
+      transform: translateX(16px);
+    }
+
+    .switch input:focus-visible + .switch-track {
+      outline: 2px solid var(--color-ring);
+      outline-offset: 2px;
+    }
+
+    .switch-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    /* --- Bildirim: uygulamanın tek geri bildirim kanalı. İkon + sözcük; renk yalnız değil. --- */    #status {
       display: none;
       align-items: flex-start;
       gap: 8px;
@@ -725,7 +839,7 @@
         <path d="M12 17h.01"/>
       </svg>
       <div class="banner-text">
-        <strong>İzin Güncellemesi:</strong> Çerez aktarımı için <code>chrome://extensions</code> sayfasından JointVault eklentisindeki <strong>Yenile</strong> butonuna bir kez tıklayın.
+        <strong>İzin Güncellemesi:</strong> Çerez aktarımı ve tarayıcı indirmelerini devralma için <code>chrome://extensions</code> sayfasından JointVault eklentisindeki <strong>Yenile</strong> butonuna bir kez tıklayın.
       </div>
     </div>
 
@@ -797,6 +911,92 @@
       </button>
 
       <div class="hint" id="dlHint">Tekil tweet, Instagram kaydı veya YouTube videosu sayfasında aktif olur.</div>
+    </section>
+
+    <!-- Tarayıcıdan devralma (IDM'in download takeover'ı) -->
+    <section class="card dl-card" id="captureCard">
+      <div class="dl-header">
+        <span class="dl-title">Tarayıcıdan Devral</span>
+        <span class="dl-badge" id="captureBadge">Açık</span>
+      </div>
+
+      <label class="switch">
+        <input type="checkbox" id="capture-toggle" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">İndirmeleri JointVault devralsın</span>
+      </label>
+
+      <div class="field">
+        <label for="capture-ext">Devralınacak Uzantılar</label>
+        <input id="capture-ext" type="text" placeholder="boş = varsayılan liste (zip, rar, exe, pdf, mp4, mp3 …)" />
+      </div>
+
+      <p class="hint">
+        Tarayıcıda bu uzantılardan biri indirilmeye başlarsa JointVault devralır ve çok kanallı
+        motorla indirir. Uygulama kapalıysa indirmeye dokunulmaz; dosya tarayıcıda iner.
+      </p>
+      <p class="hint" id="captureLast">Son devralınan: —</p>
+    </section>
+
+    <!-- Sağ tık menüsü: her öğe ayrı açılıp kapatılabilir -->
+    <section class="card dl-card" id="menuCard">
+      <div class="dl-header">
+        <span class="dl-title">Sağ Tık Menüsü</span>
+        <span class="dl-badge" id="menuBadge" data-num>0</span>
+      </div>
+
+      <label class="switch">
+        <input type="checkbox" id="menu-link" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Bağlantıyı indir</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="menu-image" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Fotoğrafı indir</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="menu-media" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Videoyu / sesi indir</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="menu-selection" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Seçili bağlantıyı indir</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="menu-pageAsk" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">İçeriği indir (kalite seç)</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="menu-pageSilent" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Sormadan indir</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="menu-batch" />
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Sayfadaki tüm kaynakları devral</span>
+      </label>
+
+      <p class="hint">
+        X, YouTube ve Instagram sayfalarında <strong>içeriği indir</strong> öğeleri; kaynak
+        bulunan sayfalarda <strong>tüm kaynakları devral</strong> görünür. Kapatılan öğe sağ tık
+        menüsünde hiç çıkmaz.
+      </p>
+    </section>
+
+    <!-- Sayfadaki kaynaklar (koklama) -->
+    <section class="card dl-card" id="sniffCard" hidden>
+      <div class="dl-header">
+        <span class="dl-title">Sayfadaki Kaynaklar</span>
+        <span class="dl-badge" id="sniffBadge" data-num>0</span>
+      </div>
+      <ul class="sniff-list" id="sniffList"></ul>
+      <p class="hint" id="sniffHint">Bu sayfada indirilebilir kaynak bulunamadı.</p>
+      <button class="btn btn-secondary" id="sniff-all" hidden>Tümünü Devral</button>
     </section>
 
     <!-- Katlanır ayarlar -->
