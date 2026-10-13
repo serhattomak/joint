@@ -235,6 +235,11 @@ Spatial model: **sabit çekmece rayı + akan içerik kolonu**, üstte **tek kal�
   başlar). `md` altında gizlenir; aynı çekmeceler yatay şeride iner (`SidebarStrip`) — gezinme
   kaybolmaz. Kapatılabilir: tercih `localStorage`'da (`jv-sidebar`), kapalıyken içerik genişler.
 - **Kural şeridi:** 44px (`h-11`), `sticky`, arşiv görünümünde; altında içerik akar.
+- **İndirme şeridi:** 44px (`h-11`), `sticky top-[52px]`, **yalnız süren indirme varken**
+  çizilir; araç çubuğunun hemen altında tek satırdır: iş sayısı · ortalama yüzde · (varsa)
+  toplam hız · `Yönet`. Tıklanınca İndirme Yöneticisi açılır; `X` ile kapatılır ve **kapatma
+  o indirme kümesine aittir** — yeni bir indirme başlayınca şerit geri gelir. İş bitince
+  kendiliğinden kaybolur.
 - **Büyük başlık:** arşiv görünümünde `text-display`; altında kapsam sekmeleri. Sayfa yüzeylerinde
   başlık `PageSurface` başlığıdır.
 - **Izgara:** 1 / 2 / 3 kolon (sm / xl). Kart yüksekliği içerikten gelir, sabitlenmez.
@@ -595,12 +600,19 @@ Koordinatlar `jointvault/` köküne göredir.
 - **Tam-sayfa yüzeyler:** `CollectionsView` · `NotebookView` · `DownloadsView` · `SyncView` · `StatsView` ·
   `ToolboxHub` (+ `MergeTool`/`SilenceTool`/`GifTool`/`SubtitleTool`/`DuplicatesView`) ·
   `ConverterStudio` · `SettingsView`.
+- **İndirme şeridi:** `src/components/DownloadStrip.tsx` (araç çubuğunun altındaki tek satır;
+  iki motorun işlerini toplar, `download-progress` bitişi bildirmediği için bitişi
+  `lib/downloads.ts` → `DOWNLOADS_CHANGED_EVENT` taşır).
 - **Yardımcılar:** `lib/nav-history.ts` (geri/ileri) · `lib/use-drag-dismiss.ts` (çekip-kapat) ·
   `lib/theme.ts` (tema) · `lib/platform.ts` (platform mürekkebi).
 - **CSS yardımcıları (`index.css`):** `material-rail|toolbar|sheet` · `settings-card` ·
   `record-band` · `cv-card` · `cv-row` · `skeleton-paper` · `scroll-edge-b`.
 - **Eklenti:** `extension/popup.html` bu sözlüğü ve `@theme` token'larını taşır (aynı rol
   adları, gece/gündüz); ayrı bir tasarım dili kurmaz. Kaynak token değişince orası da güncellenir.
+  `extension/panel.js` aynı katmanın ikinci taşıyıcısıdır (sayfaya enjekte edilen yüzen kaynak
+  paneli): tokenları Shadow DOM içinde kendi `<style>`'ında tutar, yazı tiplerini eklentinin
+  kendi dosyalarından yükler — yabancı sayfanın CSS'inden hiçbir şey miras almaz
+  (`:host { all: initial }`). Ölçü ve sözlük popup'la aynıdır.
 
 ## Yeni ekran/özellik için kontrol listesi
 

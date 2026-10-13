@@ -41,6 +41,7 @@ comes back. Design language and rules live in `DESIGN.md` / `PRODUCT.md`.
 | **Arşiv** | Tekli/toplu link kaydı, kart & satır görünümü, kapsam sekmeleri (Tümü · Favoriler · Yerel), filtre paneli, tam metin arama, sayfalama (1000+ kayıt bütçesi) |
 | **İçe aktarma** | Tarayıcı eklentisi: X yer imleri, Instagram kaydedilenler, YouTube oynatma listeleri (otomatik kaydırarak toplar) · pano izleyici · URL'den içe aktarma |
 | **İndirme** | `yt-dlp` sidecar, gerçek format listesinden kalite seçimi, sıralı kuyruk, satır içi yüzde + hız/ETA, hata durumunda yeniden deneme |
+| **İndirme yöneticisi** | IDM tarzı çok kanallı motor: dinamik parçalama, duraklat/devam (kaldığı yerden), eşzamanlı indirme kuyruğu, hız sınırı, kategori klasörleri, `Referer`+çerez, hata sonrası yeniden deneme |
 | **Araçlar** | Medya dönüştürücü (mp4/mp3/m4a/kırp), zaman çizelgeli kırpma editörü (film şeridi + dalga formu), video birleştirme, sessizlik kırpma, GIF/WebM, altyazı gömme/çıkarma |
 | **Defter** | Kategori hiyerarşisi (üst › alt), kategori başına sayfa, sayfa özeti, plan oluşturma ve taksonomi bakımı |
 | **Yinelenenler** | URL kimliği + dosya hash'i ile gruplayıp birleştirme önerisi |
@@ -72,6 +73,10 @@ URL'den içe aktarma ─┴──► eşleşme anahtarlı localhost köprüsü �
                             (127.0.0.1:48120)                        │
                                                                      ▼
                                         yt-dlp kuyruğu ──► ffmpeg / whisper araçları
+
+tarayıcı indirmesi ──► eklenti (indirmeyi iptal eder) ──► köprü ──► çok kanallı
+                                                                     indirme motoru ──► disk
+sayfa kaynakları ────► eklenti koklayıcı (rozet · panel)
 ```
 
 - **Kabuk:** Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 (`@theme`) +
@@ -115,6 +120,21 @@ bölümündeki eşleşme anahtarını eklentiye yapıştır.
 
 - **Topla:** açık sekmedeki X yer imlerini / Instagram kaydedilenleri / YouTube
   oynatma listesini sayfayı kaydırarak toplar ve arşive aktarır.
+- **İndirme durumu görünür:** araç çubuğunun altındaki şerit süren işleri özetler
+  (sayı · ortalama yüzde · hız) ve İndirme Yöneticisi'ne götürür; listede her kayıt
+  gerçek durumunu damgalar ve ilerlemesi canlı akar. İndirme başlarken kalite/format
+  seçimi linkin gerçek formatlarından sunulur.
+- **Devral:** tarayıcıda başlatılan indirmeler (uzantı listesine göre) JointVault'a
+  devredilir; tarayıcının indirmesi iptal edilir ve dosya çok kanallı motorla iner.
+  Uygulama kapalıysa indirmeye **dokunulmaz**. Sağ tık menüsünde "JointVault ile indir".
+  Devralınca **pencere öne gelir** (Ayarlar → İndirme'den kapatılabilir) — iş uygulamada
+  koştuğu için görünmesi gerekir; Windows ön plan kısıtı kısa süreli "her zaman üstte"
+  ile aşılır.
+- **Kokla:** sayfadaki video/ses/arşiv/belge kaynakları araç çubuğu rozetinde, yüzen
+  panelde ve eklenti penceresinde listelenir; tek tıkla devralınır.
+- **Sağ tık:** bağlantı · fotoğraf · video/ses · seçili bağlantı · sayfa içeriği
+  (kalite seç ya da sormadan) · sayfadaki tüm kaynaklar. Her öğe eklenti penceresinden
+  ayrı açılıp kapatılır; koşullu öğeler yalnız geçerli oldukları sayfada görünür.
 - **Uygulama kapalıyken:** parti `chrome.storage.local`'daki kuyruğa yazılır; uygulama
   açıldığında (≈1 dk içinde) tek partide aktarılır ve mevcut "Önizle ve onayla"
   akışına düşer. `401` ya da ağ hatasında kuyruk silinmez.
@@ -133,6 +153,12 @@ bölümündeki eşleşme anahtarını eklentiye yapıştır.
   üretilir, depoya girmez.
 - **CSP sıkıdır:** `default-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`
   (`jointvault/src-tauri/tauri.conf.json`).
+- **Eklenti erişimi geniştir ve bu bilinçlidir:** devralma ve koklama için
+  `downloads` · `webRequest` · `contextMenus` izinleri ve **tüm sitelerde** host izni
+  ister; devredilen indirmenin çerezleri **yalnız o adres için** okunur ve istekle
+  birlikte yerel motora verilir. Hiçbir veri dışarı gitmez: trafik yalnız
+  `127.0.0.1:48120` köprüsüne ve indirilen adresin kendisine çıkar. Geniş izin istemezsen
+  eklentiyi kurmadan uygulamayı kullanabilirsin — devralma ve koklama o zaman çalışmaz.
 - **Bilinen sınır:** eklenti eşleşme anahtarını `chrome.storage.local`'da düz metin
   tutar. Yerel bir köprü için kabul edilebilir; anahtar yalnızca bu makinede işe yarar.
 - **`chrome.alarms`** tarayıcı kapalıyken çalışmaz; kuyruk aktarımı en geç tarayıcı

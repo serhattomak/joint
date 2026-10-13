@@ -40,6 +40,9 @@ Rakip bir ürünün dürüstçe kopyalayamayacağı mekanizma: **kaydetme, indir
 
 - Aktarım yolları: tekil link ekleme, toplu aktarım, URL'den indirme, pano izleyici (kopyalanan linki yakalar), tarayıcı eklentisi (X yer işaretleri / Instagram kaydedilenler / YouTube oynatma listeleri, otomatik kaydırarak toplar).
 - Satır içi indirme: gerçek format listesinden kalite seçimi, sıralı kuyruk, satır içi yüzde + hız/ETA, hata durumunda yeniden deneme.
+- İndirme durumu **her ekrandan okunur**: araç çubuğunun altındaki şerit süren işleri özetler (sayı · yüzde · hız) ve tek tıkla İndirme Yöneticisi'ne götürür; listede damga gerçek durumu söyler (`kuyrukta · iniyor · yerel · hata`) ve ilerleme canlı akar. İndirme başlatılırken **kalite/format seçimi** linkin gerçek formatlarından sunulur.
+- İndirme devralma: tarayıcıda başlatılan indirmeyi eklenti uygulamaya devreder (tarayıcının indirmesi iptal edilir), `Referer` ve o adresin çerezleri taşınır; sayfa kaynakları koklanır (araç çubuğu rozeti · yüzen panel · liste) ve tek tıkla devralınır.
+- Sağ tık menüsü: bağlantı, fotoğraf, video/ses, seçili bağlantı, sayfa içeriği (kalite seç ya da sormadan) ve sayfadaki tüm kaynaklar; her öğe ayrı açılıp kapatılabilir.
 - Araçlar: medya dönüştürücü (mp4/mp3/m4a/kırp), zaman çizelgeli kırpma editörü (film şeridi + dalga formu), video birleştirme, sessizlik kırpma, GIF/WebM üretimi, altyazı gömme/çıkarma ve whisper ile otomatik üretim (model lazy indirilir), yinelenen bulucu (URL + dosya hash), istatistikler.
 - Kabuk: sistem tepsisi (kapatınca arka planda devam / gerçekten çık), tek örnek kilidi, Ctrl+K komut paleti, tema geçişi, karşılama turu + ilk kurulum sihirbazı, tanılama paneli, vault yedekleme/geri yükleme, eklenti eşleşme anahtarı.
 - Dil: arayüzün tamamı Türkçe; `tr-TR` tarih biçimi ve Türkçe onay/uyarı metinleri.
