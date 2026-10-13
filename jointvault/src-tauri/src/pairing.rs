@@ -32,3 +32,52 @@ pub fn get_pairing_token(app: tauri::AppHandle) -> Result<String, String> {
 pub fn regenerate_pairing_token(app: tauri::AppHandle) -> Result<String, String> {
     write_new_token(&app)
 }
+
+// --- Bağlantı durumu ------------------------------------------------------
+//
+// "Eşleşme anahtarı girdim, çalıştı mı?" sorusunun dürüst cevabı: köprüye
+// yetkili bir istek gelip gelmediği. `collect.rs` her onaylı istekte bu dosyayı
+// tazeler; dosya diskte durur çünkü uygulama yeniden başladığında bellekteki
+// damga kaybolur ve arayüz "hiç bağlanmadı" diye yalan söylerdi.
+const LAST_SEEN_FILE: &str = "bridge_last_seen";
+
+/// Yetkili köprü isteği geldi (bkz. `collect::authorize`). Hata yutulur: teşhis
+/// bilgisi yazılamadı diye eklentiden gelen kayıt düşmez.
+pub fn mark_last_seen(app: &tauri::AppHandle) {
+    let Ok(dir) = app_data_dir(app) else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let _ = std::fs::write(dir.join(LAST_SEEN_FILE), millis.to_string());
+}
+
+#[derive(serde::Serialize)]
+pub struct ExtensionInfo {
+    /// Kurulumdaki `extension/` klasörü (paket kaynağı, bkz. `bundle.resources`).
+    dir: String,
+    /// Klasör gerçekten var mı? Yoksa arayüz "kurulumda bulunamadı" der.
+    installed: bool,
+    /// Unix ms; eklenti bu kurulumda hiç bağlanmadıysa `None`.
+    #[serde(rename = "lastSeen")]
+    last_seen: Option<u64>,
+}
+
+#[tauri::command]
+pub fn extension_info(app: tauri::AppHandle) -> Result<ExtensionInfo, String> {
+    let dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?
+        .join("extension");
+    let last_seen = app_data_dir(&app)
+        .ok()
+        .and_then(|d| std::fs::read_to_string(d.join(LAST_SEEN_FILE)).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    Ok(ExtensionInfo {
+        installed: dir.is_dir(),
+        dir: dir.to_string_lossy().to_string(),
+        last_seen,
+    })
+}

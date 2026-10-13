@@ -47,6 +47,7 @@ pub fn run() {
       preview_media::media_probe_cleanup,
       pairing::get_pairing_token,
       pairing::regenerate_pairing_token,
+      pairing::extension_info,
       settings::get_download_dir,
       similarity::dedupe_candidates,
     settings::app_data_path,

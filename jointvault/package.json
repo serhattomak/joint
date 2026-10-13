@@ -1,7 +1,7 @@
 {
   "name": "jointvault",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,6 +28,7 @@
     "verify:engine-archive": "node dev/verify-engine-archive.mjs",
     "verify:security": "node dev/verify-security.mjs",
     "verify:ai-optin": "node dev/verify-ai-optin.mjs",
+    "version:set": "node dev/set-version.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

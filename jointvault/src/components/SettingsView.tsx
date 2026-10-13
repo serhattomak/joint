@@ -84,6 +84,13 @@ import { downloadComponent, type ComponentStatus } from '@/lib/components';
 
 export type SettingsTab = 'view' | 'downloads' | 'speech' | 'ai' | 'diagnostics' | 'extension' | 'backup' | 'components';
 
+/** `extension_info` komutunun döndürdüğü hâli (bkz. `src-tauri/src/pairing.rs`). */
+interface ExtensionInfo {
+  dir: string;
+  installed: boolean;
+  lastSeen: number | null;
+}
+
 const THRESHOLD_OPTIONS: SelectOption[] = ['0.3', '0.5', '0.6', '0.7', '0.8'].map((v) => ({
   value: v,
   label: v,
@@ -178,7 +185,7 @@ const CHAT_MODELS: readonly { id: string; label: string }[] = [
 
 export function SettingsView(props: SettingsViewProps) {
   const { pageSize, pageSizes, onPageSizeChange, onReplayTour, onClose, initialTab = 'ai' } = props;
-  const { reveal } = useOpenTarget();
+  const { open, reveal } = useOpenTarget();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [closeMode, setCloseMode] = useState('tray');
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
@@ -194,6 +201,8 @@ export function SettingsView(props: SettingsViewProps) {
   const [showToken, setShowToken] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
+  // Eklenti: kurulum klasörü + "bağlandı mı" durumu
+  const [extension, setExtension] = useState<ExtensionInfo | null>(null);
   // Konuşma (whisper): model seçimi + lazy indirme
   const [whisperModel, setWhisperModelState] = useState<WhisperModel>(() => getWhisperModel());
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(null);
@@ -275,6 +284,15 @@ export function SettingsView(props: SettingsViewProps) {
       .then(setToken)
       .catch((e: unknown) => setTokenError(String(e)));
   }, [refreshComponentStatus]);
+
+  // Eklenti sekmesi her açıldığında tazelenir: kullanıcı eklentiyi bağlar ve
+  // "son temas"ın gerçekten güncellendiğini aynı ekranda görmesi gerekir.
+  useEffect(() => {
+    if (tab !== 'extension') return;
+    void invoke<ExtensionInfo>('extension_info')
+      .then(setExtension)
+      .catch(() => setExtension(null));
+  }, [tab]);
 
   const pickDir = async (): Promise<void> => {
     setDirError(null);
@@ -1920,24 +1938,71 @@ export function SettingsView(props: SettingsViewProps) {
 
             {/* TAB: EKLENTİ */}
             {tab === 'extension' && (
-              <div className="flex flex-col gap-3 settings-card p-4">
-                <span className="text-sm font-medium">Eşleşme anahtarı</span>
-                <p className="text-xs text-muted-foreground">
-                  Tarayıcı eklentisine bir kez girilir; yenilersen eklentiye yeniden girmen gerekir.
-                </p>
-                <div className="flex gap-2">
-                  <Input value={showToken ? token : '•'.repeat(24)} readOnly className="font-mono" />
-                  <Button variant="outline" size="sm" onClick={() => setShowToken((s) => !s)}>
-                    {showToken ? 'Gizle' : 'Göster'}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => void copyToken()}>
-                    Kopyala
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setConfirmRegenOpen(true)}>
-                    Yenile
-                  </Button>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 settings-card p-4">
+                  <span className="text-sm font-medium">Eşleşme anahtarı</span>
+                  <p className="text-xs text-muted-foreground">
+                    Tarayıcı eklentisine bir kez girilir; yenilersen eklentiye yeniden girmen gerekir.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input value={showToken ? token : '•'.repeat(24)} readOnly className="font-mono" />
+                    <Button variant="outline" size="sm" onClick={() => setShowToken((s) => !s)}>
+                      {showToken ? 'Gizle' : 'Göster'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void copyToken()}>
+                      Kopyala
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setConfirmRegenOpen(true)}>
+                      Yenile
+                    </Button>
+                  </div>
+                  {tokenError && <p className="text-sm text-destructive">{tokenError}</p>}
+                  <p className="text-xs text-muted-foreground">
+                    {extension?.lastSeen ? (
+                      <>
+                        Eklenti bağlı — son temas:{' '}
+                        <span data-num>{new Date(extension.lastSeen).toLocaleString('tr-TR')}</span>
+                      </>
+                    ) : (
+                      'Eklenti bu kurulumda henüz bağlanmadı.'
+                    )}
+                  </p>
                 </div>
-                {tokenError && <p className="text-sm text-destructive">{tokenError}</p>}
+
+                <div className="flex flex-col gap-3 settings-card p-4">
+                  <span className="text-sm font-medium">Eklentiyi kur</span>
+                  <p className="text-xs text-muted-foreground">
+                    X yer işaretleri, Instagram kaydedilenler ve YouTube oynatma listeleri yalnızca eklentiyle
+                    içe aktarılır. Kurulum bir kez yapılır.
+                  </p>
+                  <ol className="list-inside list-decimal space-y-1 text-xs leading-relaxed text-muted-foreground">
+                    <li>Eklenti klasörünü aç (aşağıdaki düğme).</li>
+                    <li>
+                      Chrome'da <span className="font-mono text-foreground">chrome://extensions</span> adresini
+                      aç, sağ üstten <span className="text-foreground">Geliştirici modu</span>'nu aç.
+                    </li>
+                    <li>
+                      <span className="text-foreground">Paketlenmemiş öğe yükle</span> → açılan eklenti klasörünü
+                      seç.
+                    </li>
+                    <li>Eklenti penceresine yukarıdaki eşleşme anahtarını yapıştır.</li>
+                  </ol>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!extension?.installed}
+                      onClick={() => extension && open(extension.dir)}
+                    >
+                      Eklenti klasörünü aç
+                    </Button>
+                    {extension && !extension.installed && (
+                      <span className="text-xs text-muted-foreground">
+                        Bu derlemede eklenti klasörü yok — kurulum paketinden çalıştır.
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 

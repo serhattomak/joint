@@ -79,10 +79,16 @@ fn authorize(app: &tauri::AppHandle, headers: &HeaderMap) -> bool {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(str::trim);
-    match (expected, got) {
+    let ok = match (expected, got) {
         (Some(e), Some(g)) => ct_eq(&e, g),
         _ => false,
+    };
+    if ok {
+        // "Son temas" göstergesi (Ayarlar → Eklenti) tek burada tazelenir: üç
+        // yolun (collect/formats/cookies) hepsi bu kapıdan geçer.
+        crate::pairing::mark_last_seen(app);
     }
+    ok
 }
 
 fn unauthorized() -> (StatusCode, Json<serde_json::Value>) {

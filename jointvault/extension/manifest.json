@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JointVault Collector",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Collect X bookmarks into JointVault for review.",
   "permissions": ["activeTab", "scripting", "storage", "cookies", "alarms"],
   "host_permissions": [
