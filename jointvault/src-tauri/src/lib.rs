@@ -36,10 +36,7 @@ pub fn run() {
     .plugin(tauri_plugin_clipboard_manager::init())
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
       // İkinci çalıştırma: mevcut pencereyi öne getir, yeni süreç açılmasın.
-      if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
-      }
+      tray::raise_main_window(app);
     }))
     .invoke_handler(tauri::generate_handler![
       preview::fetch_preview,
@@ -67,6 +64,9 @@ pub fn run() {
       settings::export_backup,
       settings::get_close_behavior,
       settings::set_close_behavior,
+      settings::get_download_settings,
+      settings::set_download_settings,
+      settings::unique_path,
       download::download_media,
       download::list_formats,
       convert::convert_media,
@@ -119,6 +119,10 @@ pub fn run() {
         )?;
       }
       tray::setup_tray(app.handle())?;
+      // İndirme motoru: önceki oturumdan sızmış kuyruk kapısı/kontrol kayıtları
+      // temizlenir, sonra ayarlardan hız sınırı + eşzamanlılık uygulanır.
+      turbo_download::reset_runtime_state();
+      settings::apply_download_settings(app.handle());
       /*
        * Varlık protokolü kapsamı: statik kökler dar tutuldu (Faz 9), ama İNDİRME
        * KLASÖRÜ kullanıcı tarafından herhangi bir sürücüde seçilebilir — statik

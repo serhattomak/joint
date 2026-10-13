@@ -16,11 +16,33 @@ struct CollectBody {
     mode: Option<String>,
     kind: Option<String>,
     quality: Option<String>,
+    /// Yalnız `mode: "download"` için: onay diyaloğu açılmadan, uygulamanın
+    /// varsayılan kalitesiyle hemen indir. Eklentinin "sormadan indir" menüsü
+    /// bu bayrağı gönderir.
+    #[serde(default)]
+    silent: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize)]
 struct CookiesBody {
     content: String,
+}
+
+/// Tarayıcının devrettiği indirme. IDM'in "download takeover"ı: eklenti
+/// tarayıcı indirmesini iptal edip URL'yi, `Referer`i ve **o adresin
+/// çerezlerini** buraya verir. Çerez olmadan oturum gerektiren sunucular 403
+/// döner — bu yüzden alan zorunludur (boş olabilir).
+#[derive(Deserialize, Serialize, Clone)]
+struct DownloadRequest {
+    url: String,
+    #[serde(default)]
+    filename: Option<String>,
+    #[serde(default)]
+    referer: Option<String>,
+    #[serde(default)]
+    cookie: Option<String>,
+    #[serde(default)]
+    user_agent: Option<String>,
 }
 
 /// Sabit zamanlı karşılaştırma: düz `==` ilk farklı baytta çıkar, yani yanıt
@@ -101,6 +123,7 @@ fn unauthorized() -> (StatusCode, Json<serde_json::Value>) {
 pub async fn run_bridge(app: tauri::AppHandle) {
     let router = Router::new()
         .route("/collect", post(collect))
+        .route("/download", post(capture_download))
         .route("/formats", get(formats))
         .route("/cookies", post(receive_cookies))
         .with_state(app);
@@ -154,6 +177,9 @@ async fn collect(
     }
     let n = body.items.len();
     if body.mode.as_deref() == Some("download") {
+        // Sayfa içeriği indirmesi de tarayıcıdan gelir: uygulama öne gelmeli
+        // ki açılan diyalog görünsün.
+        raise_if_configured(&app);
         let _ = app.emit("x-sync-download", &body);
     } else {
         let _ = app.emit("x-sync-collect", &body);
@@ -162,6 +188,44 @@ async fn collect(
         StatusCode::ACCEPTED,
         Json(serde_json::json!({ "accepted": n })),
     )
+}
+
+/// `POST /download` — tarayıcının devrettiği indirmeyi kuyruğa alır.
+///
+/// Arayüz dinler ve işi başlatır; burada dosya sistemi ya da indirme motoru
+/// çağrılmaz. Böylece eklenti "uygulama kabul etti mi" sorusunun yanıtını
+/// **tek ve hızlı** bir yerden alır (2xx = evet, tarayıcı indirmesini iptal
+/// edebilirim).
+async fn capture_download(
+    State(app): State<tauri::AppHandle>,
+    headers: HeaderMap,
+    Json(body): Json<DownloadRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    if !authorize(&app, &headers) {
+        return unauthorized();
+    }
+    let url = body.url.trim().to_string();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid url" })),
+        );
+    }
+    raise_if_configured(&app);
+    let payload = DownloadRequest { url, ..body };
+    let _ = app.emit("turbo-capture-download", &payload);
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({ "accepted": true })),
+    )
+}
+
+/// Tarayıcıdan gelen indirmede pencereyi öne getir (ayardan kapatılabilir).
+/// IDM'in indirme penceresinin karşılığı: iş burada koşuyor ve görünmesi gerekir.
+fn raise_if_configured(app: &tauri::AppHandle) {
+    if crate::settings::download_settings(app).raise_on_capture {
+        crate::tray::raise_main_window(app);
+    }
 }
 
 async fn receive_cookies(
