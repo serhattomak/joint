@@ -37,11 +37,36 @@ pub fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn show_main(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
+/// Ana pencereyi öne getirir. Tepsi tıklaması, tek örnek kilidi ve **tarayıcıdan
+/// devralınan indirme** buradan geçer.
+///
+/// Neden `set_focus` tek başına yetmez: Windows ön planı kısıtlar — son girdiyi
+/// almayan bir süreç `SetForegroundWindow` ile öne geçemez, yalnız görev
+/// çubuğunda yanar. Tarayıcıdan gelen istekte girdi Chrome'da olduğu için tam
+/// olarak o durumdayız. Pencere kısa süreliğine "her zaman üstte" yapılıp geri
+/// alınır; bu kısıtı aşar ve kalıcı bir davranış değişikliği bırakmaz.
+pub(crate) fn raise_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if window.is_minimized().unwrap_or(false) {
+        let _ = window.unminimize();
     }
+    let _ = window.show();
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_focus();
+
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        if let Some(w) = handle.get_webview_window("main") {
+            let _ = w.set_always_on_top(false);
+        }
+    });
+}
+
+fn show_main(app: &tauri::AppHandle) {
+    raise_main_window(app);
 }
 
 pub fn on_window_close(app: &tauri::AppHandle, window: &tauri::Window, event: &WindowEvent) {
