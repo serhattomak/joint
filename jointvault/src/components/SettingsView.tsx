@@ -227,6 +227,8 @@ export function SettingsView(props: SettingsViewProps) {
   const { open, reveal } = useOpenTarget();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [closeMode, setCloseMode] = useState('tray');
+  const [launchAtStartup, setLaunchAtStartup] = useState(false);
+  const [autostartError, setAutostartError] = useState<string | null>(null);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [watch, setWatch] = useState(() => isWatchEnabled());
@@ -319,6 +321,9 @@ export function SettingsView(props: SettingsViewProps) {
     void invoke<string>('get_close_behavior')
       .then((m) => setCloseMode(m === 'quit' ? 'quit' : 'tray'))
       .catch(() => setCloseMode('tray'));
+    void invoke<boolean>('get_launch_at_startup')
+      .then(setLaunchAtStartup)
+      .catch((e: unknown) => setAutostartError(String(e)));
     void invoke<string>('get_download_dir')
       .then(setDir)
       .catch((e: unknown) => setDirError(String(e)));
@@ -922,7 +927,7 @@ export function SettingsView(props: SettingsViewProps) {
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode; desc: string }[] = [
     { id: 'ai', label: 'Yapay Zekâ', icon: <Sparkles className="size-4" />, desc: 'Qwen 2.5 3B/7B/14B, BGE-M3, VRAM yönetimi, taksonomi ve indeksleme' },
     { id: 'speech', label: 'Konuşma (Whisper)', icon: <Mic className="size-4" />, desc: 'Whisper.cpp yerel konuşma tanıma motoru ve modelleri' },
-    { id: 'view', label: 'Görünüm', icon: <Eye className="size-4" />, desc: 'Arayüz teması, sayfalama ve pano izleme tercihleri' },
+    { id: 'view', label: 'Görünüm', icon: <Eye className="size-4" />, desc: 'Arayüz teması, sayfalama, pano izleme ve açılış tercihleri' },
     { id: 'downloads', label: 'İndirme', icon: <Download className="size-4" />, desc: 'Medya indirme klasörü, varsayılan kalite ve sistem çekmecesi' },
     { id: 'components', label: 'Bileşenler', icon: <PackageCheck className="size-4" />, desc: 'ffmpeg, ffprobe, yt-dlp ve whisper motorunun kurulum durumu' },
     { id: 'diagnostics', label: 'Tanılama', icon: <Activity className="size-4" />, desc: 'Sistem donanımı, CUDA, ffmpeg ve yt-dlp sağlık kontrolleri' },
@@ -1918,6 +1923,32 @@ export function SettingsView(props: SettingsViewProps) {
                   htmlFor="set-watch"
                 >
                   <Switch checked={watch} onCheckedChange={handleWatchToggle} aria-labelledby="set-watch" />
+                </SettingRow>
+                <SettingRow
+                  label="Windows açılışında başlat"
+                  hint={
+                    autostartError ? (
+                      <span className="text-destructive">{autostartError}</span>
+                    ) : (
+                      'Oturum açtığında JointVault çekmecede gizli başlar; pencereyi çekmeceden açarsın.'
+                    )
+                  }
+                  htmlFor="set-autostart"
+                >
+                  <Switch
+                    checked={launchAtStartup}
+                    onCheckedChange={(checked) => {
+                      setLaunchAtStartup(checked);
+                      setAutostartError(null);
+                      void invoke<boolean>('set_launch_at_startup', { enabled: checked })
+                        .then(setLaunchAtStartup)
+                        .catch((e: unknown) => {
+                          setLaunchAtStartup(!checked);
+                          setAutostartError(String(e));
+                        });
+                    }}
+                    aria-labelledby="set-autostart"
+                  />
                 </SettingRow>
                 <SettingRow
                   label="Hızlı başlangıç turu"

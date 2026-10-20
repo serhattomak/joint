@@ -38,6 +38,11 @@ pub fn run() {
       // İkinci çalıştırma: mevcut pencereyi öne getir, yeni süreç açılmasın.
       tray::raise_main_window(app);
     }))
+    // Windows açılışında `--autostart` ile başlar; setup penceresi gizler.
+    .plugin(tauri_plugin_autostart::init(
+      tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+      Some(vec!["--autostart"]),
+    ))
     .invoke_handler(tauri::generate_handler![
       preview::fetch_preview,
       preview_media::media_probe,
@@ -64,6 +69,8 @@ pub fn run() {
       settings::export_backup,
       settings::get_close_behavior,
       settings::set_close_behavior,
+      settings::get_launch_at_startup,
+      settings::set_launch_at_startup,
       settings::get_download_settings,
       settings::set_download_settings,
       settings::unique_path,
@@ -119,6 +126,12 @@ pub fn run() {
         )?;
       }
       tray::setup_tray(app.handle())?;
+      // Autostart ile açıldıysa pencere görünmesin; uygulama çekmecede bekler.
+      if std::env::args().any(|a| a == "--autostart") {
+        if let Some(window) = app.get_webview_window("main") {
+          let _ = window.hide();
+        }
+      }
       // İndirme motoru: önceki oturumdan sızmış kuyruk kapısı/kontrol kayıtları
       // temizlenir, sonra ayarlardan hız sınırı + eşzamanlılık uygulanır.
       turbo_download::reset_runtime_state();
@@ -145,6 +158,14 @@ pub fn run() {
       }
       tray::on_window_close(window.app_handle(), window, event)
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while running tauri application")
+    .run(|_app, event| {
+      // Çıkışta AI çocuk süreçleri öldürülür. `Destroyed` olayı her kapanışta
+      // gelmiyor (trayden çıkış, zorla sonlandırma); temizlenmeyen llama-server
+      // süreçleri bir sonraki açılışta RAM/VRAM'i ikinci kez tüketiyordu.
+      if let tauri::RunEvent::Exit = event {
+        ai::cleanup_ai_servers();
+      }
+    });
 }

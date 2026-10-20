@@ -44,7 +44,7 @@ Rakip bir ürünün dürüstçe kopyalayamayacağı mekanizma: **kaydetme, indir
 - İndirme devralma: tarayıcıda başlatılan indirmeyi eklenti uygulamaya devreder (tarayıcının indirmesi iptal edilir), `Referer` ve o adresin çerezleri taşınır; sayfa kaynakları koklanır (araç çubuğu rozeti · yüzen panel · liste) ve tek tıkla devralınır.
 - Sağ tık menüsü: bağlantı, fotoğraf, video/ses, seçili bağlantı, sayfa içeriği (kalite seç ya da sormadan) ve sayfadaki tüm kaynaklar; her öğe ayrı açılıp kapatılabilir.
 - Araçlar: medya dönüştürücü (mp4/mp3/m4a/kırp), zaman çizelgeli kırpma editörü (film şeridi + dalga formu), video birleştirme, sessizlik kırpma, GIF/WebM üretimi, altyazı gömme/çıkarma ve whisper ile otomatik üretim (model lazy indirilir), yinelenen bulucu (URL + dosya hash), istatistikler.
-- Kabuk: sistem tepsisi (kapatınca arka planda devam / gerçekten çık), tek örnek kilidi, Ctrl+K komut paleti, tema geçişi, karşılama turu + ilk kurulum sihirbazı, tanılama paneli, vault yedekleme/geri yükleme, eklenti eşleşme anahtarı.
+- Kabuk: sistem tepsisi (kapatınca arka planda devam / gerçekten çık), Windows açılışında başlatma (çekmecede gizli), tek örnek kilidi, Ctrl+K komut paleti, tema geçişi, karşılama turu + ilk kurulum sihirbazı, tanılama paneli, vault yedekleme/geri yükleme, eklenti eşleşme anahtarı.
 - Dil: arayüzün tamamı Türkçe; `tr-TR` tarih biçimi ve Türkçe onay/uyarı metinleri.
 
 ## Capabilities and Constraints

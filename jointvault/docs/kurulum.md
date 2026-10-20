@@ -5,7 +5,7 @@ diskinde kalır.
 
 ## İndir ve kur
 
-1. **`JointVault_1.1.0_x64-setup.exe`** dosyasını indir ve çalıştır.
+1. **`JointVault_1.1.1_x64-setup.exe`** dosyasını indir ve çalıştır.
 2. Windows **"Windows korumalı PC'niz"** (SmartScreen) uyarısı verir. Bu beklenen bir durumdur:
    uygulama kod imzalı değil. **Ek bilgi → Yine de çalıştır** ile devam et.
 3. Kurulum **bu kullanıcı için** yapılır (yönetici izni istemez). Varsayılan konum:
@@ -13,8 +13,8 @@ diskinde kalır.
 4. Kurulum sırasında WebView2 gerekir. Windows 10 (1803+) ve Windows 11'de hazır gelir;
    gelmiyorsa kurulum onu internetten indirir.
 
-Alternatif olarak **`JointVault_1.1.0_x64_en-US.msi`** (yönetici kurulumu) veya
-**`JointVault_1.1.0_portable.zip`** (kurulum gerektirmez, klasörden çalışır) kullanılabilir.
+Alternatif olarak **`JointVault_1.1.1_x64_en-US.msi`** (yönetici kurulumu) veya
+**`JointVault_1.1.1_portable.zip`** (kurulum gerektirmez, klasörden çalışır) kullanılabilir.
 
 ## İlk açılış
 
@@ -70,5 +70,5 @@ Taşınabilir sürümde klasörü silmek yeterlidir; geriye yalnızca `%APPDATA%
 
 ## Sürüm
 
-Bu sürüm **1.0.0**. Sürümün tek kaynağı `jointvault/package.json`'dır; kurulum dosyası adı,
+Bu sürüm **1.1.1**. Sürümün tek kaynağı `jointvault/package.json`'dır; kurulum dosyası adı,
 uygulama ve `Cargo.toml` ondan senkronlanır (`node dev/set-version.mjs <sürüm>`).

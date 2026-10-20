@@ -1,4 +1,5 @@
 use tauri::Manager;
+use tauri_plugin_autostart::ManagerExt;
 
 // Mirrors pairing.rs: setting persisted as a plain file in the app-data dir (no store crate).
 const DIR_FILE: &str = "download_dir.txt";
@@ -92,6 +93,26 @@ pub fn set_close_behavior(app: tauri::AppHandle, mode: String) -> Result<String,
     std::fs::write(dir.join(CLOSE_FILE), format!("{mode}\n")).map_err(|e| e.to_string())?;
     Ok(mode)
 }
+
+// ponytail: kayıt defteri tek gerçek — ayrı bir ayar dosyası tutulmaz. Kullanıcı
+// HKCU\...\Run kaydını elle silerse anahtar da doğruyu söyler.
+#[tauri::command]
+pub fn get_launch_at_startup(app: tauri::AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_launch_at_startup(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    let autolaunch = app.autolaunch();
+    if enabled {
+        autolaunch.enable()
+    } else {
+        autolaunch.disable()
+    }
+    .map_err(|e| e.to_string())?;
+    autolaunch.is_enabled().map_err(|e| e.to_string())
+}
+
 /// İndirme motorunun ayarları. IDM'deki "Connection" sekmesinin karşılığı.
 /// `download_dir.txt` ile aynı desen: app-data dizininde düz JSON dosyası.
 ///
