@@ -123,42 +123,27 @@ export function formatBytes(n: number | null): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export type DownloadSort = 'newest' | 'oldest' | 'name' | 'size' | 'status';
+export type TransferSort = 'newest' | 'oldest' | 'name' | 'size';
 
-/** Sıralanabilir indirme işi: `DownloadJob`'un yapısal alt kümesi (DB'ye bağlanmaz). */
-export interface SortableDownload {
-  filename: string;
-  file_size: number;
-  status: 'active' | 'queued' | 'paused' | 'completed' | 'error';
-  created_at: string;
+/** Sıralanabilir indirme satırı: görünüm modelinin yapısal alt kümesi. */
+export interface SortableTransfer {
+  title: string;
+  size: number;
+  createdAt: string;
 }
 
-const DOWNLOAD_STATUS_ORDER: Record<SortableDownload['status'], number> = {
-  active: 0,
-  queued: 1,
-  paused: 2,
-  error: 3,
-  completed: 4,
-};
-
 /** Görünüm sırası — girdi dizisini değiştirmez (DB sırası korunur). */
-export function sortDownloadJobs<T extends SortableDownload>(jobs: T[], sort: DownloadSort): T[] {
-  const list = [...jobs];
+export function sortTransfers<T extends SortableTransfer>(rows: T[], sort: TransferSort): T[] {
+  const list = [...rows];
   switch (sort) {
     case 'oldest':
-      return list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      return list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     case 'name':
-      return list.sort((a, b) => a.filename.localeCompare(b.filename, 'tr'));
+      return list.sort((a, b) => a.title.localeCompare(b.title, 'tr'));
     case 'size':
-      return list.sort((a, b) => b.file_size - a.file_size);
-    case 'status':
-      return list.sort(
-        (a, b) =>
-          DOWNLOAD_STATUS_ORDER[a.status] - DOWNLOAD_STATUS_ORDER[b.status] ||
-          b.created_at.localeCompare(a.created_at),
-      );
+      return list.sort((a, b) => b.size - a.size || b.createdAt.localeCompare(a.createdAt));
     default:
-      return list;
+      return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 }
 

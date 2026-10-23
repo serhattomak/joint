@@ -418,3 +418,69 @@
   background-size: 200% 100%;
   animation: var(--animate-sweep);
 }
+
+/* --- Tek Hat: indirme satırı ------------------------------------------------
+   Durum değişse de sütunlar kaymaz: ad, ölçüm ve aksiyon kendi grid alanında
+   durur. Dar pencerede ölçüm ve aksiyon ikinci satıra iner; tablo kaymaz. */
+.transfer-row {
+  display: grid;
+  grid-template-columns: 16px 28px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'check glyph name actions'
+    'check glyph progress progress'
+    'check glyph metrics metrics';
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 6px;
+}
+
+.transfer-row.is-done {
+  grid-template-areas:
+    'check glyph name actions'
+    'check glyph metrics metrics';
+}
+
+.transfer-row > .tr-check { grid-area: check; justify-self: start; }
+.transfer-row > .tr-glyph { grid-area: glyph; }
+.transfer-row > .tr-name { grid-area: name; min-width: 0; }
+.transfer-row > .tr-progress { grid-area: progress; min-width: 0; }
+.transfer-row > .tr-metrics { grid-area: metrics; }
+.transfer-row > .tr-actions { grid-area: actions; }
+
+.transfer-row > .tr-progress,
+.transfer-row > .tr-metrics {
+  display: flex;
+}
+
+.transfer-row > .tr-progress { flex-direction: column; gap: 4px; }
+.transfer-row > .tr-metrics {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.transfer-row > .tr-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+@media (min-width: 64rem) {
+  .transfer-row {
+    grid-template-columns: 16px 28px minmax(0, 1fr) 150px 132px 168px;
+    grid-template-areas: 'check glyph name progress metrics actions';
+    column-gap: 10px;
+    row-gap: 0;
+  }
+
+  .transfer-row.is-done {
+    grid-template-columns: 16px 28px minmax(0, 1fr) 150px 132px 168px;
+    grid-template-areas: 'check glyph name progress metrics actions';
+  }
+
+  .transfer-row > .tr-metrics {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+}

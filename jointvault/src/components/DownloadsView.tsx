@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useOpenTarget } from '@/lib/open-target';
 import {
   Archive,
   ArrowDownUp,
   ArrowLeft,
   Check,
+  ChevronDown,
   Copy,
   Download,
   ExternalLink,
@@ -25,14 +25,11 @@ import {
   Scissors,
   Search,
   Trash2,
-  Zap,
+  TriangleAlert,
 } from 'lucide-react';
+import { useOpenTarget } from '@/lib/open-target';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
 import { useComponentInstaller } from '@/components/ComponentInstaller';
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
-import { useNotice } from '@/components/ui/notice';
-import { writeClipboardText } from '@/lib/clipboard';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -43,8 +40,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
+import { useNotice } from '@/components/ui/notice';
 import { PageSurface } from '@/components/ui/page-surface';
 import { Switch } from '@/components/ui/switch';
+import { writeClipboardText } from '@/lib/clipboard';
 import {
   clearCompletedDownloads,
   createDownloadJob,
@@ -62,16 +62,25 @@ import {
 } from '@/lib/db/client';
 import type { Item } from '@/lib/db/types';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
-import { formatBytes, sortDownloadJobs, useDownloadProgress, DOWNLOADS_CHANGED_EVENT, startDownload, type DownloadSort } from '@/lib/downloads';
-import { Stamp } from '@/components/ui/stamp';
-import { Progress } from '@/components/ui/progress';
+import {
+  destinationPath,
+  formatBytes,
+  sortTransfers,
+  uniqueDownloadPath,
+  useDownloadProgress,
+  DOWNLOADS_CHANGED_EVENT,
+  startDownload,
+  type TransferSort,
+} from '@/lib/downloads';
 import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 import {
   cancelTurboDownload,
   formatEta,
   formatSpeed,
   getDownloadSettings,
   pauseTurboDownload,
+  probeUrl,
   startTurboDownload,
   useTurboProgressListener,
   type ChunkProgress,
@@ -96,87 +105,172 @@ export interface DownloadsViewProps {
   onPickFormat?: (target: { id: string; url: string; title?: string | null }) => void;
 }
 
-type FilterStatus = 'all' | 'active' | 'queued' | 'completed' | 'paused' | 'error';
-type FilterCategory = 'all' | DownloadCategory;
+type RowStatus = 'active' | 'queued' | 'paused' | 'error' | 'done';
+type SortKey = TransferSort;
 
-/** Arşiv sekmesinde durum filtresi — hatalı/iniyor kaydı bulmanın yolu. */
-type VaultStatusFilter = 'all' | 'local' | 'active' | 'error';
+interface BaseTransfer {
+  key: string;
+  id: string;
+  title: string;
+  source: string;
+  engine: string;
+  detail: string;
+  status: RowStatus;
+  progress: number;
+  size: number;
+  downloaded: number;
+  speed: number;
+  eta: number;
+  speedText: string | null;
+  etaText: string | null;
+  path: string | null;
+  convertedPath: string | null;
+  createdAt: string;
+  platform: string;
+  category: DownloadCategory;
+  error: string | null;
+}
 
-const TURBO_SORT_LABELS: Record<DownloadSort, string> = {
+interface TurboTransfer extends BaseTransfer {
+  kind: 'turbo';
+  job: DownloadJob;
+}
+
+interface VaultTransfer extends BaseTransfer {
+  kind: 'vault';
+  item: Item;
+}
+
+type Transfer = TurboTransfer | VaultTransfer;
+
+const SORT_LABELS: Record<SortKey, string> = {
   newest: 'En yeni',
   oldest: 'En eski',
   name: 'Ad (A→Z)',
   size: 'Boyut',
-  status: 'Durum',
 };
 
-/** Arşiv kaydı "yerel" sayılır: inişi sürmüyor ve hata taşımıyor. */
-function isVaultLocal(status: Item['download_status']): boolean {
-  return status !== 'queued' && status !== 'active' && status !== 'error';
+const CATEGORY_LABEL: Record<DownloadCategory, string> = {
+  video: 'Video',
+  audio: 'Ses',
+  archive: 'Sıkıştırılmış',
+  document: 'Belge',
+  program: 'Program',
+  other: 'Dosya',
+};
+
+const TURBO_STATUS: Record<DownloadStatus, RowStatus> = {
+  active: 'active',
+  queued: 'queued',
+  paused: 'paused',
+  error: 'error',
+  completed: 'done',
+};
+
+const TIME_FORMAT = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' });
+const DATE_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit' });
+
+function isToday(iso: string): boolean {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  return (
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear()
+  );
 }
 
-export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onPickFormat }: DownloadsViewProps) {
+function stamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return isToday(iso) ? TIME_FORMAT.format(d) : DATE_FORMAT.format(d);
+}
+
+function shortSource(url: string): string {
+  return url.replace(/^https?:\/\/(www\.)?/, '');
+}
+
+function baseName(path: string): string {
+  return path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? path;
+}
+
+function categoryIcon(category: DownloadCategory) {
+  switch (category) {
+    case 'video':
+      return <Film className="size-3.5" />;
+    case 'audio':
+      return <Music className="size-3.5" />;
+    case 'archive':
+      return <Archive className="size-3.5" />;
+    case 'document':
+      return <FileText className="size-3.5" />;
+    case 'program':
+      return <FileCode className="size-3.5" />;
+    default:
+      return <Package className="size-3.5" />;
+  }
+}
+
+export function DownloadsView({
+  onClose,
+  onOpenItem,
+  onConvert,
+  onPlayMedia,
+  onPickFormat,
+}: DownloadsViewProps) {
   const { open, reveal } = useOpenTarget();
   const notice = useNotice();
   const installer = useComponentInstaller();
+
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Arşiv İndirmeleri
-  const [sourceTab, setSourceTab] = useState<'vault' | 'turbo'>('vault');
   const [vaultItems, setVaultItems] = useState<Item[]>([]);
   const [vaultLoading, setVaultLoading] = useState(true);
-  const [vaultSearch, setVaultSearch] = useState('');
-  const [vaultPlatform, setVaultPlatform] = useState('all');
 
-  // Filtreler (Turbo için)
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
-  const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<DownloadSort>('newest');
+  // Tek hat: arama + sıralama. Durum filtreleri şerit başlıklarına taşındı.
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<SortKey>('newest');
 
-  // Arşiv sekmesi durum filtresi + toplu seçim kümeleri.
-  const [vaultStatus, setVaultStatus] = useState<VaultStatusFilter>('all');
-  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
-  const [selectedVault, setSelectedVault] = useState<Set<string>>(new Set());
+  // Seçim ve satır içi açıklama (modal yok).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [completedOpen, setCompletedOpen] = useState(true);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
 
-  // Ayarlardaki indirme kökü: başlıktaki "İndirme Klasörü" eylemi.
+  // Yeni iş: tek satırlık besteci. Gelişmiş seçenekler mevcut diyaloğu açar.
+  const [composerUrl, setComposerUrl] = useState('');
+  const [composerBusy, setComposerBusy] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickUrl, setQuickUrl] = useState('');
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchUrls, setBatchUrls] = useState('');
+  const [batchBusy, setBatchBusy] = useState(false);
+
+  // Tek silme diyaloğu: turbo işleri ve arşiv kayıtları birlikte.
+  const [deleteTarget, setDeleteTarget] = useState<{
+    jobs: DownloadJob[];
+    items: Item[];
+  } | null>(null);
+  const [deleteDisk, setDeleteDisk] = useState(true);
+  const [deleteRecord, setDeleteRecord] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // Canlı parça durumları (hafızada: jobId -> chunks[]).
+  const [liveChunks, setLiveChunks] = useState<Record<string, ChunkProgress[]>>({});
+  const [dlSettings, setDlSettings] = useState<DownloadSettings | null>(null);
   const [downloadDir, setDownloadDir] = useState('');
 
-  // Canlı Parça (Chunk) Durumları (Hafızada tutulur: jobId -> chunks[])
-  const [liveChunks, setLiveChunks] = useState<Record<string, ChunkProgress[]>>({});
-
-  // İndirme ayarları (hız sınırı, eşzamanlılık) — yalnız gösterim için.
-  const [dlSettings, setDlSettings] = useState<DownloadSettings | null>(null);
   // Motora gönderilmiş kuyruk işleri: aynı iş iki kez başlatılmaz.
   const dispatchedRef = useRef<Set<string>>(new Set());
   // İlerlemenin DB'ye son yazılma anı (iş başına) — ≈3 sn'de bir.
   const lastPersistRef = useRef<Record<string, number>>({});
   // İş başına kendiliğinden yeniden deneme sayacı.
   const attemptsRef = useRef<Record<string, number>>({});
-  // İlerleme olayı, listede olmayan bir işi işaret edebilir: yakalanan indirme
-  // bu görünüm açıkken başlatılmıştır. O an listeyi tazeleriz.
+  // İlerleme olayı, listede olmayan bir işi işaret edebilir: o an listeyi tazeleriz.
   const jobsRef = useRef<DownloadJob[]>([]);
   // Ayarlar, `useCallback([])` içinden okunur: ref üzerinden güncel tutulur.
   const settingsRef = useRef<DownloadSettings | null>(null);
-
-  // Diyaloglar
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [batchOpen, setBatchOpen] = useState(false);
-  const [batchUrls, setBatchUrls] = useState('');
-  const [batchBusy, setBatchBusy] = useState(false);
-
-  // Arşiv Medyası Silme Durumu (Diskten ve/veya Arşivden)
-  // Dizidir: tek satırdan açılan diyalog ile toplu silme aynı akışı kullanır.
-  const [vaultItemsToDelete, setVaultItemsToDelete] = useState<Item[]>([]);
-  const [deleteVaultDiskFile, setDeleteVaultDiskFile] = useState(true);
-  const [deleteVaultRecord, setDeleteVaultRecord] = useState(false);
-  const [vaultDeleteBusy, setVaultDeleteBusy] = useState(false);
-
-  // Turbo İndirme Silme Durumu (Diskten ve/veya Kuyruktan)
-  const [turboJobsToDelete, setTurboJobsToDelete] = useState<DownloadJob[]>([]);
-  const [deleteTurboDiskFile, setDeleteTurboDiskFile] = useState(true);
-  const [turboDeleteBusy, setTurboDeleteBusy] = useState(false);
 
   const reloadJobs = async () => {
     try {
@@ -213,10 +307,6 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
       if (!silent) setVaultLoading(true);
       const items = await listDownloadedItems();
       setVaultItems(items);
-      // Eğer Arşivde henüz indirme yok ama turbo kuyruğunda varsa turbo sekmesine geç
-      if (items.length === 0 && jobs.length > 0) {
-        setSourceTab('turbo');
-      }
     } finally {
       if (!silent) setVaultLoading(false);
     }
@@ -268,13 +358,11 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
     void invoke<string>('get_download_dir').then(setDownloadDir).catch(() => {});
   }, []);
 
-  // Seçim, listeden düşen kimlikleri taşımaz: sayaç ve eylemler canlı kümeyle türetilir.
   // Escape seçimi bırakır (diyaloglar kendi Escape'ini yönetir).
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
-      setSelectedJobs(new Set());
-      setSelectedVault(new Set());
+      setSelected(new Set());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -310,7 +398,6 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
 
   // Kuyruk kendiliğinden akar: 'queued' işler motora verilir, motor da
   // eşzamanlılık kapısında bekletir ve sıra gelince başlatır (IDM kuyruğu).
-  // (`startJob` tanımından sonra durur: blok kapsamlı değişken önce okunamaz.)
   useEffect(() => {
     for (const job of jobs) {
       if (job.status !== 'queued') continue;
@@ -424,7 +511,8 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
 
   useTurboProgressListener(handleProgress);
 
-  // Aksiyonlar
+  // --- Eylemler -------------------------------------------------------------
+
   const handlePause = async (job: DownloadJob) => {
     await pauseTurboDownload(job.id);
     await updateDownloadJob(job.id, { status: 'paused', speed_bps: 0, eta_secs: 0 });
@@ -455,118 +543,21 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
     else await startDownload(item.id, item.url, 'video');
   };
 
-  // Arşiv Medyası Silme İşlemi (Diskten ve/veya Arşivden)
-  const handleConfirmDeleteVaultItems = async () => {
-    if (vaultItemsToDelete.length === 0) return;
-    setVaultDeleteBusy(true);
-    try {
-      for (const item of vaultItemsToDelete) {
-        // 1. Bilgisayardan dosyayı sil
-        if (deleteVaultDiskFile) {
-          if (item.local_path) {
-            await invoke('delete_file', { path: item.local_path }).catch((err) => {
-              console.warn('[delete_file] Yerel dosya silinemedi (zaten silinmiş olabilir):', err);
-            });
-          }
-          if (item.converted_path) {
-            await invoke('delete_file', { path: item.converted_path }).catch((err) => {
-              console.warn('[delete_file] Dönüştürülen dosya silinemedi:', err);
-            });
-          }
-        }
-
-        // 2. Arşiv kaydını tamamen sil veya indirme durumunu sıfırla
-        if (deleteVaultRecord) {
-          await removeItem(item.id);
-        } else {
-          await setDownloadState(item.id, {
-            status: 'none',
-            local_path: null,
-            error: null,
-          });
-          await updateItem(item.id, {
-            converted_path: null,
-          });
-        }
-      }
-
-      setVaultItemsToDelete([]);
-      setSelectedVault(new Set());
-      await reloadVaultItems();
-    } catch (err) {
-      console.error('[delete_vault_item]', err);
-    } finally {
-      setVaultDeleteBusy(false);
-    }
-  };
-
-  // Turbo İndirme Silme İşlemi (Diskten ve/veya Kuyruktan)
-  const handleConfirmDeleteTurboJobs = async () => {
-    if (turboJobsToDelete.length === 0) return;
-    setTurboDeleteBusy(true);
-    try {
-      const removed = new Set<string>();
-      for (const job of turboJobsToDelete) {
-        // Önce motoru durdur: süren iş dosyayı yeniden yazmasın.
-        await cancelTurboDownload(job.id);
-        if (deleteTurboDiskFile && job.destination_path) {
-          await invoke('delete_file', { path: job.destination_path }).catch((err) => {
-            console.warn('[delete_file] Turbo hedef dosyası silinemedi:', err);
-          });
-        }
-        await removeDownloadJob(job.id);
-        removed.add(job.id);
-      }
-      setJobs((prev) => prev.filter((j) => !removed.has(j.id)));
-      setSelectedJobs(new Set());
-      setTurboJobsToDelete([]);
-    } catch (err) {
-      console.error('[delete_turbo_job]', err);
-    } finally {
-      setTurboDeleteBusy(false);
-    }
-  };
-
   const handlePauseAll = async () => {
-    const activeJobs = jobs.filter((j) => j.status === 'active');
-    for (const j of activeJobs) {
-      void handlePause(j);
+    for (const job of jobs.filter((j) => j.status === 'active')) {
+      await handlePause(job);
     }
   };
 
   const handleResumeAll = async () => {
-    const pausedJobs = jobs.filter((j) => j.status === 'paused' || j.status === 'queued');
-    for (const j of pausedJobs) {
-      void handleResume(j);
+    for (const job of jobs.filter((j) => j.status === 'paused' || j.status === 'queued')) {
+      await handleResume(job);
     }
   };
 
   const handleClearCompleted = async () => {
     await clearCompletedDownloads();
     setJobs((prev) => prev.filter((j) => j.status !== 'completed'));
-  };
-
-  // Toplu eylemler seçili küme üzerinde çalışır; kuyruk kapısı motorda kalır.
-  const selectedJobObjects = useMemo(
-    () => jobs.filter((j) => selectedJobs.has(j.id)),
-    [jobs, selectedJobs],
-  );
-
-  const selectedVaultItems = useMemo(
-    () => vaultItems.filter((i) => selectedVault.has(i.id)),
-    [vaultItems, selectedVault],
-  );
-
-  const handlePauseSelected = async (): Promise<void> => {
-    for (const job of selectedJobObjects) {
-      if (job.status === 'active') await handlePause(job);
-    }
-  };
-
-  const handleResumeSelected = async (): Promise<void> => {
-    for (const job of selectedJobObjects) {
-      if (job.status === 'paused' || job.status === 'error') await handleResume(job);
-    }
   };
 
   /** Pano yazımı sessiz kalmaz: başarı/başarısızlık bildirime dönüşür. */
@@ -580,6 +571,58 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
     [notice],
   );
 
+  /** Besteciden tek adımda indirme: yokla → hedef yolu çöz → işi başlat. */
+  const startFromComposer = async (): Promise<void> => {
+    const url = composerUrl.trim();
+    if (!url.startsWith('http')) {
+      notice.push({ text: 'Geçerli bir bağlantı yapıştır.', tone: 'error' });
+      return;
+    }
+    setComposerBusy(true);
+    try {
+      const probe = await probeUrl(url);
+      const baseDir = downloadDir || (await invoke<string>('get_download_dir'));
+      const separate = dlSettings?.category_folders ?? true;
+      const category = detectCategoryFromFilename(probe.filename);
+      const threads = probe.accepts_ranges
+        ? (dlSettings?.default_connections ?? 8)
+        : 1;
+      const fullPath = await uniqueDownloadPath(
+        destinationPath(baseDir, probe.filename, category, separate),
+      );
+      const job = await createDownloadJob({
+        url,
+        filename: fullPath.split(/[/\\]/).pop() ?? probe.filename,
+        destination_path: fullPath,
+        file_size: probe.file_size,
+        threads,
+        category,
+        status: 'active',
+      });
+      await startTurboDownload({
+        jobId: job.id,
+        url: job.url,
+        filename: job.filename,
+        destinationPath: job.destination_path,
+        fileSize: job.file_size,
+        threads,
+      }).catch(async (e: unknown) => {
+        await updateDownloadJob(job.id, {
+          status: 'error',
+          error_message: typeof e === 'string' ? e : 'İndirme başlatılamadı.',
+        });
+        throw e;
+      });
+      setComposerUrl('');
+      await reloadJobs();
+      notice.push({ text: 'İndirme başladı.', tone: 'ok' });
+    } catch (e) {
+      notice.push({ text: describeError(e, 'İndirme başlatılamadı.'), tone: 'error' });
+    } finally {
+      setComposerBusy(false);
+    }
+  };
+
   // Toplu Link İndirme (Batch Grabber)
   const handleStartBatch = async () => {
     const lines = batchUrls
@@ -590,7 +633,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
 
     setBatchBusy(true);
     try {
-      const defaultDir = (await invoke<string>('get_download_dir').catch(() => '')) || '';
+      const defaultDir = downloadDir || (await invoke<string>('get_download_dir').catch(() => '')) || '';
       for (const line of lines) {
         const name = line.split('/').pop()?.split('?')[0] || `batch_${Date.now()}`;
         const targetPath = `${defaultDir.replace(/[/\\]+$/, '')}/${name}`;
@@ -611,179 +654,774 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
     }
   };
 
-  // Toplam İstatistikler
-  const totalSpeed = useMemo(() => {
-    return jobs
-      .filter((j) => j.status === 'active')
-      .reduce((sum, j) => sum + (j.speed_bps || 0), 0);
-  }, [jobs]);
+  // --- Silme (tek diyalog) --------------------------------------------------
 
-  const activeCount = useMemo(() => jobs.filter((j) => j.status === 'active').length, [jobs]);
-  const queuedCount = useMemo(() => jobs.filter((j) => j.status === 'queued').length, [jobs]);
-  const completedCount = useMemo(() => jobs.filter((j) => j.status === 'completed').length, [jobs]);
+  const requestDelete = (jobsToDelete: DownloadJob[], itemsToDelete: Item[]) => {
+    if (jobsToDelete.length === 0 && itemsToDelete.length === 0) return;
+    setDeleteTarget({ jobs: jobsToDelete, items: itemsToDelete });
+    setDeleteDisk(true);
+    setDeleteRecord(false);
+  };
 
-  // Filtreleme + sıralama (sıralama yalnız görünümü etkiler, DB'yi değil).
-  const filteredJobs = useMemo(() => {
-    const list = jobs.filter((j) => {
-      if (statusFilter !== 'all' && j.status !== statusFilter) return false;
-      if (categoryFilter !== 'all' && j.category !== categoryFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        return j.filename.toLowerCase().includes(q) || j.url.toLowerCase().includes(q);
+  const handleConfirmDelete = async () => {
+    const target = deleteTarget;
+    if (!target) return;
+    setDeleteBusy(true);
+    try {
+      for (const job of target.jobs) {
+        // Önce motoru durdur: süren iş dosyayı yeniden yazmasın.
+        await cancelTurboDownload(job.id);
+        if (deleteDisk && job.destination_path) {
+          await invoke('delete_file', { path: job.destination_path }).catch((err) => {
+            console.warn('[delete_file] Turbo hedef dosyası silinemedi:', err);
+          });
+        }
+        await removeDownloadJob(job.id);
       }
-      return true;
-    });
 
-    return sortDownloadJobs(list, sortBy);
-  }, [jobs, statusFilter, categoryFilter, searchQuery, sortBy]);
+      for (const item of target.items) {
+        if (deleteDisk) {
+          if (item.local_path) {
+            await invoke('delete_file', { path: item.local_path }).catch((err) => {
+              console.warn('[delete_file] Yerel dosya silinemedi (zaten silinmiş olabilir):', err);
+            });
+          }
+          if (item.converted_path) {
+            await invoke('delete_file', { path: item.converted_path }).catch((err) => {
+              console.warn('[delete_file] Dönüştürülen dosya silinemedi:', err);
+            });
+          }
+        }
 
-  const filteredTotalSize = useMemo(
-    () => filteredJobs.reduce((sum, j) => sum + (j.file_size || 0), 0),
-    [filteredJobs],
+        if (deleteRecord) {
+          await removeItem(item.id);
+        } else {
+          await setDownloadState(item.id, { status: 'none', local_path: null, error: null });
+          await updateItem(item.id, { converted_path: null });
+        }
+      }
+
+      const removedJobs = new Set(target.jobs.map((j) => j.id));
+      const removedItems = new Set(target.items.map((i) => i.id));
+      setJobs((prev) => prev.filter((j) => !removedJobs.has(j.id)));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of removedJobs) next.delete(`t:${id}`);
+        for (const id of removedItems) next.delete(`v:${id}`);
+        return next;
+      });
+      setDeleteTarget(null);
+      await reloadVaultItems();
+    } catch (err) {
+      console.error('[delete_download]', err);
+      notice.push({ text: describeError(err, 'Silme tamamlanamadı.'), tone: 'error' });
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  // --- Türetilmiş liste -----------------------------------------------------
+
+  const rows = useMemo<Transfer[]>(() => {
+    const out: Transfer[] = [];
+
+    for (const job of jobs) {
+      const pct =
+        job.status === 'completed'
+          ? 100
+          : job.file_size > 0
+            ? Math.min(100, (job.downloaded_size / job.file_size) * 100)
+            : 0;
+      out.push({
+        kind: 'turbo',
+        key: `t:${job.id}`,
+        id: job.id,
+        title: job.filename,
+        source: job.url,
+        engine: 'Turbo',
+        detail: `${job.threads} parça`,
+        status: TURBO_STATUS[job.status],
+        progress: pct,
+        size: job.file_size,
+        downloaded: job.downloaded_size,
+        speed: job.speed_bps || 0,
+        eta: job.eta_secs || 0,
+        speedText: null,
+        etaText: null,
+        path: job.destination_path,
+        convertedPath: null,
+        createdAt: job.created_at,
+        platform: '',
+        category: job.category,
+        error: job.error_message,
+        job,
+      });
+    }
+
+    for (const item of vaultItems) {
+      const status: RowStatus =
+        item.download_status === 'active'
+          ? 'active'
+          : item.download_status === 'queued'
+            ? 'queued'
+            : item.download_status === 'error'
+              ? 'error'
+              : 'done';
+      const category = detectCategoryFromFilename(item.local_path ?? item.title ?? item.url);
+      out.push({
+        kind: 'vault',
+        key: `v:${item.id}`,
+        id: item.id,
+        title: item.title || baseName(item.local_path ?? item.url),
+        source: item.url,
+        engine: 'yt-dlp',
+        detail: CATEGORY_LABEL[category],
+        status,
+        progress:
+          status === 'done' ? 100 : Math.round(vaultPercent[item.id] ?? 0),
+        size: 0,
+        downloaded: 0,
+        speed: 0,
+        eta: 0,
+        speedText: vaultMeta[item.id]?.speed ?? null,
+        etaText: vaultMeta[item.id]?.eta ?? null,
+        path: item.local_path ?? item.converted_path,
+        convertedPath: item.converted_path,
+        createdAt: item.created_at,
+        platform: PLATFORM_META[item.platform as Platform]?.label ?? item.platform,
+        category,
+        error: item.download_error,
+        item,
+      });
+    }
+
+    return out;
+  }, [jobs, vaultItems, vaultPercent, vaultMeta]);
+
+  const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) =>
+      [row.title, row.source, row.path ?? '', row.engine, row.detail, row.platform].some((value) =>
+        value.toLowerCase().includes(q),
+      ),
+    );
+  }, [rows, query]);
+
+  const lanes = useMemo(() => {
+    const sorted = sortTransfers(filteredRows, sortBy);
+    return (
+      [
+        { id: 'active' as const, label: 'İniyor', tone: 'var(--color-state-active)' },
+        { id: 'queued' as const, label: 'Kuyrukta', tone: 'var(--color-state-queued)' },
+        { id: 'paused' as const, label: 'Duraklatıldı', tone: '#ff9f0a' },
+        { id: 'error' as const, label: 'Hata', tone: 'var(--color-state-error)' },
+        { id: 'done' as const, label: 'Tamamlandı', tone: 'var(--color-state-acquired)' },
+      ]
+        .map((lane) => ({ ...lane, rows: sorted.filter((row) => row.status === lane.id) }))
+        .filter((lane) => lane.rows.length > 0)
+    );
+  }, [filteredRows, sortBy]);
+
+  const activeCount = useMemo(
+    () => rows.filter((row) => row.status === 'active').length,
+    [rows],
+  );
+  const queuedCount = useMemo(
+    () => rows.filter((row) => row.status === 'queued').length,
+    [rows],
+  );
+  const completedTurboCount = useMemo(
+    () => jobs.filter((job) => job.status === 'completed').length,
+    [jobs],
+  );
+  const totalSpeed = useMemo(
+    () => rows.reduce((sum, row) => sum + (row.status === 'active' ? row.speed : 0), 0),
+    [rows],
   );
 
-  // Platform + arama tabanı; durum çipleri bu küme içinde sayılır (yanıltıcı toplam yok).
-  const vaultBaseItems = useMemo(() => {
-    return vaultItems.filter((item) => {
-      if (vaultPlatform !== 'all' && item.platform !== vaultPlatform) return false;
-      if (vaultSearch.trim()) {
-        const q = vaultSearch.toLowerCase();
+  const selectedJobs = useMemo(
+    () => jobs.filter((job) => selected.has(`t:${job.id}`)),
+    [jobs, selected],
+  );
+  const selectedItems = useMemo(
+    () => vaultItems.filter((item) => selected.has(`v:${item.id}`)),
+    [vaultItems, selected],
+  );
+  const selectedSize = useMemo(
+    () => selectedJobs.reduce((sum, job) => sum + (job.file_size || 0), 0),
+    [selectedJobs],
+  );
+  const canPauseSelected = selectedJobs.some((job) => job.status === 'active');
+  const canResumeSelected = selectedJobs.some(
+    (job) => job.status === 'paused' || job.status === 'error',
+  );
+  const selectedLiveCount = selectedJobs.length + selectedItems.length;
+
+  const deleteCount = (deleteTarget?.jobs.length ?? 0) + (deleteTarget?.items.length ?? 0);
+  const deleteNames = [
+    ...(deleteTarget?.jobs.map((job) => job.filename) ?? []),
+    ...(deleteTarget?.items.map((item) => item.title || baseName(item.local_path ?? item.url)) ?? []),
+  ];
+
+  const toggleSelected = (key: string): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleExpanded = (key: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handlePauseSelected = async (): Promise<void> => {
+    for (const job of selectedJobs) {
+      if (job.status === 'active') await handlePause(job);
+    }
+  };
+
+  const handleResumeSelected = async (): Promise<void> => {
+    for (const job of selectedJobs) {
+      if (job.status === 'paused' || job.status === 'error') await handleResume(job);
+    }
+  };
+
+  const doneRows = lanes.find((lane) => lane.id === 'done')?.rows ?? [];
+  const doneLimit = 6;
+  const doneToday = doneRows.filter((row) => isToday(row.createdAt)).length;
+
+  // --- Satır -----------------------------------------------------------------
+
+  const renderRow = (row: Transfer) => {
+    const isSelected = selected.has(row.key);
+    const isOpen = expanded.has(row.key);
+    const error = row.error;
+    const missing = row.kind === 'turbo' ? parseMissingComponent(error) : null;
+    const errorText = missing ? missingComponentText(missing) : error;
+    const chunks = row.kind === 'turbo' ? (liveChunks[row.job.id] ?? []) : [];
+    const isDone = row.status === 'done';
+
+    const primary = (() => {
+      if (row.kind === 'turbo') {
+        if (row.status === 'active') {
+          return (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Duraklat"
+              title="Duraklat"
+              onClick={() => void handlePause(row.job)}
+            >
+              <Pause className="size-3.5 text-amber-500" />
+            </Button>
+          );
+        }
+        if (row.status === 'paused' || row.status === 'queued') {
+          return (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Başlat"
+              title="Başlat"
+              onClick={() => void handleResume(row.job)}
+            >
+              <Play className="size-3.5 text-emerald-500" />
+            </Button>
+          );
+        }
+        if (row.status === 'error') {
+          return (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Yeniden dene"
+              title="Yeniden dene"
+              onClick={() => void handleResume(row.job)}
+            >
+              <RotateCw className="size-3.5 text-primary" />
+            </Button>
+          );
+        }
         return (
-          (item.title?.toLowerCase().includes(q) ?? false) ||
-          item.url.toLowerCase().includes(q) ||
-          (item.local_path?.toLowerCase().includes(q) ?? false)
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            aria-label="Dosyayı aç"
+            onClick={() => open(row.job.destination_path)}
+          >
+            <ExternalLink className="size-3.5" /> Aç
+          </Button>
         );
       }
-      return true;
-    });
-  }, [vaultItems, vaultPlatform, vaultSearch]);
 
-  const filteredVaultItems = useMemo(() => {
-    return vaultBaseItems.filter((item) => {
-      if (vaultStatus === 'error' && item.download_status !== 'error') return false;
-      if (
-        vaultStatus === 'active' &&
-        item.download_status !== 'queued' &&
-        item.download_status !== 'active'
-      ) {
-        return false;
+      if (row.status === 'error') {
+        return (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => void retryVaultDownload(row.item)}
+          >
+            <RotateCw className="size-3.5" /> Dene
+          </Button>
+        );
       }
-      if (vaultStatus === 'local' && !isVaultLocal(item.download_status)) return false;
-      return true;
-    });
-  }, [vaultBaseItems, vaultStatus]);
+      if (row.status === 'done') {
+        return (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => {
+              if (onPlayMedia) onPlayMedia(row.item);
+              else if (row.item.local_path) open(row.item.local_path);
+            }}
+          >
+            {onPlayMedia ? (
+              <Play className="size-3 text-emerald-500 fill-emerald-500" />
+            ) : (
+              <ExternalLink className="size-3.5" />
+            )}
+            {onPlayMedia ? 'Oynat' : 'Aç'}
+          </Button>
+        );
+      }
+      return null;
+    })();
 
-  const vaultStatusCounts = useMemo(
-    () => ({
-      all: vaultBaseItems.length,
-      local: vaultBaseItems.filter((i) => isVaultLocal(i.download_status)).length,
-      active: vaultBaseItems.filter(
-        (i) => i.download_status === 'queued' || i.download_status === 'active',
-      ).length,
-      error: vaultBaseItems.filter((i) => i.download_status === 'error').length,
-    }),
-    [vaultBaseItems],
-  );
+    return (
+      <div key={row.key} className="border-b border-border/70">
+        <div
+          className={`transfer-row cursor-pointer px-1.5 py-2.5 transition-colors ${
+            isSelected ? 'bg-primary/5' : 'hover:bg-muted/30'
+          } ${isDone ? 'is-done' : ''}`}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('button, input, a, label')) return;
+            toggleExpanded(row.key);
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => toggleSelected(row.key)}
+            aria-label={`${row.title} seç`}
+            className="tr-check size-3.5 shrink-0 cursor-pointer rounded-2xs border-border"
+          />
 
-  const allJobsSelected =
-    filteredJobs.length > 0 && filteredJobs.every((j) => selectedJobs.has(j.id));
-  const allVaultSelected =
-    filteredVaultItems.length > 0 && filteredVaultItems.every((i) => selectedVault.has(i.id));
+          <span
+            className={`tr-glyph flex size-7 shrink-0 items-center justify-center rounded-md border ${
+              row.status === 'error'
+                ? 'border-state-error/25 bg-state-error/10 text-state-error'
+                : row.status === 'done'
+                  ? 'border-state-acquired/25 bg-state-acquired/10 text-state-acquired'
+                  : row.status === 'active'
+                    ? 'border-primary/20 bg-primary/10 text-primary'
+                    : row.status === 'paused'
+                      ? 'border-amber-500/25 bg-amber-500/10 text-amber-500'
+                      : 'border-border/40 bg-muted/60 text-muted-foreground'
+            }`}
+          >
+            {row.status === 'error' ? (
+              <TriangleAlert className="size-3.5" />
+            ) : row.status === 'done' ? (
+              <Check className="size-3.5" strokeWidth={2.5} />
+            ) : (
+              categoryIcon(row.category)
+            )}
+          </span>
 
-  const toggleJobSelection = (id: string): void => {
-    setSelectedJobs((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+          <span className="tr-name flex flex-col gap-0.5">
+            <span className="truncate text-sm font-medium leading-tight" title={row.title}>
+              {row.title}
+            </span>
+            <span
+              className="truncate font-mono text-2xs text-muted-foreground"
+              title={`${row.source}${row.platform ? ` · ${row.platform}` : ''}`}
+            >
+              {row.status === 'error' && errorText ? (
+                <span className="text-destructive">{errorText}</span>
+              ) : (
+                <>
+                  {shortSource(row.source)}
+                  <span className="px-1 opacity-60">·</span>
+                  {row.engine}
+                  <span className="px-1 opacity-60">·</span>
+                  {row.detail}
+                </>
+              )}
+            </span>
+          </span>
+
+          <span className="tr-actions shrink-0">
+            {primary}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={row.path ? 'Klasörde göster' : 'İndirme klasörünü aç'}
+              title={row.path ? 'Klasörde göster' : 'İndirme klasörünü aç'}
+              onClick={() => {
+                if (row.path) reveal(row.path);
+                else if (downloadDir) open(downloadDir);
+              }}
+            >
+              <FolderOpen className="size-3.5 text-muted-foreground" />
+            </Button>
+
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label="Daha fazla eylem"
+                    title="Daha fazla eylem"
+                  />
+                }
+              >
+                <MoreHorizontal className="size-3.5 text-muted-foreground" />
+              </MenuTrigger>
+              <MenuContent align="end" className="min-w-48">
+                <MenuItem onClick={() => void copyText(row.source, 'Bağlantı')}>
+                  <Link2 className="size-3.5" /> Bağlantıyı kopyala
+                </MenuItem>
+                {row.path && (
+                  <MenuItem onClick={() => void copyText(row.path!, 'Dosya yolu')}>
+                    <Copy className="size-3.5" /> Dosya yolunu kopyala
+                  </MenuItem>
+                )}
+                {row.kind === 'vault' && row.status === 'done' && (
+                  <>
+                    <MenuSeparator />
+                    {onConvert && row.item.local_path && (
+                      <MenuItem onClick={() => onConvert(row.item)}>
+                        <Scissors className="size-3.5" /> Dönüştür / Kırp
+                      </MenuItem>
+                    )}
+                    {onOpenItem && (
+                      <MenuItem onClick={() => onOpenItem(row.item)}>
+                        <Pencil className="size-3.5" /> Kaydı Aç
+                      </MenuItem>
+                    )}
+                  </>
+                )}
+                <MenuSeparator />
+                <MenuItem
+                  onClick={() =>
+                    requestDelete(
+                      row.kind === 'turbo' ? [row.job] : [],
+                      row.kind === 'vault' ? [row.item] : [],
+                    )
+                  }
+                >
+                  <Trash2 className="size-3.5" /> Sil
+                </MenuItem>
+              </MenuContent>
+            </Menu>
+
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={isOpen ? 'Ayrıntıyı kapat' : 'Ayrıntıyı aç'}
+              title={isOpen ? 'Ayrıntıyı kapat' : 'Ayrıntıyı aç'}
+              onClick={() => toggleExpanded(row.key)}
+            >
+              <ChevronDown
+                className={`size-3.5 text-muted-foreground transition-transform duration-200 ${
+                  isOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </Button>
+          </span>
+
+          {!isDone && (
+            <span className="tr-progress">
+              <span className="flex items-baseline justify-between gap-2 font-mono text-2xs text-muted-foreground">
+                <span data-num className="font-medium text-foreground">
+                  %{Math.round(row.progress)}
+                </span>
+                <span data-num className="truncate">
+                  {row.size > 0
+                    ? `${formatBytes(row.downloaded)} / ${formatBytes(row.size)}`
+                    : ''}
+                </span>
+              </span>
+              <span className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                <span
+                  className={`block h-full rounded-full transition-[width] duration-300 ${
+                    row.status === 'error'
+                      ? 'bg-destructive'
+                      : row.status === 'paused'
+                        ? 'bg-amber-500'
+                        : 'bg-primary'
+                  }`}
+                  style={{ width: `${row.progress}%` }}
+                />
+              </span>
+            </span>
+          )}
+
+          {!isDone ? (
+            <span className="tr-metrics font-mono text-2xs text-muted-foreground">
+              <span data-num className="truncate font-medium text-foreground">
+                {row.kind === 'turbo'
+                  ? row.status === 'active'
+                    ? `${formatSpeed(row.speed)}${row.eta > 0 ? ` · ${formatEta(row.eta)}` : ''}`
+                    : row.status === 'queued'
+                      ? 'Sırada'
+                      : row.status === 'paused'
+                        ? 'Duraklatıldı'
+                        : 'Yeniden denenebilir'
+                  : [row.speedText, row.etaText ? `kalan ${row.etaText}` : null]
+                      .filter(Boolean)
+                      .join(' · ') || 'yt-dlp'}
+              </span>
+              <span className="truncate">
+                {row.kind === 'turbo'
+                  ? row.detail
+                  : row.platform || row.engine}
+              </span>
+            </span>
+          ) : (
+            <span className="tr-metrics font-mono text-2xs text-muted-foreground">
+              <span data-num>{stamp(row.createdAt)}</span>
+              {row.size > 0 && <span data-num>{formatBytes(row.size)}</span>}
+            </span>
+          )}
+        </div>
+
+        {isOpen && (
+          <div className="border-t border-border/60 bg-muted/25 px-1.5 py-2.5 lg:pl-[54px]">
+            <div className="flex flex-col gap-2">
+              {row.path && (
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="w-11 shrink-0 text-2xs text-muted-foreground">Hedef</span>
+                  <code
+                    className="min-w-0 flex-1 truncate font-mono text-2xs"
+                    title={row.path}
+                  >
+                    {row.path}
+                  </code>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label="Dosya yolunu kopyala"
+                    title="Dosya yolunu kopyala"
+                    onClick={() => void copyText(row.path!, 'Dosya yolu')}
+                  >
+                    <Copy className="size-3" />
+                  </Button>
+                </div>
+              )}
+              {row.convertedPath && row.convertedPath !== row.path && (
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="w-11 shrink-0 text-2xs text-muted-foreground">Dönüşen</span>
+                  <code
+                    className="min-w-0 flex-1 truncate font-mono text-2xs"
+                    title={row.convertedPath}
+                  >
+                    {row.convertedPath}
+                  </code>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label="Dönüşen dosya yolunu kopyala"
+                    title="Dönüşen dosya yolunu kopyala"
+                    onClick={() => void copyText(row.convertedPath!, 'Dosya yolu')}
+                  >
+                    <Copy className="size-3" />
+                  </Button>
+                </div>
+              )}
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="w-11 shrink-0 text-2xs text-muted-foreground">Kaynak</span>
+                <code className="min-w-0 flex-1 truncate font-mono text-2xs" title={row.source}>
+                  {row.source}
+                </code>
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Bağlantıyı kopyala"
+                  title="Bağlantıyı kopyala"
+                  onClick={() => void copyText(row.source, 'Bağlantı')}
+                >
+                  <Link2 className="size-3" />
+                </Button>
+              </div>
+
+              {row.kind === 'turbo' && row.status === 'active' && chunks.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-2xs text-muted-foreground">Parçalar</span>
+                  <div className="flex h-5 items-stretch gap-1">
+                    {chunks.map((chunk) => (
+                      <span key={chunk.id} className="relative flex-1 overflow-hidden rounded-xs bg-muted">
+                        <span
+                          className="absolute inset-y-0 left-0 bg-primary"
+                          style={{ width: `${chunk.percent}%` }}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {errorText && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md bg-destructive/10 px-2 py-1.5">
+                  <p className="min-w-0 flex-1 font-mono text-2xs text-destructive">
+                    Hata: {errorText}
+                  </p>
+                  {missing && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1 text-2xs"
+                      onClick={() =>
+                        installer.request(missing.id, () => {
+                          if (row.kind === 'turbo') void handleResume(row.job);
+                        })
+                      }
+                    >
+                      <Download className="size-3" /> Bileşeni kur
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                {row.kind === 'vault' && row.status === 'done' && onConvert && row.item.local_path && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1 text-2xs"
+                    onClick={() => onConvert(row.item)}
+                  >
+                    <Scissors className="size-3" /> Dönüştür / Kırp
+                  </Button>
+                )}
+                {row.kind === 'vault' && onOpenItem && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1 text-2xs"
+                    onClick={() => onOpenItem(row.item)}
+                  >
+                    <Pencil className="size-3" /> Kaydı aç
+                  </Button>
+                )}
+                {row.kind === 'turbo' && row.status === 'active' && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1 text-2xs"
+                    onClick={() => void handlePause(row.job)}
+                  >
+                    <Pause className="size-3" /> Duraklat
+                  </Button>
+                )}
+                <span className="ml-auto font-mono text-2xs text-muted-foreground">
+                  {row.kind === 'turbo' ? `#${row.id.slice(0, 8)}` : row.platform}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const toggleVaultSelection = (id: string): void => {
-    setSelectedVault((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const renderLane = (lane: (typeof lanes)[number]) => {
+    const laneSpeed = lane.rows.reduce(
+      (sum, row) => sum + (row.status === 'active' ? row.speed : 0),
+      0,
+    );
+    const isDoneLane = lane.id === 'done';
+    const visibleRows =
+      isDoneLane && !showAllCompleted ? lane.rows.slice(0, doneLimit) : lane.rows;
 
-  const toggleAllJobs = (): void => {
-    setSelectedJobs(allJobsSelected ? new Set() : new Set(filteredJobs.map((j) => j.id)));
-  };
-
-  const toggleAllVault = (): void => {
-    setSelectedVault(allVaultSelected ? new Set() : new Set(filteredVaultItems.map((i) => i.id)));
-  };
-
-  const getCategoryIcon = (cat: DownloadCategory) => {
-    switch (cat) {
-      case 'video':
-        return <Film className="size-4 text-sky-400" />;
-      case 'audio':
-        return <Music className="size-4 text-emerald-400" />;
-      case 'archive':
-        return <Archive className="size-4 text-amber-400" />;
-      case 'document':
-        return <FileText className="size-4 text-indigo-400" />;
-      case 'program':
-        return <FileCode className="size-4 text-purple-400" />;
-      default:
-        return <Package className="size-4 text-muted-foreground" />;
-    }
+    return (
+      <section key={lane.id} className="mt-5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-1 pb-1.5">
+          <span
+            className="size-1.5 shrink-0 rounded-full"
+            style={{ background: lane.tone }}
+            aria-hidden
+          />
+          <b className="text-xs font-semibold">{lane.label}</b>
+          <span data-num className="rounded-xs bg-muted px-1.5 font-mono text-2xs text-muted-foreground">
+            {lane.rows.length}
+          </span>
+          <span className="ml-auto font-mono text-2xs text-muted-foreground">
+            {isDoneLane
+              ? `${doneToday} bugün`
+              : lane.id === 'active' && laneSpeed > 0
+                ? formatSpeed(laneSpeed)
+                : lane.id === 'queued' && dlSettings
+                  ? `${activeCount}/${dlSettings.max_concurrent} eşzamanlı`
+                  : ''}
+          </span>
+          {isDoneLane && (
+            <button
+              type="button"
+              onClick={() => setCompletedOpen((v) => !v)}
+              className="text-2xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {completedOpen ? 'Gizle' : 'Göster'}
+            </button>
+          )}
+        </div>
+        {(!isDoneLane || completedOpen) && (
+          <div>
+            {visibleRows.map(renderRow)}
+            {isDoneLane && !showAllCompleted && lane.rows.length > doneLimit && (
+              <div className="flex items-center gap-2 border-b border-border/70 px-1.5 py-2 font-mono text-2xs text-muted-foreground">
+                <span>
+                  +{lane.rows.length - doneLimit} tamamlanan daha
+                </span>
+                <button
+                  type="button"
+                  className="text-primary transition-colors hover:underline"
+                  onClick={() => setShowAllCompleted(true)}
+                >
+                  Tümünü gör
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    );
   };
 
   return (
     <PageSurface
       icon={<Download />}
-      title={
-        <span className="inline-flex max-w-full flex-wrap items-center gap-2">
-          İndirme Yöneticisi
-          <Badge variant="outline" className="font-mono text-xs font-normal">
-            {sourceTab === 'vault' ? 'Arşiv Medyaları' : 'Turbo Engine'}
-          </Badge>
-        </span>
-      }
-      description={
-        sourceTab === 'vault'
-          ? "Arşivdeki indirilen YouTube, X ve medya dosyalarınızı yönetin, doğrudan oynatın veya klasörde açın."
-          : 'Çok kanallı paralel parçalı indirme motoru ile dosyalarınızı en yüksek hızda indirin ve yönetin.'
-      }
+      title="İndirme Yöneticisi"
+      description="Her indirme tek listede — durum, hız, hedef."
       width="5xl"
       actions={
         <>
-          {/* Ana Kaynak Seçici: Arşiv Medyaları vs Turbo İndirmeler */}
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-muted/60 p-1 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setSourceTab('vault')}
-              className={`flex shrink-0 items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium whitespace-nowrap transition ${
-                sourceTab === 'vault'
-                  ? 'bg-card text-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
+          <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5">
+            <span
+              className={`size-2 shrink-0 rounded-full ${
+                activeCount > 0 ? 'animate-pulse bg-state-active' : 'bg-muted-foreground/30'
               }`}
-            >
-              <Film className="size-3.5 text-primary" />
-              <span>Arşiv Medyaları</span>
-              <span className="shrink-0 rounded-full bg-primary/15 px-1.5 font-mono text-2xs font-semibold text-primary">
-                {vaultItems.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceTab('turbo')}
-              className={`flex shrink-0 items-center gap-2 rounded-md px-3.5 py-1.5 text-xs font-medium whitespace-nowrap transition ${
-                sourceTab === 'turbo'
-                  ? 'bg-card text-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Zap className="size-3.5 text-amber-500" />
-              <span>Çok Kanallı (Turbo)</span>
-              <span className="shrink-0 rounded-full bg-muted px-1.5 font-mono text-2xs">
-                {jobs.length}
-              </span>
-            </button>
+              aria-hidden
+            />
+            <span className="font-mono text-2xs text-muted-foreground">
+              <span data-num>{activeCount}</span> iniyor ·{' '}
+              <span data-num>{queuedCount}</span> kuyrukta
+            </span>
+            <span data-num className="border-l border-border pl-2 font-mono text-xs font-semibold">
+              {formatSpeed(totalSpeed)}
+            </span>
           </div>
 
           {downloadDir && (
@@ -796,7 +1434,7 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
               className="gap-1.5"
             >
               <FolderOpen className="size-3.5" />
-              <span className="hidden xl:inline">İndirme Klasörü</span>
+              <span className="max-w-[140px] truncate">{baseName(downloadDir)}</span>
             </Button>
           )}
 
@@ -808,833 +1446,252 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
         </>
       }
     >
-
-      {sourceTab === 'vault' ? (
-        <div className="flex flex-col gap-5">
-          {/* Arama ve Platform Filtreleri */}
-          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={vaultSearch}
-                onChange={(e) => setVaultSearch(e.target.value)}
-                placeholder="Arşiv indirmelerinde ara (başlık, URL, dosya)…"
-                className="pl-9 text-sm"
-              />
-            </div>
-            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5 text-xs sm:w-auto">
-              {[
-                { id: 'all', label: 'Tüm Platformlar' },
-                { id: 'youtube', label: 'YouTube' },
-                { id: 'x', label: 'X (Twitter)' },
-                { id: 'instagram', label: 'Instagram' },
-                { id: 'other', label: 'Diğer Web' },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setVaultPlatform(p.id)}
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
-                    vaultPlatform === p.id
-                      ? 'bg-primary text-primary-foreground shadow-2xs'
-                      : 'bg-muted text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Durum filtresi: hatalı/iniyor kaydı aramanın yolu. */}
-          <div className="flex flex-wrap items-center gap-1 text-xs">
-            {(
-              [
-                { id: 'all', label: 'Tümü' },
-                { id: 'local', label: 'Yerel' },
-                { id: 'active', label: 'İniyor' },
-                { id: 'error', label: 'Hata' },
-              ] as { id: VaultStatusFilter; label: string }[]
-            ).map((s) => (
-              <button
-                key={s.id}
+      <div className="flex flex-col gap-4">
+        {/* Tek satır besteci: modal yok, iş burada başlar. */}
+        <form
+          className="settings-card flex flex-col gap-2 px-3 py-2.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void startFromComposer();
+          }}
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Link2 className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <Input
+              value={composerUrl}
+              onChange={(e) => setComposerUrl(e.target.value)}
+              placeholder="Bağlantıyı yapıştır — Enter ile başlat"
+              aria-label="İndirme bağlantısı"
+              className="h-8 min-w-[13rem] flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+            />
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={composerBusy || !composerUrl.trim()}
+                className="gap-1.5"
+              >
+                <Download className="size-3.5" />
+                {composerBusy ? 'Başlatılıyor…' : 'İndir'}
+              </Button>
+              <Button
                 type="button"
-                aria-pressed={vaultStatus === s.id}
-                onClick={() => setVaultStatus(s.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1 font-medium whitespace-nowrap transition ${
-                  vaultStatus === s.id
-                    ? 'bg-card text-foreground shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setQuickUrl(composerUrl.trim());
+                  setQuickOpen(true);
+                }}
               >
-                <span>{s.label}</span>
-                <span data-num className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-2xs">
-                  {vaultStatusCounts[s.id]}
-                </span>
+                Seçenekler
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setBatchOpen(true)}>
+                Toplu
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-6 font-mono text-2xs text-muted-foreground">
+            {downloadDir && (
+              <button
+                type="button"
+                onClick={() => open(downloadDir)}
+                title={downloadDir}
+                className="truncate transition-colors hover:text-foreground"
+              >
+                Hedef · {baseName(downloadDir)}
               </button>
-            ))}
-          </div>
-
-          {selectedVaultItems.length > 0 && (
-            <div className="settings-card flex flex-wrap items-center gap-2 px-3 py-2">
-              <span data-num className="text-xs font-medium">{selectedVaultItems.length} seçili</span>
-              <div className="ml-auto flex flex-wrap items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-2xs"
-                  onClick={() => setSelectedVault(new Set())}
-                >
-                  Vazgeç
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="h-7 gap-1 text-2xs"
-                  onClick={() => {
-                    setVaultItemsToDelete(selectedVaultItems);
-                    setDeleteVaultDiskFile(true);
-                    setDeleteVaultRecord(false);
-                  }}
-                >
-                  <Trash2 className="size-3" /> Seçilenleri Sil
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {filteredVaultItems.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 px-1 text-2xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={allVaultSelected}
-                onChange={toggleAllVault}
-                aria-label="Görünen medyaların tümünü seç"
-                className="size-3.5 cursor-pointer rounded-2xs border-border"
-              />
-              <span data-num>
-                {filteredVaultItems.length} medya
-                {filteredVaultItems.length !== vaultItems.length
-                  ? ` (${vaultItems.length} içinden)`
-                  : ''}
+            )}
+            {dlSettings && (
+              <span>
+                <span data-num>{dlSettings.max_concurrent}</span> eşzamanlı ·{' '}
+                <span data-num>{dlSettings.default_connections}</span> kanal
               </span>
-            </div>
-          )}
+            )}
+            {dlSettings && (
+              <span>
+                Bitince ·{' '}
+                {dlSettings.after_complete === 'open'
+                  ? 'dosyayı aç'
+                  : dlSettings.after_complete === 'reveal'
+                    ? 'klasörde göster'
+                    : 'bekle'}
+              </span>
+            )}
+          </div>
+        </form>
 
-          {/* İndirme Listesi / Kartları */}
-          {vaultLoading ? (
-            <p className="py-16 text-center text-sm text-muted-foreground">Arşiv indirmeleri yükleniyor…</p>
-          ) : filteredVaultItems.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-14 text-center bg-card/30">
-              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Film className="size-7" />
-              </div>
-              <h3 className="text-lg font-semibold">
-                {vaultItems.length === 0 ? 'Henüz İndirilmiş Medya Yok' : 'Filtreye Uygun Medya Bulunamadı'}
-              </h3>
-              <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-                {vaultItems.length === 0
-                  ? "Arşiv (Tümü) ekranındaki herhangi bir YouTube, X veya video kartının sağ altındaki İndir butonuna tıklayarak medyayı bilgisayarınıza indirebilirsiniz. İndirilen tüm video ve ses dosyaları burada listelenir."
-                  : 'Farklı bir arama terimi, platform veya durum filtresi deneyebilirsiniz.'}
-              </p>
-              {vaultItems.length === 0 && onClose && (
-                <div className="mt-6 flex justify-center">
-                  <Button onClick={onClose} className="gap-2">
-                    <ArrowLeft className="size-4" /> Arşive Dön ve Medyaları İndir
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredVaultItems.map((item) => (
-                <div
-                  key={item.id}
-                  className={`settings-card group flex flex-col overflow-hidden transition hover:border-primary/40 hover:shadow-md ${
-                    selectedVault.has(item.id) ? 'border-primary/60' : ''
-                  }`}
-                >
-                  <div className="relative aspect-video w-full overflow-hidden bg-muted/60 border-b border-border">
-                    {item.thumbnail ? (
-                      <img src={item.thumbnail} alt="" className="h-full w-full object-cover group-hover:scale-102 transition-transform duration-200" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center font-mono text-2xs text-muted-foreground uppercase">
-                        Kapak Yok
-                      </div>
-                    )}
-                    <span className="absolute top-2 left-2 max-w-[calc(100%-3.25rem)] truncate rounded-md bg-black/75 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-xs">
-                      {PLATFORM_META[item.platform as Platform]?.label ?? item.platform}
-                    </span>
-                    <label className="absolute top-2 right-2 flex size-6 cursor-pointer items-center justify-center rounded-md border border-border bg-background shadow-xs">
-                      <input
-                        type="checkbox"
-                        checked={selectedVault.has(item.id)}
-                        onChange={() => toggleVaultSelection(item.id)}
-                        aria-label={`${item.title ?? item.url} seç`}
-                        className="size-3.5 cursor-pointer rounded-2xs border-border"
-                      />
-                    </label>
-                  </div>
+        {/* Arama + sıralama + sayfa eylemleri */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-72">
+            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ada, kaynağa veya yola göre ara"
+              aria-label="İndirmelerde ara"
+              className="pl-9 text-sm"
+            />
+          </div>
 
-                  <div className="flex flex-1 flex-col p-4 gap-2.5">
-                    <h4
-                      className="line-clamp-2 text-sm font-semibold leading-snug cursor-pointer hover:text-primary transition-colors"
-                      title={item.title ?? item.url}
-                      onClick={() => onOpenItem?.(item)}
-                    >
-                      {item.title || item.url}
-                    </h4>
-
-                    {/* Durum damgası + canlı ilerleme: arşiv satırındaki sözlüğün aynısı.
-                        (Eskiden burada koşulsuz "İndirildi" yazıyordu — iniş sürerken bile.) */}
-                    {item.download_status === 'queued' || item.download_status === 'active' ? (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <Stamp state={item.download_status === 'queued' ? 'queued' : 'active'} />
-                          <span data-num className="min-w-0 truncate text-2xs text-muted-foreground">
-                            %{Math.round(vaultPercent[item.id] ?? 0)}
-                            {vaultMeta[item.id]?.speed ? ` · ${vaultMeta[item.id]?.speed}` : ''}
-                            {vaultMeta[item.id]?.eta ? ` · kalan ${vaultMeta[item.id]?.eta}` : ''}
-                          </span>
-                        </div>
-                        <Progress value={vaultPercent[item.id] ?? 0} readout={false} />
-                      </div>
-                    ) : item.download_status === 'error' ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Stamp state="error" />
-                        <span className="line-clamp-2 min-w-0 flex-1 text-2xs text-destructive" title={item.download_error ?? ''}>
-                          {item.download_error ?? 'İndirme başarısız.'}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 gap-1 text-2xs"
-                          onClick={() => void retryVaultDownload(item)}
-                        >
-                          <RotateCw className="size-3" /> Yeniden dene
-                        </Button>
-                      </div>
-                    ) : (
-                      <Stamp state="local" className="self-start" />
-                    )}
-
-                    {item.local_path && (
-                      <p
-                        className="truncate font-mono text-2xs text-muted-foreground bg-muted/70 px-2 py-1 rounded border border-border/40"
-                        title={item.local_path}
-                      >
-                        {item.local_path}
-                      </p>
-                    )}
-
-                    <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
-                      {item.local_path && (
-                        <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 min-w-0 flex-1 gap-1.5 text-xs font-medium"
-                        onClick={() => {
-                          if (onPlayMedia) {
-                            onPlayMedia(item);
-                          } else if (item.local_path) {
-                            open(item.local_path);
-                          }
-                        }}
-                      >
-                        <Play className="size-3 text-emerald-500 fill-emerald-500" /> Oynat
-                      </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            className="h-8 w-8"
-                            title="Klasörde Göster"
-                            aria-label="Klasörde göster"
-                            onClick={() => {
-                              if (item.local_path) reveal(item.local_path);
-                            }}
-                          >
-                            <FolderOpen className="size-3.5 text-muted-foreground" />
-                          </Button>
-                        </>
-                      )}
-                      <Menu>
-                        <MenuTrigger
-                          render={
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              className="h-8 w-8"
-                              title="Daha fazla eylem"
-                              aria-label="Daha fazla eylem"
-                            />
-                          }
-                        >
-                          <MoreHorizontal className="size-3.5 text-muted-foreground" />
-                        </MenuTrigger>
-                        <MenuContent align="end" className="min-w-44">
-                          <MenuItem onClick={() => void copyText(item.url, 'Bağlantı')}>
-                            <Link2 className="size-3.5" /> Bağlantıyı kopyala
-                          </MenuItem>
-                          {item.local_path && (
-                            <MenuItem
-                              onClick={() => {
-                                if (item.local_path) void copyText(item.local_path, 'Dosya yolu');
-                              }}
-                            >
-                              <Copy className="size-3.5" /> Dosya yolunu kopyala
-                            </MenuItem>
-                          )}
-                          {(onConvert && item.local_path) || onOpenItem ? <MenuSeparator /> : null}
-                          {onConvert && item.local_path && (
-                            <MenuItem onClick={() => onConvert(item)}>
-                              <Scissors className="size-3.5" /> Dönüştür / Kırp
-                            </MenuItem>
-                          )}
-                          {onOpenItem && (
-                            <MenuItem onClick={() => onOpenItem(item)}>
-                              <Pencil className="size-3.5" /> Kaydı Aç
-                            </MenuItem>
-                          )}
-                        </MenuContent>
-                      </Menu>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        title="Medyayı Sil (Listeden / Bilgisayardan)"
-                        aria-label="Medyayı sil"
-                        onClick={() => {
-                          setVaultItemsToDelete([item]);
-                          setDeleteVaultDiskFile(true);
-                          setDeleteVaultRecord(false);
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          {/* ARAÇ ÇUBUĞU (AKSIYON BUTONLARI) */}
-          <div className="mb-6 flex flex-col gap-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Button size="sm" onClick={() => setQuickOpen(true)} className="gap-1.5 shadow-xs">
-                <Plus className="size-4" /> Yeni İndirme Ekle
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)} className="gap-1.5">
-                <Download className="size-3.5" /> Toplu Link Ekle
-              </Button>
-              <div className="h-4 w-px bg-border mx-1" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleResumeAll()}
-                disabled={jobs.filter((j) => j.status === 'paused' || j.status === 'queued').length === 0}
-                className="gap-1.5 text-xs"
-              >
-                <Play className="size-3.5 text-emerald-500" /> Tümünü Başlat
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handlePauseAll()}
-                disabled={activeCount === 0}
-                className="gap-1.5 text-xs"
-              >
-                <Pause className="size-3.5 text-amber-500" /> Tümünü Duraklat
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleClearCompleted()}
-                disabled={completedCount === 0}
-                title="Kayıtları listeden siler; dosyalar diskte kalır"
-                className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-              >
-                Tamamlananları Temizle
-              </Button>
-            </div>
-
-            {/* Sıralama + canlı arama */}
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <Menu>
-                <MenuTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-xs"
-                      aria-label={`Sırala: ${TURBO_SORT_LABELS[sortBy]}`}
-                    />
-                  }
-                >
-                  <ArrowDownUp className="size-3.5" />
-                  <span className="text-muted-foreground">Sırala:</span>
-                  {TURBO_SORT_LABELS[sortBy]}
-                </MenuTrigger>
-                <MenuContent align="end" className="min-w-40">
-                  {(Object.keys(TURBO_SORT_LABELS) as DownloadSort[]).map((key) => (
-                    <MenuItem key={key} onClick={() => setSortBy(key)}>
-                      <Check
-                        className={
-                          sortBy === key ? 'size-3.5 text-primary' : 'size-3.5 opacity-0'
-                        }
-                      />
-                      {TURBO_SORT_LABELS[key]}
-                    </MenuItem>
-                  ))}
-                </MenuContent>
-              </Menu>
-              <div className="relative min-w-0 flex-1 sm:max-w-64">
-                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="İndirmelerde ara…"
-                  className="pl-9 text-sm"
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  aria-label={`Sırala: ${SORT_LABELS[sortBy]}`}
                 />
-              </div>
-            </div>
-          </div>
-
-          {/* SEKME VE KATEGORİ FİLTRELERİ */}
-          <div className="mb-5 flex flex-col gap-3 border-b border-border/60 pb-4">
-            {/* Durum Sekmeleri */}
-            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-muted/40 p-1">
-              {[
-                { id: 'all', label: 'Tümü', count: jobs.length },
-                { id: 'active', label: 'İndiriliyor', count: activeCount },
-                { id: 'queued', label: 'Kuyrukta', count: queuedCount },
-                { id: 'completed', label: 'Tamamlandı', count: completedCount },
-                { id: 'paused', label: 'Duraklatıldı', count: jobs.filter((j) => j.status === 'paused').length },
-                { id: 'error', label: 'Hatalı', count: jobs.filter((j) => j.status === 'error').length },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setStatusFilter(tab.id as FilterStatus)}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
-                    statusFilter === tab.id
-                      ? 'bg-card text-foreground shadow-xs'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-2xs">
-                    {tab.count}
-                  </span>
-                </button>
+              }
+            >
+              <ArrowDownUp className="size-3.5" />
+              <span className="text-muted-foreground">Sırala ·</span>
+              {SORT_LABELS[sortBy]}
+            </MenuTrigger>
+            <MenuContent align="end" className="min-w-40">
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                <MenuItem key={key} onClick={() => setSortBy(key)}>
+                  <Check className={sortBy === key ? 'size-3.5 text-primary' : 'size-3.5 opacity-0'} />
+                  {SORT_LABELS[key]}
+                </MenuItem>
               ))}
-            </div>
+            </MenuContent>
+          </Menu>
 
-            {/* Kategori Filtresi */}
-            <div className="flex min-w-0 flex-wrap items-center gap-1 text-xs">
-              {[
-                { id: 'all', label: 'Tüm Dosyalar' },
-                { id: 'video', label: 'Videolar' },
-                { id: 'audio', label: 'Ses' },
-                { id: 'archive', label: 'Sıkıştırılmış' },
-                { id: 'document', label: 'Belgeler' },
-                { id: 'program', label: 'Programlar' },
-              ].map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryFilter(c.id as FilterCategory)}
-                  className={`shrink-0 rounded-full px-2.5 py-1 whitespace-nowrap transition ${
-                    categoryFilter === c.id
-                      ? 'bg-primary/15 font-semibold text-primary'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button size="icon-sm" variant="ghost" aria-label="Sayfa eylemleri" title="Sayfa eylemleri" />
+              }
+            >
+              <MoreHorizontal className="size-4" />
+            </MenuTrigger>
+            <MenuContent align="end" className="min-w-52">
+              <MenuItem onClick={() => void handleResumeAll()}>
+                <Play className="size-3.5" /> Tümünü başlat
+              </MenuItem>
+              <MenuItem onClick={() => void handlePauseAll()}>
+                <Pause className="size-3.5" /> Tümünü duraklat
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                onClick={() => {
+                  setQuickUrl('');
+                  setQuickOpen(true);
+                }}
+              >
+                <Plus className="size-3.5" /> Gelişmiş indirme…
+              </MenuItem>
+              <MenuItem onClick={() => setBatchOpen(true)}>
+                <Download className="size-3.5" /> Toplu bağlantı ekle…
+              </MenuItem>
+              {downloadDir && (
+                <MenuItem onClick={() => open(downloadDir)}>
+                  <FolderOpen className="size-3.5" /> İndirme klasörünü aç
+                </MenuItem>
+              )}
+              <MenuSeparator />
+              <MenuItem
+                disabled={completedTurboCount === 0}
+                title="Turbo kuyruğundaki tamamlanmış kayıtları listeden siler; arşiv medyalarına ve dosyalara dokunmaz."
+                onClick={() => void handleClearCompleted()}
+              >
+                <Trash2 className="size-3.5" /> Tamamlanan turbo kayıtlarını temizle
+              </MenuItem>
+            </MenuContent>
+          </Menu>
+        </div>
 
-          {selectedJobObjects.length > 0 && (
-            <div className="settings-card mb-3 flex flex-wrap items-center gap-2 px-3 py-2">
-              <span data-num className="text-xs font-medium">{selectedJobObjects.length} seçili</span>
-              <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        {selectedLiveCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
+            <span data-num className="text-xs font-medium">
+              {selectedLiveCount} seçili
+            </span>
+            {selectedSize > 0 && (
+              <span data-num className="font-mono text-2xs text-muted-foreground">
+                {formatBytes(selectedSize)}
+              </span>
+            )}
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              {canPauseSelected && (
                 <Button
-                  variant="ghost"
                   size="sm"
-                  className="h-7 gap-1 text-2xs"
-                  onClick={() => void handleResumeSelected()}
-                  disabled={
-                    !selectedJobObjects.some((j) => j.status === 'paused' || j.status === 'error')
-                  }
-                >
-                  <Play className="size-3 text-emerald-500" /> Başlat
-                </Button>
-                <Button
                   variant="ghost"
-                  size="sm"
                   className="h-7 gap-1 text-2xs"
                   onClick={() => void handlePauseSelected()}
-                  disabled={!selectedJobObjects.some((j) => j.status === 'active')}
                 >
                   <Pause className="size-3 text-amber-500" /> Duraklat
                 </Button>
+              )}
+              {canResumeSelected && (
                 <Button
+                  size="sm"
                   variant="ghost"
-                  size="sm"
-                  className="h-7 text-2xs"
-                  onClick={() => setSelectedJobs(new Set())}
-                >
-                  Vazgeç
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
                   className="h-7 gap-1 text-2xs"
-                  onClick={() => {
-                    setTurboJobsToDelete(selectedJobObjects);
-                    setDeleteTurboDiskFile(true);
-                  }}
+                  onClick={() => void handleResumeSelected()}
                 >
-                  <Trash2 className="size-3" /> Sil
+                  <Play className="size-3 text-emerald-500" /> Başlat
                 </Button>
-              </div>
-            </div>
-          )}
-
-          {!loading && filteredJobs.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1 text-2xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={allJobsSelected}
-                onChange={toggleAllJobs}
-                aria-label="Görünen indirmelerin tümünü seç"
-                className="size-3.5 shrink-0 cursor-pointer rounded-2xs border-border"
-              />
-              <span data-num className="whitespace-nowrap">
-                {filteredJobs.length} indirme
-                {filteredJobs.length !== jobs.length ? ` (${jobs.length} içinden)` : ''}
-              </span>
-              <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="flex items-center gap-1.5 whitespace-nowrap">
-                  <span
-                    className={`size-2 shrink-0 rounded-full ${
-                      activeCount > 0 ? 'animate-pulse bg-emerald-500' : 'bg-muted-foreground/30'
-                    }`}
-                  />
-                  <span data-num>{formatSpeed(totalSpeed)}</span>
-                  {dlSettings && (
-                    <span data-num className="text-muted-foreground/70">
-                      {activeCount}/{dlSettings.max_concurrent} eşzamanlı
-                    </span>
-                  )}
-                  {dlSettings && dlSettings.speed_limit_bps > 0 && (
-                    <span data-num className="text-muted-foreground/70">
-                      sınır {formatSpeed(dlSettings.speed_limit_bps)}
-                    </span>
-                  )}
-                </span>
-                <span data-num className="whitespace-nowrap">
-                  Toplam boyut: {formatBytes(filteredTotalSize)}
-                </span>
-              </span>
-            </div>
-          )}
-
-          {/* İNDİRME LİSTESİ / KARTLARI */}
-          {loading ? (
-            <p className="py-16 text-center text-sm text-muted-foreground">İndirmeler yükleniyor…</p>
-          ) : filteredJobs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-16 text-center">
-              <Download className="mx-auto mb-3 size-10 text-muted-foreground/50" />
-              <p className="text-base font-semibold">Aktif veya kayıtlı indirme bulunamadı</p>
-              <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
-                Bağlantıyı yapıştır, kalanını motor halleder. Panoya kopyaladığın bağlantı da
-                yakalanır.
-              </p>
-              <Button size="sm" className="mt-4 gap-1.5" onClick={() => setQuickOpen(true)}>
-                <Plus className="size-3.5" /> Yeni İndirme Ekle
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-7 gap-1 text-2xs"
+                onClick={() => requestDelete(selectedJobs, selectedItems)}
+              >
+                <Trash2 className="size-3" /> Sil
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-2xs"
+                onClick={() => setSelected(new Set())}
+              >
+                Vazgeç
               </Button>
             </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {filteredJobs.map((job) => {
-                const pct =
-                  job.file_size > 0
-                    ? Math.min(100, (job.downloaded_size / job.file_size) * 100)
-                    : job.status === 'completed'
-                    ? 100
-                    : 0;
+          </div>
+        )}
 
-                const chunks = liveChunks[job.id] ?? [];
+        {(loading || vaultLoading) && rows.length === 0 ? (
+          <p className="py-16 text-center text-sm text-muted-foreground">İndirmeler yükleniyor…</p>
+        ) : rows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-6 py-14 text-center">
+            <Download className="mx-auto mb-3 size-8 text-muted-foreground/50" />
+            <p className="text-base font-semibold">Henüz indirme yok</p>
+            <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
+              Bağlantıyı yukarıdaki alana yapıştır; Enter ile başlar. Panoya kopyaladığın
+              bağlantı da yakalanır.
+            </p>
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-6 py-14 text-center">
+            <Search className="mx-auto mb-3 size-8 text-muted-foreground/50" />
+            <p className="text-base font-semibold">Bu aramaya uygun indirme yok</p>
+            <Button size="sm" variant="outline" className="mt-4" onClick={() => setQuery('')}>
+              Aramayı temizle
+            </Button>
+          </div>
+        ) : (
+          <div>{lanes.map(renderLane)}</div>
+        )}
+      </div>
 
-                // Turbo satırının hata alanı da makine işareti taşıyabilir; önek
-                // asla gösterilmez. İşaret varsa okunabilir cümle + kurulum eylemi.
-                const missingError = parseMissingComponent(job.error_message);
-                const errorText = missingError ? missingComponentText(missingError) : job.error_message;
-
-                return (
-                  <div
-                    key={job.id}
-                    className={`settings-card group flex flex-col gap-3 p-4 transition hover:border-primary/40 ${
-                      selectedJobs.has(job.id) ? 'border-primary/60' : ''
-                    }`}
-                  >
-                    {/* ÜST SATIR: SEÇİM + İKON + DOSYA ADI + METRİKLER + AKSİYONLAR */}
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedJobs.has(job.id)}
-                          onChange={() => toggleJobSelection(job.id)}
-                          aria-label={`${job.filename} seç`}
-                          className="size-3.5 shrink-0 cursor-pointer rounded-2xs border-border"
-                        />
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted/60 border border-border/40">
-                          {getCategoryIcon(job.category)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="truncate text-sm font-semibold leading-tight text-foreground" title={job.filename}>
-                              {job.filename}
-                            </span>
-                            {job.threads > 1 && (
-                              <Badge variant="outline" className="text-3xs font-mono py-0 px-1 text-muted-foreground">
-                                {job.threads} parça
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="truncate text-micro text-muted-foreground font-mono mt-0.5" title={job.url}>
-                            {job.url}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Durum & Butonlar — buton kümesi sabit genişlikte, sağa hizalı. */}
-                      <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
-                        <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">
-                          {job.status === 'active' && formatSpeed(job.speed_bps)}
-                          {job.status === 'active' && job.eta_secs > 0 && ` · ${formatEta(job.eta_secs)}`}
-                        </span>
-
-                        <div className="flex items-center justify-end gap-2 sm:min-w-[13.75rem]">
-                          {/* Dosya konumu: tamamlanmışsa Gezgin'de seçer, sürüyorsa kökü açar. */}
-                          {job.status === 'completed' ? (
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              aria-label="Klasörde göster"
-                              title="Klasörde göster"
-                              onClick={() => reveal(job.destination_path)}
-                            >
-                              <FolderOpen className="size-3.5 text-muted-foreground" />
-                            </Button>
-                          ) : downloadDir ? (
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              aria-label="İndirme klasörünü aç"
-                              title="İndirme klasörünü aç"
-                              onClick={() => open(downloadDir)}
-                            >
-                              <FolderOpen className="size-3.5 text-muted-foreground" />
-                            </Button>
-                          ) : null}
-
-                          {job.status === 'completed' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1 text-xs"
-                              aria-label="Dosyayı aç"
-                              onClick={() => open(job.destination_path)}
-                            >
-                              <ExternalLink className="size-3.5" /> Dosyayı Aç
-                            </Button>
-                          )}
-
-                          {job.status === 'active' && (
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              onClick={() => void handlePause(job)}
-                              title="Duraklat"
-                              aria-label="Duraklat"
-                            >
-                              <Pause className="size-3.5 text-amber-500" />
-                            </Button>
-                          )}
-
-                          {job.status === 'paused' && (
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              onClick={() => void handleResume(job)}
-                              title="Devam Et"
-                              aria-label="Devam et"
-                            >
-                              <Play className="size-3.5 text-emerald-500" />
-                            </Button>
-                          )}
-
-                          {job.status === 'error' && (
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              onClick={() => void handleResume(job)}
-                              title="Tekrar Dene"
-                              aria-label="Tekrar dene"
-                            >
-                              <Play className="size-3.5 text-primary" />
-                            </Button>
-                          )}
-
-                          <Menu>
-                            <MenuTrigger
-                              render={
-                                <Button
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  aria-label="Daha fazla eylem"
-                                  title="Daha fazla eylem"
-                                />
-                              }
-                            >
-                              <MoreHorizontal className="size-3.5 text-muted-foreground" />
-                            </MenuTrigger>
-                            <MenuContent align="end" className="min-w-44">
-                              <MenuItem onClick={() => void copyText(job.url, 'Bağlantı')}>
-                                <Link2 className="size-3.5" /> Bağlantıyı kopyala
-                              </MenuItem>
-                              <MenuItem
-                                onClick={() => void copyText(job.destination_path, 'Dosya yolu')}
-                              >
-                                <Copy className="size-3.5" /> Dosya yolunu kopyala
-                              </MenuItem>
-                              {errorText && (
-                                <>
-                                  <MenuSeparator />
-                                  <MenuItem onClick={() => void copyText(errorText, 'Hata ayrıntısı')}>
-                                    <Copy className="size-3.5" /> Hata ayrıntısını kopyala
-                                  </MenuItem>
-                                </>
-                              )}
-                            </MenuContent>
-                          </Menu>
-
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setTurboJobsToDelete([job]);
-                              setDeleteTurboDiskFile(true);
-                            }}
-                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            title="İndirmeyi Sil (Listeden / Bilgisayardan)"
-                            aria-label="İndirmeyi sil"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* İLERLEME ÇUBUĞU */}
-                    <div className="flex flex-col gap-1">
-                      <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={`h-full transition-all duration-300 ${
-                            job.status === 'completed'
-                              ? 'bg-emerald-500'
-                              : job.status === 'paused'
-                              ? 'bg-amber-500'
-                              : job.status === 'error'
-                              ? 'bg-destructive'
-                              : 'bg-primary'
-                          }`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 font-mono text-2xs text-muted-foreground">
-                        <span className="shrink-0">
-                          {formatBytes(job.downloaded_size)} /{' '}
-                          {job.file_size > 0 ? formatBytes(job.file_size) : 'Bilinmeyen'} (%{pct.toFixed(1)})
-                        </span>
-                        <span className="min-w-0 max-w-[17.5rem] truncate" title={job.destination_path}>
-                          {job.destination_path}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* PARÇA (CHUNK) GÖRSELLEŞTİRME (SADECE AKTİFSE) */}
-                    {job.status === 'active' && chunks.length > 0 && (
-                      <div className="mt-1 flex flex-col gap-1 border-t border-border/40 pt-2">
-                        <span className="text-3xs font-medium text-muted-foreground uppercase tracking-wider">
-                          Parça Durumları ({chunks.length} iş parçacığı):
-                        </span>
-                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
-                          {chunks.map((ch) => (
-                            <div
-                              key={ch.id}
-                              className="flex flex-col gap-0.5 rounded bg-muted/40 p-1 text-center"
-                            >
-                              <div className="relative h-6 w-full overflow-hidden rounded bg-muted/50">
-                                <div
-                                  className="absolute bottom-0 left-0 right-0 bg-primary/80 transition-all duration-200"
-                                  style={{ height: `${ch.percent}%` }}
-                                />
-                              </div>
-                              <span className="font-mono text-3xs text-muted-foreground">
-                                {Math.round(ch.percent)}%
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {errorText && (
-                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-destructive/10 p-2">
-                        <p className="font-mono text-xs text-destructive">Hata: {errorText}</p>
-                        {missingError && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 text-2xs"
-                            onClick={() => void installer.request(missingError.id, () => void handleResume(job))}
-                          >
-                            <Download className="size-3" /> Bileşeni kur
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* HIZLI İNDİRME DİYALOĞU */}
+      {/* HIZLI İNDİRME (gelişmiş seçenekler) */}
       <QuickDownloadDialog
         open={quickOpen}
         onOpenChange={setQuickOpen}
+        initialUrl={quickUrl}
         onStarted={() => void reloadJobs()}
       />
 
-      {/* TOPLU LİNK İNDİRME DİYALOĞU */}
+      {/* TOPLU LİNK */}
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
         <DialogContent className="max-w-md gap-4 p-6">
           <DialogHeader>
-            <DialogTitle>Toplu Bağlantı İndirme (Batch Grabber)</DialogTitle>
+            <DialogTitle>Toplu Bağlantı Ekle</DialogTitle>
             <DialogDescription className="text-xs">
-              Her satıra bir adet indirme bağlantısı (URL) yapıştırın. Dosyalar kuyruğa eklenecektir.
+              Her satıra bir indirme bağlantısı yapıştır. Dosyalar kuyruğa eklenir.
             </DialogDescription>
           </DialogHeader>
 
@@ -1661,217 +1718,102 @@ export function DownloadsView({ onClose, onOpenItem, onConvert, onPlayMedia, onP
         </DialogContent>
       </Dialog>
 
-      {/* ARŞİV MEDYASI SİLME DİYALOĞU (tek veya toplu) */}
+      {/* SİLME (turbo + arşiv, tek diyalog) */}
       <Dialog
-        open={vaultItemsToDelete.length > 0}
+        open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open && !vaultDeleteBusy) setVaultItemsToDelete([]);
+          if (!open && !deleteBusy) setDeleteTarget(null);
         }}
       >
         <DialogContent className="max-w-md gap-4 p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
               <Trash2 className="size-5" />
-              {vaultItemsToDelete.length === 1
-                ? 'İndirilen Medyayı Sil'
-                : `${vaultItemsToDelete.length} Medyayı Sil`}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              {vaultItemsToDelete.length === 1
-                ? `"${vaultItemsToDelete[0]?.title || vaultItemsToDelete[0]?.url}" için silme seçeneklerini belirleyin.`
-                : `${vaultItemsToDelete.length} indirilmiş medya için silme seçeneklerini belirleyin.`}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-3 py-1">
-            <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-xs">
-              <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-                Dosya Konumu
-              </span>
-              {vaultItemsToDelete.length === 1 ? (
-                <p className="font-mono text-2xs break-all text-foreground select-all">
-                  {vaultItemsToDelete[0]?.local_path ?? vaultItemsToDelete[0]?.url}
-                </p>
-              ) : (
-                vaultItemsToDelete.slice(0, 4).map((item) => (
-                  <p
-                    key={item.id}
-                    className="truncate text-2xs text-foreground"
-                    title={item.local_path ?? item.url}
-                  >
-                    {item.title ?? item.local_path ?? item.url}
-                  </p>
-                ))
-              )}
-              {vaultItemsToDelete.length > 4 && (
-                <p data-num className="mt-1 text-2xs text-muted-foreground">
-                  +{vaultItemsToDelete.length - 4} medya daha
-                </p>
-              )}
-            </div>
-
-            {/* Seçenek 1: Bilgisayardan Sil */}
-            <div
-              onClick={() => setDeleteVaultDiskFile((v) => !v)}
-              className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 cursor-pointer hover:bg-muted/30 transition select-none"
-            >
-              <Switch
-                checked={deleteVaultDiskFile}
-                onCheckedChange={(checked) => setDeleteVaultDiskFile(checked)}
-                className="mt-0.5 pointer-events-none"
-              />
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-semibold text-foreground">
-                  Dosyayı bilgisayardan kalıcı olarak sil
-                </span>
-                <span className="text-2xs text-muted-foreground leading-relaxed">
-                  İndirilmiş olan video/ses dosyası diskten silinir ve yer açılır.
-                </span>
-              </div>
-            </div>
-
-            {/* Seçenek 2: Arşiv Kaydını da Kaldır */}
-            <div
-              onClick={() => setDeleteVaultRecord((v) => !v)}
-              className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 cursor-pointer hover:bg-muted/30 transition select-none"
-            >
-              <Switch
-                checked={deleteVaultRecord}
-                onCheckedChange={(checked) => setDeleteVaultRecord(checked)}
-                className="mt-0.5 pointer-events-none"
-              />
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-semibold text-foreground">
-                  Kaydı Arşivden tamamen kaldır
-                </span>
-                <span className="text-2xs text-muted-foreground leading-relaxed">
-                  {deleteVaultRecord
-                    ? 'Kayıt ve bağlantısı arşivden tamamen silinecektir.'
-                    : 'Kapalı: Kayıt arşivde kalır, yalnızca indirilmiş medya temizlenir ve listeden çıkarılır.'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setVaultItemsToDelete([])}
-              disabled={vaultDeleteBusy}
-            >
-              Vazgeç
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => void handleConfirmDeleteVaultItems()}
-              disabled={vaultDeleteBusy}
-              className="gap-1.5"
-            >
-              <Trash2 className="size-3.5" />
-              {vaultDeleteBusy
-                ? 'Siliniyor…'
-                : vaultItemsToDelete.length === 1
+              {deleteCount === 1
+                ? deleteTarget?.items.length
                   ? 'Medyayı Sil'
-                  : `${vaultItemsToDelete.length} Medyayı Sil`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* TURBO İNDİRME SİLME DİYALOĞU (tek veya toplu) */}
-      <Dialog
-        open={turboJobsToDelete.length > 0}
-        onOpenChange={(open) => {
-          if (!open && !turboDeleteBusy) setTurboJobsToDelete([]);
-        }}
-      >
-        <DialogContent className="max-w-md gap-4 p-6">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
-              <Trash2 className="size-5" />
-              {turboJobsToDelete.length === 1
-                ? 'Turbo İndirmeyi Sil'
-                : `${turboJobsToDelete.length} İndirmeyi Sil`}
+                  : 'İndirmeyi Sil'
+                : `${deleteCount} Kaydı Sil`}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              {turboJobsToDelete.length === 1
-                ? `"${turboJobsToDelete[0]?.filename}" indirme görevi listeden kaldırılacak.`
-                : `${turboJobsToDelete.length} indirme görevi listeden kaldırılacak.`}
+              {deleteCount === 1
+                ? `"${deleteNames[0]}" için silme seçeneklerini belirleyin.`
+                : `${deleteCount} kayıt için silme seçeneklerini belirleyin.`}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-3 py-1">
             <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-xs">
-              <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-                Hedef Dosya Konumu
+              <span className="mb-1 block text-3xs font-semibold tracking-wider text-muted-foreground uppercase">
+                Dosya
               </span>
-              {turboJobsToDelete.length === 1 ? (
-                <p className="font-mono text-2xs break-all text-foreground select-all">
-                  {turboJobsToDelete[0]?.destination_path}
+              {deleteNames.slice(0, 4).map((name, i) => (
+                <p key={`${name}-${i}`} className="truncate text-2xs text-foreground" title={name}>
+                  {name}
                 </p>
-              ) : (
-                turboJobsToDelete.slice(0, 4).map((job) => (
-                  <p
-                    key={job.id}
-                    className="truncate text-2xs text-foreground"
-                    title={job.destination_path}
-                  >
-                    {job.filename}
-                  </p>
-                ))
-              )}
-              {turboJobsToDelete.length > 4 && (
+              ))}
+              {deleteNames.length > 4 && (
                 <p data-num className="mt-1 text-2xs text-muted-foreground">
-                  +{turboJobsToDelete.length - 4} dosya daha
+                  +{deleteNames.length - 4} dosya daha
                 </p>
               )}
             </div>
 
-            {/* Seçenek: Bilgisayardan Sil */}
-            <div
-              onClick={() => setDeleteTurboDiskFile((v) => !v)}
-              className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 cursor-pointer hover:bg-muted/30 transition select-none"
-            >
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 bg-card p-3 select-none transition hover:bg-muted/30">
               <Switch
-                checked={deleteTurboDiskFile}
-                onCheckedChange={(checked) => setDeleteTurboDiskFile(checked)}
-                className="mt-0.5 pointer-events-none"
+                checked={deleteDisk}
+                onCheckedChange={setDeleteDisk}
+                className="pointer-events-none mt-0.5"
               />
-              <div className="flex flex-col gap-0.5">
+              <span className="flex flex-col gap-0.5">
                 <span className="text-xs font-semibold text-foreground">
-                  İndirilen dosyayı bilgisayardan da sil
+                  Dosyaları diskten de sil
                 </span>
-                <span className="text-2xs text-muted-foreground leading-relaxed">
-                  Diskte oluşturulan veya indirilen dosya kalıcı olarak silinir.
+                <span className="text-2xs leading-relaxed text-muted-foreground">
+                  İndirilen dosya kalıcı olarak silinir; yer açılır.
                 </span>
-              </div>
-            </div>
+              </span>
+            </label>
+
+            {(deleteTarget?.items.length ?? 0) > 0 && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 bg-card p-3 select-none transition hover:bg-muted/30">
+                <Switch
+                  checked={deleteRecord}
+                  onCheckedChange={setDeleteRecord}
+                  className="pointer-events-none mt-0.5"
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-xs font-semibold text-foreground">
+                    Arşiv kaydını da kaldır
+                  </span>
+                  <span className="text-2xs leading-relaxed text-muted-foreground">
+                    {deleteRecord
+                      ? 'Kayıt ve bağlantısı arşivden tamamen silinir.'
+                      : 'Kapalı: kayıt arşivde kalır, yalnızca indirilmiş medya temizlenir.'}
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setTurboJobsToDelete([])}
-              disabled={turboDeleteBusy}
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteBusy}
             >
               Vazgeç
             </Button>
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => void handleConfirmDeleteTurboJobs()}
-              disabled={turboDeleteBusy}
+              onClick={() => void handleConfirmDelete()}
+              disabled={deleteBusy}
               className="gap-1.5"
             >
               <Trash2 className="size-3.5" />
-              {turboDeleteBusy
-                ? 'Siliniyor…'
-                : turboJobsToDelete.length === 1
-                  ? 'İndirmeyi Sil'
-                  : `${turboJobsToDelete.length} İndirmeyi Sil`}
+              {deleteBusy ? 'Siliniyor…' : deleteCount === 1 ? 'Sil' : `${deleteCount} Kaydı Sil`}
             </Button>
           </DialogFooter>
         </DialogContent>

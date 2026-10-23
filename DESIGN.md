@@ -502,6 +502,23 @@ boşluk alır. Üç hâl ayrıdır ve karıştırılmaz: **tarama öncesi** (ne 
 **işlem sürerken** (spinner + durum), **sonuç yok** (olumlu "Temiz" durumu). Boş bir kart ya da
 "bulunamadı" satırı **çizilmez**; bölüm yoksa o bölüm render edilmez.
 
+### İndirme Yöneticisi — Tek Hat (bağlayıcı)
+
+İndirme bir **iştir**, motor bir ayrıntıdır: iki motor (yt-dlp / Turbo) tek listede yaşar.
+
+- **Tek liste, durum şeritleri:** `İniyor · Kuyrukta · Duraklatıldı · Hata · Tamamlandı`.
+  Motor yalnız satır künyesinde (`Turbo`, `yt-dlp`) yazılır; **motor sekmeleri yoktur**.
+  Şeritler boşsa çizilmez; sayaç ve `bugün` ölçümü başlıkta kalır.
+- **Besteci satır içidir:** bağlantı alanı + `İndir`; tek indirme için modal açılmaz.
+  Gelişmiş seçenekler (dosya adı, kanal, hedef) ayrı diyalogda durur.
+- **Satır:** `transfer-row` (`index.css`) — sabit sütunlar: seçim · ikon · ad · ilerleme ·
+  ölçüm · aksiyonlar. Dar pencerede ilerleme ve ölçüm alt satıra iner; sağ kenar kaymaz.
+- **Ayrıntı satır içinde açılır:** hedef yol, kaynak, parça haritası ve hata; modal yok.
+- **Silme tek diyalogdur:** turbo işleri ve arşiv kayıtları birlikte seçilebilir; "diskten sil"
+  ve "arşiv kaydını da kaldır" ayrı anahtarlardır.
+- **Tamamlanan katlanır:** ilk 6 satır; `Tümünü gör` ile açılır. Toplu eylem çubuğu seçim
+  varken listenin üstünde belirir (bildirim alanıyla çakışmaması için yüzen sabit çubuk değildir).
+
 ### Satır görünümü hizalama (bağlayıcı)
 `ItemRowView` her satırda **sabit sütunlar** taşır; durum (indirilmiş/indiriliyor/hata/kuyrukta) ve
 aksiyon sayısı değişse bile sütunlar kaymaz:
@@ -606,7 +623,7 @@ Koordinatlar `jointvault/` köküne göredir.
 - **Yardımcılar:** `lib/nav-history.ts` (geri/ileri) · `lib/use-drag-dismiss.ts` (çekip-kapat) ·
   `lib/theme.ts` (tema) · `lib/platform.ts` (platform mürekkebi).
 - **CSS yardımcıları (`index.css`):** `material-rail|toolbar|sheet` · `settings-card` ·
-  `record-band` · `cv-card` · `cv-row` · `skeleton-paper` · `scroll-edge-b`.
+  `transfer-row` · `record-band` · `cv-card` · `cv-row` · `skeleton-paper` · `scroll-edge-b`.
 - **Eklenti:** `extension/popup.html` bu sözlüğü ve `@theme` token'larını taşır (aynı rol
   adları, gece/gündüz); ayrı bir tasarım dili kurmaz. Kaynak token değişince orası da güncellenir.
   `extension/panel.js` aynı katmanın ikinci taşıyıcısıdır (sayfaya enjekte edilen yüzen kaynak
