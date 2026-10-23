@@ -123,6 +123,45 @@ export function formatBytes(n: number | null): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+export type DownloadSort = 'newest' | 'oldest' | 'name' | 'size' | 'status';
+
+/** Sıralanabilir indirme işi: `DownloadJob`'un yapısal alt kümesi (DB'ye bağlanmaz). */
+export interface SortableDownload {
+  filename: string;
+  file_size: number;
+  status: 'active' | 'queued' | 'paused' | 'completed' | 'error';
+  created_at: string;
+}
+
+const DOWNLOAD_STATUS_ORDER: Record<SortableDownload['status'], number> = {
+  active: 0,
+  queued: 1,
+  paused: 2,
+  error: 3,
+  completed: 4,
+};
+
+/** Görünüm sırası — girdi dizisini değiştirmez (DB sırası korunur). */
+export function sortDownloadJobs<T extends SortableDownload>(jobs: T[], sort: DownloadSort): T[] {
+  const list = [...jobs];
+  switch (sort) {
+    case 'oldest':
+      return list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    case 'name':
+      return list.sort((a, b) => a.filename.localeCompare(b.filename, 'tr'));
+    case 'size':
+      return list.sort((a, b) => b.file_size - a.file_size);
+    case 'status':
+      return list.sort(
+        (a, b) =>
+          DOWNLOAD_STATUS_ORDER[a.status] - DOWNLOAD_STATUS_ORDER[b.status] ||
+          b.created_at.localeCompare(a.created_at),
+      );
+    default:
+      return list;
+  }
+}
+
 /**
  * Hedefte aynı adlı dosya varsa `ad (2).uzantı` döner — üzerine yazmaz.
  * Varlık kontrolü Rust tarafında yapılır (dosya sistemi orada) ve yol izinli
