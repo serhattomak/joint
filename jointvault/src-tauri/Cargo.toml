@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.1.1"
+version = "1.1.2"
 description = "JointVault — kişisel medya arşivi"
 authors = ["Serhat Tomak"]
 license = "MIT"
