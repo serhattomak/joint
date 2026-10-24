@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JointVault Collector",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "X/Instagram/YouTube listelerini aktarır, tarayıcı indirmelerini devralır, sayfa kaynaklarını bulur ve sağ tık menüsü sunar.",
   "permissions": [
     "activeTab",
