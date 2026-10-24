@@ -407,6 +407,20 @@ değildir.
 Kenarlar 1px hairline'dır ve rolü bölmektir. Bir yüzeyin kenarına kalın renkli şerit koymak yasaktır:
 platform bir renk alanı değil, künye bandındaki bir *sözcüktür*. Renk yalnızca noktada kalır.
 
+## Marka işareti
+
+İkon bir **kutu ve içine giren kayıtlar**dır: kutunun ağzından üç kayıt çıkar, ortadaki mavidir
+(son giren), yanındakiler geldikleri platformun noktasını taşır. Geometrinin tek kaynağı
+`public/favicon.svg`'dir; paket ikonları ondan üretilir (`npx tauri icon public/favicon.svg`).
+
+- **Tam ikon:** 1024 karede squircle (rx 186), grafit `#1c1c1e` zemin, kâğıt `#f2f2f7` kutu,
+  yan kartlar `#c6c6ce`, ortadaki kart `#0a84ff`. Noktalar **platform mürekkebidir** ve kural
+  gereği yalnız nokta olarak yaşar.
+- **Araç çubuğu:** `BrandMark` (`src/components/BrandMark.tsx`) gövdeyi temaya uyarlar — kutu ve
+  yan kartlar `currentColor` (kartlar %45), ortadaki kart `primary`. Noktalar düşer (18px'te ölür).
+  viewBox işaretin kendi sınırlarına kırpılır: 18px kutuda kaybolmaz.
+- **Tek varyant:** ikinci bir sade/monokrom ikon çizilmez; küçük ölçek aynı geometriden gelir.
+
 ## Motion
 
 Hareket bir katman değil, arayüzün kendisidir; görsellerle birlikte tasarlanır.

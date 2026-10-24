@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  Archive,
   ArrowLeft,
   ArrowRight,
   CornerDownLeft,
@@ -17,6 +16,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { BrandMark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { WindowControls } from '@/components/ui/window-controls';
@@ -259,7 +259,7 @@ export function Toolbar({
         </ToolButton>
         {sidebarOpen && (
           <span data-tauri-drag-region className="ml-1.5 hidden min-w-0 items-center gap-2 lg:flex">
-            <Archive className="size-[18px] shrink-0 text-primary" strokeWidth={2.25} aria-hidden />
+            <BrandMark className="size-[18px] shrink-0" />
             <span className="truncate text-[0.9375rem] leading-none font-semibold tracking-[-0.01em]">
               JointVault
             </span>
