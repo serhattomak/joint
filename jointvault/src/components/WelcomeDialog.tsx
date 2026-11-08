@@ -7,16 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-
-export const ONBOARD_KEY = 'jv-onboarded';
-
-export function isOnboarded(): boolean {
-  return localStorage.getItem(ONBOARD_KEY) === '1';
-}
-
-export function markOnboarded(): void {
-  localStorage.setItem(ONBOARD_KEY, '1');
-}
+import { markOnboarded } from '@/lib/onboarding';
 
 const STEPS: { title: string; body: string }[] = [
   {

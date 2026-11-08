@@ -27,7 +27,7 @@ import {
 
 const AUDIO_EXTS = new Set(['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'wma', 'opus']);
 
-export function isAudioMedia(pathOrUrl: string): boolean {
+function isAudioMedia(pathOrUrl: string): boolean {
   const clean = pathOrUrl.split('?')[0].split('#')[0];
   const ext = clean.split('.').pop()?.toLowerCase() ?? '';
   return AUDIO_EXTS.has(ext);

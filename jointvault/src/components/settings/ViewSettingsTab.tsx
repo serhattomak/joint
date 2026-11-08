@@ -5,7 +5,7 @@ import { SettingRow } from '@/components/ui/field';
 import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/components/ClipboardWatcher';
+import { CLIPBOARD_WATCH_KEY, isWatchEnabled } from '@/lib/clipboard-watch';
 
 interface ViewSettingsTabProps {
   pageSize: number;

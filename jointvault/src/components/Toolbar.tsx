@@ -41,7 +41,7 @@ import { scrapeAndStoreArticle } from '@/lib/scraper';
  */
 
 /** Arama mı, kayıt mı? Şema, bilinen platform ana bilgisayarı veya çıplak alan adı kayıt sayılır. */
-export function looksLikeUrl(raw: string): boolean {
+function looksLikeUrl(raw: string): boolean {
   const v = raw.trim();
   if (!v || /\s/.test(v)) return false;
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(v)) return true;

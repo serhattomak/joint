@@ -21,6 +21,7 @@ import {
 import type { Category, Collection, Item, Tag } from '@/lib/db/types';
 import { generateEmbeddings, getAiStatus } from '@/lib/ai';
 import { describeError } from '@/lib/errors';
+import { PAGE_SIZES } from '@/lib/page-size';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
 import { startDownload, useDownloadProgress, type DownloadKind, type DownloadQuality } from '@/lib/downloads';
 
@@ -61,7 +62,6 @@ interface ItemGridProps {
 
 // İlk boyamada sadece ilk dilim kurulur, gerisi boş karelerde büyür.
 // content-visibility granted, ama 1000+ düğümün tek commit'te kurulması dev build'de pahalı.
-export const PAGE_SIZES = [24, 48, 96] as const;
 
 /* Kapsam sekmeleri: arşivin üç görünümü. Favoriler/Yerel birer gözetim değil,
    aynı ızgaranın kapsamıdır — bu yüzden sidebar'da değil başlığın altındadır. */
@@ -70,11 +70,6 @@ const SCOPES = [
   { id: 'favorites', label: 'Favoriler' },
   { id: 'local', label: 'Yerel' },
 ] as const;
-
-export function readPageSize(): number {
-  const v = Number.parseInt(window.localStorage.getItem('jv-page-size') ?? '', 10);
-  return (PAGE_SIZES as readonly number[]).includes(v) ? v : 48;
-}
 
 export function ItemGrid({
   query,

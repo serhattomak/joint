@@ -3,15 +3,10 @@ import { Link2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNotice } from '@/components/ui/notice';
 import { readClipboardText } from '@/lib/clipboard';
+import { isWatchEnabled } from '@/lib/clipboard-watch';
 import { createItem, listItemUrls } from '@/lib/db/client';
 import { detectPlatform } from '@/lib/platform';
 import { isKnownUrl } from '@/lib/urls';
-
-export const CLIPBOARD_WATCH_KEY = 'jv-clipboard-watch';
-
-export function isWatchEnabled(): boolean {
-  return localStorage.getItem(CLIPBOARD_WATCH_KEY) !== 'off';
-}
 
 function canonicalKey(u: string): string {
   return u.trim().toLowerCase();

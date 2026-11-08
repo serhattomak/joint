@@ -11,7 +11,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Stamp } from '@/components/ui/stamp';
 import { HealthRow } from '@/components/DiagnosticsPanel';
-import { markOnboarded } from '@/components/WelcomeDialog';
+import { markOnboarded } from '@/lib/onboarding';
 import { getHealth, type HealthReport } from '@/lib/health';
 import { WHISPER_MODELS } from '@/lib/whisper';
 import { getAiStatus, saveAiConfig, type AiStatus } from '@/lib/ai';

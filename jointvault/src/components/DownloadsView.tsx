@@ -18,14 +18,6 @@ import { useOpenTarget } from '@/lib/open-target';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
 import { useComponentInstaller } from '@/components/ComponentInstaller';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { useNotice } from '@/components/ui/notice';
@@ -57,6 +49,7 @@ import {
   startDownload,
 } from '@/lib/downloads';
 import { describeError } from '@/lib/errors';
+import { BatchLinksDialog } from '@/components/downloads/BatchLinksDialog';
 import { DeleteTransfersDialog } from '@/components/downloads/DeleteTransfersDialog';
 import { TransferRow, type TransferRowActions } from '@/components/downloads/TransferRow';
 import {
@@ -1159,37 +1152,14 @@ export function DownloadsView({
       />
 
       {/* TOPLU LİNK */}
-      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-        <DialogContent className="max-w-md gap-4 p-6">
-          <DialogHeader>
-            <DialogTitle>Toplu Bağlantı Ekle</DialogTitle>
-            <DialogDescription className="text-xs">
-              Her satıra bir indirme bağlantısı yapıştır. Dosyalar kuyruğa eklenir.
-            </DialogDescription>
-          </DialogHeader>
-
-          <textarea
-            value={batchUrls}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBatchUrls(e.target.value)}
-            rows={6}
-            placeholder="https://example.com/dosya1.zip&#10;https://example.com/dosya2.mp4&#10;https://example.com/dosya3.iso"
-            className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          />
-
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setBatchOpen(false)}>
-              İptal
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void handleStartBatch()}
-              disabled={batchBusy || !batchUrls.trim()}
-            >
-              {batchBusy ? 'Ekleniyor…' : 'Kuyruğa Ekle'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <BatchLinksDialog
+        open={batchOpen}
+        urls={batchUrls}
+        busy={batchBusy}
+        onOpenChange={setBatchOpen}
+        onUrlsChange={setBatchUrls}
+        onSubmit={() => void handleStartBatch()}
+      />
 
       <DeleteTransfersDialog
         target={deleteTarget}
