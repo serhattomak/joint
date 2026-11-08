@@ -219,8 +219,7 @@
       width: 18px;
       height: 18px;
       flex-shrink: 0;
-      color: var(--color-primary);
-      stroke-width: 2.25;
+      color: var(--color-foreground);
     }
 
     .brand-title {
@@ -808,10 +807,14 @@
   <!-- Araç çubuğu: marka + arşiv durumu (uygulamanın 52px malzeme bandı) -->
   <header class="toolbar">
     <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="2" y="3" width="20" height="5" rx="1"/>
-        <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
-        <path d="M10 12h4"/>
+      <svg class="brand-mark" viewBox="192 176 640 640" aria-hidden="true">
+        <g fill="currentColor" opacity=".45">
+          <g transform="rotate(-10 391 400)"><rect x="296" y="262" width="190" height="300" rx="24"/></g>
+          <g transform="rotate(9 655 400)"><rect x="560" y="264" width="190" height="300" rx="24"/></g>
+        </g>
+        <rect x="412" y="216" width="200" height="340" rx="24" fill="var(--color-primary)"/>
+        <rect x="252" y="458" width="520" height="22" rx="11" fill="currentColor" opacity=".45"/>
+        <rect x="232" y="480" width="560" height="296" rx="44" fill="currentColor"/>
       </svg>
       <h1 class="brand-title">JointVault</h1>
     </div>

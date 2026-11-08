@@ -420,6 +420,9 @@ platform bir renk alanı değil, künye bandındaki bir *sözcüktür*. Renk yal
   yan kartlar `currentColor` (kartlar %45), ortadaki kart `primary`. Noktalar düşer (18px'te ölür).
   viewBox işaretin kendi sınırlarına kırpılır: 18px kutuda kaybolmaz.
 - **Tek varyant:** ikinci bir sade/monokrom ikon çizilmez; küçük ölçek aynı geometriden gelir.
+- **Eklenti:** aynı iki hâli taşır — `extension/icons/*.png` (16/32/48/128) tam ikondan
+  üretilir (`npx tauri icon public/favicon.svg -o extension/icons -p 16,32,48,128`); popup ve
+  panel markası `BrandMark` geometrisidir. Eklentiye ayrı bir ikon çizilmez.
 
 ## Motion
 
@@ -529,7 +532,8 @@ boşluk alır. Üç hâl ayrıdır ve karıştırılmaz: **tarama öncesi** (ne 
   ölçüm · aksiyonlar. Dar pencerede ilerleme ve ölçüm alt satıra iner; sağ kenar kaymaz.
 - **Ayrıntı satır içinde açılır:** hedef yol, kaynak, parça haritası ve hata; modal yok.
 - **Silme tek diyalogdur:** turbo işleri ve arşiv kayıtları birlikte seçilebilir; "diskten sil"
-  ve "arşiv kaydını da kaldır" ayrı anahtarlardır.
+  ve "arşiv kaydını da kaldır" ayrı anahtarlardır. **"Diskten sil" varsayılan kapalıdır**;
+  kayıt silmek dosyayı silmez, dosya silmek bilinçli bir açmadır.
 - **Tamamlanan katlanır:** ilk 6 satır; `Tümünü gör` ile açılır. Toplu eylem çubuğu seçim
   varken listenin üstünde belirir (bildirim alanıyla çakışmaması için yüzen sabit çubuk değildir).
 

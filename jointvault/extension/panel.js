@@ -138,10 +138,11 @@
       header { border-bottom-color: #e0e0e5; }
     }
 
-    .mark { width: 15px; height: 15px; flex: 0 0 auto; stroke: #0a84ff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .mark { width: 15px; height: 15px; flex: 0 0 auto; fill: currentColor; }
+    .mark .card-fill { fill: #0a84ff; }
 
     @media (prefers-color-scheme: light) {
-      .mark { stroke: #007aff; }
+      .mark .card-fill { fill: #007aff; }
     }
 
     .title { font-weight: 600; letter-spacing: -0.018em; }
@@ -303,10 +304,14 @@
   card.setAttribute('aria-label', 'JointVault kaynakları');
   card.innerHTML = `
     <header>
-      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="2" y="3" width="20" height="5" rx="1"></rect>
-        <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>
-        <path d="M10 12h4"></path>
+      <svg class="mark" viewBox="192 176 640 640" aria-hidden="true">
+        <g opacity=".45">
+          <g transform="rotate(-10 391 400)"><rect x="296" y="262" width="190" height="300" rx="24"></rect></g>
+          <g transform="rotate(9 655 400)"><rect x="560" y="264" width="190" height="300" rx="24"></rect></g>
+        </g>
+        <rect class="card-fill" x="412" y="216" width="200" height="340" rx="24"></rect>
+        <rect x="252" y="458" width="520" height="22" rx="11" opacity=".45"></rect>
+        <rect x="232" y="480" width="560" height="296" rx="44"></rect>
       </svg>
       <span class="title">JointVault</span>
       <span class="count" data-num></span>
