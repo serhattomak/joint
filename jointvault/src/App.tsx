@@ -16,6 +16,7 @@ import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid } from '@/components/ItemGrid';
 import { PAGE_SIZES, readPageSize } from '@/lib/page-size';
 import { isOnboarded } from '@/lib/onboarding';
+import { backfillThumbnails } from '@/lib/thumbnails';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
 import { Sidebar, SidebarStrip, type SidebarView } from '@/components/Sidebar';
 import type { SettingsTab } from '@/components/SettingsView';
@@ -202,6 +203,15 @@ function App() {
 
   // İçerik/taksonomi değişince ilgili öğenin indeksini arka planda tazele.
   useEffect(() => initItemIndexRefresh(), []);
+
+  // Eski uzak kapakları oturum başına sınırlı sayıda yerelleştir.
+  useEffect(() => {
+    void backfillThumbnails()
+      .then((n) => {
+        if (n > 0) refresh();
+      })
+      .catch(() => undefined);
+  }, [refresh]);
 
   // Taksonomi/öğeler toplu değiştiğinde (yeniden kategorize, birleştirme)
   // arşiv ızgarasını ve filtreleri tazele.

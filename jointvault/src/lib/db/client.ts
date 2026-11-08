@@ -200,6 +200,19 @@ export async function listItemUrls(): Promise<{ id: string; url: string; title: 
   );
 }
 
+/** Yerelleştirilmemiş (uzak) kapağı olan kayıtlar. */
+export async function listItemsWithRemoteThumbnail(
+  limit = 100,
+): Promise<{ id: string; thumbnail: string }[]> {
+  const db = await getDb();
+  return db.select<{ id: string; thumbnail: string }[]>(
+    `SELECT id, thumbnail FROM items
+     WHERE thumbnail LIKE 'http://%' OR thumbnail LIKE 'https://%'
+     LIMIT ?`,
+    [limit],
+  );
+}
+
 /** Yalnızca seçili kimliklerin satırları (toplu işlemler tam tabloyu çekmesin). */
 export async function listItemsByIds(ids: string[]): Promise<Item[]> {
   if (ids.length === 0) return [];
