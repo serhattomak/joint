@@ -185,8 +185,8 @@ export function ItemGrid({
           collectionId,
           categoryId,
           tagId,
-          favoritesOnly,
-          localOnly,
+          favorite: favoritesOnly ? true : undefined,
+          hasLocal: localOnly ? true : undefined,
           sort,
         });
         if (res.total <= p * size && p > 0) {

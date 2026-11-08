@@ -294,11 +294,8 @@ export interface ItemFilters {
   collectionId?: string; // 'all' or id
   categoryId?: string; // 'all' or id
   tagId?: string; // 'all' or id
-  favoritesOnly?: boolean;
   /** Üç durumlu favori filtresi: true = yalnız favoriler, false = yalnız favori olmayanlar. */
   favorite?: boolean;
-  /** Yalnızca diske inmiş kayıtlar (local_path dolu). */
-  localOnly?: boolean;
   /** Üç durumlu yerel filtre: true = yalnız yerel, false = yalnız yerel olmayan. */
   hasLocal?: boolean;
   downloadedOnly?: boolean;
@@ -355,10 +352,8 @@ export async function listItemsPage(
     conds.push('it.tag_id = ?');
     params.push(f.tagId);
   }
-  if (f.favoritesOnly) conds.push('i.favorite = 1');
   if (f.favorite === true) conds.push('i.favorite = 1');
   if (f.favorite === false) conds.push('i.favorite = 0');
-  if (f.localOnly) conds.push('i.local_path IS NOT NULL');
   if (f.hasLocal === true) conds.push('i.local_path IS NOT NULL');
   if (f.hasLocal === false) conds.push('i.local_path IS NULL');
   if (f.downloadedOnly) conds.push("i.download_status = 'done'");
