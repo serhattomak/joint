@@ -13,14 +13,10 @@ import {
   YAxis,
 } from 'recharts';
 import { PageSurface } from '@/components/ui/page-surface';
-import {
-  getAllCategoriesByItem,
-  getAllTagsByItem,
-  listCollections,
-  listItems,
-} from '@/lib/db/client';
-import type { Item } from '@/lib/db/types';
-import { PLATFORM_META, PLATFORM_ORDER } from '@/lib/platform';
+import { Button } from '@/components/ui/button';
+import { getVaultStats, type VaultStats } from '@/lib/db/client';
+import { describeError } from '@/lib/errors';
+import { PLATFORM_META, PLATFORM_ORDER, type Platform } from '@/lib/platform';
 
 interface StatsViewProps {
   refreshKey: number;
@@ -52,75 +48,85 @@ const STATUS_INK: Record<string, string> = {
 };
 const statusInk = (name: string): string => STATUS_INK[name] ?? 'var(--color-muted-foreground)';
 
-function countBy(rows: Item[], pick: (it: Item) => string[]): { name: string; value: number }[] {
-  const map = new Map<string, number>();
-  for (const it of rows) for (const k of pick(it)) map.set(k, (map.get(k) ?? 0) + 1);
-  return [...map.entries()]
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-}
-
 export function StatsView({ refreshKey }: StatsViewProps) {
-  const [items, setItems] = useState<Item[]>([]);
-  const [tagNames, setTagNames] = useState<Record<string, string[]>>({});
-  const [catNames, setCatNames] = useState<Record<string, string[]>>({});
-  const [colNames, setColNames] = useState<Record<string, string>>({});
+  const [data, setData] = useState<VaultStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let live = true;
-    void (async () => {
-      const [rows, cols, tagMap, catMap] = await Promise.all([
-        listItems(),
-        listCollections(),
-        getAllTagsByItem(),
-        getAllCategoriesByItem(),
-      ]);
-      if (!live) return;
-      setItems(rows);
-      setColNames(Object.fromEntries(cols.map((c) => [c.id, c.name])));
-      const tn: Record<string, string[]> = {};
-      for (const [id, ts] of Object.entries(tagMap)) tn[id] = ts.map((t) => `#${t.name}`);
-      setTagNames(tn);
-      const cn: Record<string, string[]> = {};
-      for (const [id, cs] of Object.entries(catMap)) cn[id] = cs.map((c) => c.name);
-      setCatNames(cn);
-    })();
+    void getVaultStats()
+      .then((next) => {
+        if (live) setData(next);
+      })
+      .catch((e: unknown) => {
+        if (live) setError(describeError(e, 'İstatistikler yüklenemedi.'));
+      });
     return () => {
       live = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, attempt]);
 
-  const platformData = PLATFORM_ORDER.map((p) => ({
-    name: PLATFORM_META[p].label,
-    value: items.filter((it) => it.platform === p).length,
-  })).filter((d) => d.value > 0);
+  if (!data) {
+    return (
+      <PageSurface icon={<BarChart3 strokeWidth={2} />} title="İstatistikler" width="4xl">
+        {error ? (
+          <div className="settings-card flex max-w-2xl flex-col items-start gap-3 p-4">
+            <p className="text-sm text-state-error">{error}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setError(null);
+                setAttempt((a) => a + 1);
+              }}
+            >
+              Yeniden dene
+            </Button>
+          </div>
+        ) : (
+          <div
+            className="skeleton-paper h-40 max-w-2xl rounded-xl border border-border"
+            aria-label="İstatistikler yükleniyor"
+          />
+        )}
+      </PageSurface>
+    );
+  }
 
-  const collectionData = countBy(items, (it) => (it.collection_id ? [colNames[it.collection_id] ?? '?'] : [])).slice(0, 8);
-  const categoryData = countBy(items, (it) => catNames[it.id] ?? []).slice(0, 8);
-  const tagData = countBy(items, (it) => tagNames[it.id] ?? []).slice(0, 8);
+  const platformData = [...data.platforms]
+    .sort(
+      (a, b) =>
+        PLATFORM_ORDER.indexOf(a.name as Platform) - PLATFORM_ORDER.indexOf(b.name as Platform),
+    )
+    .map((p) => ({
+      name: PLATFORM_META[p.name as Platform]?.label ?? p.name,
+      value: p.value,
+    }))
+    .filter((d) => d.value > 0);
 
-  const done = items.filter((it) => it.download_status === 'done').length;
-  const active = items.filter((it) => it.download_status === 'active' || it.download_status === 'queued').length;
-  const failed = items.filter((it) => it.download_status === 'error').length;
-  const plain = items.length - done - active - failed;
-  const fav = items.filter((it) => it.favorite).length;
+  const collectionData = data.collections;
+  const categoryData = data.categories;
+  const tagData = data.tags;
+
+  const plain = data.total - data.downloaded - data.inFlight - data.failed;
 
   const dlData = [
-    { name: 'İndi', value: done },
+    { name: 'İndi', value: data.downloaded },
     { name: 'Arşiv', value: plain },
-    { name: 'Sırada', value: active },
-    { name: 'Hatalı', value: failed },
+    { name: 'Sırada', value: data.inFlight },
+    { name: 'Hatalı', value: data.failed },
   ].filter((d) => d.value > 0);
 
   const stats: [string, number][] = [
-    ['Toplam kayıt', items.length],
-    ['Favori', fav],
-    ['İndirilen', done],
-    ['Etiket', Object.values(tagNames).flat().filter((v, i, a) => a.indexOf(v) === i).length],
+    ['Toplam kayıt', data.total],
+    ['Favori', data.favorites],
+    ['İndirilen', data.downloaded],
+    ['Etiket', data.tagCount],
   ];
 
   const bar = (data: { name: string; value: number }[], title: string): React.ReactNode => (
-    <section className="rounded-md border border-border bg-card p-3">
+    <section className="settings-card p-3">
       <h3 className="mb-2 flex h-6 items-center border-b border-border pb-1 text-micro font-medium text-muted-foreground">{title}</h3>
       {data.length === 0 ? (
         <p className="text-xs text-muted-foreground">Veri yok.</p>
@@ -167,7 +173,7 @@ export function StatsView({ refreshKey }: StatsViewProps) {
       </section>
       <div className="grid gap-4 lg:grid-cols-2">
         {bar(platformData, 'Platform dağılımı')}
-        <section className="rounded-md border border-border bg-card p-3">
+        <section className="settings-card p-3">
           <h3 className="mb-2 flex h-6 items-center border-b border-border pb-1 text-micro font-medium text-muted-foreground">İndirme durumu</h3>
           {dlData.length === 0 ? (
             <p className="text-xs text-muted-foreground">Veri yok.</p>

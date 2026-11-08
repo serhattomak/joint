@@ -25,14 +25,16 @@ interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   commands: PaletteCommand[];
+  /** Kayıt seçilince uygulama içinde aç; verilmezse dış tarayıcıya düşer. */
+  onOpenItem?: (item: Item) => void;
 }
 
 type Entry =
   | { kind: 'command'; id: string; label: string; hint?: string; icon: React.ReactNode; run: () => void }
-  | { kind: 'item'; id: string; title: string; url: string; platform: string };
+  | { kind: 'item'; id: string; title: string; url: string; platform: string; item: Item };
 
 // Ctrl+K paleti: işlemler + SQL LIKE öğe araması (ilk 8).
-export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, commands, onOpenItem }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [items, setItems] = useState<Item[]>([]);
@@ -58,8 +60,8 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
       return;
     }
     let live = true;
-    void searchItems(q)
-      .then((rows) => live && setItems(rows.slice(0, 8)))
+    void searchItems(q, 8)
+      .then((rows) => live && setItems(rows))
       .catch(() => live && setItems([]));
     return () => {
       live = false;
@@ -77,6 +79,7 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
       title: it.title || it.url,
       url: it.url,
       platform: it.platform,
+      item: it,
     }));
     return [...cmds, ...found];
   }, [commands, debounced, items]);
@@ -88,6 +91,7 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
   const runEntry = (e: Entry): void => {
     onOpenChange(false);
     if (e.kind === 'command') e.run();
+    else if (onOpenItem) onOpenItem(e.item);
     else void openExternal(e.url);
   };
 

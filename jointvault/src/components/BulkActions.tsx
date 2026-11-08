@@ -12,25 +12,25 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { useNotice } from '@/components/ui/notice';
 import { Select } from '@/components/ui/select';
 import { TagPicker } from '@/components/TagPicker';
 import { batchCategorizeItems } from '@/lib/ai';
+import { describeError } from '@/lib/errors';
 import { batchScrapeItems } from '@/lib/scraper';
 import {
+  addCategoriesToItems,
+  addTagsToItems,
   createCollection,
-  getCategoriesForItem,
   getDb,
   getOrCreateCategory,
   getOrCreateTag,
-  getTagsForItem,
   listCategories,
   listCollections,
-  listItems,
+  listItemsByIds,
   listTags,
-  removeItem,
-  setCategoriesForItem,
-  setTagsForItem,
-  updateItem,
+  removeItems,
+  setCollectionForItems,
 } from '@/lib/db/client';
 import type { Collection } from '@/lib/db/types';
 import { createBackup } from '@/lib/db/backup';
@@ -44,6 +44,7 @@ interface BulkActionsProps {  ids: string[];
 }
 
 export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onDone }: BulkActionsProps) {
+  const notice = useNotice();
   const [tagOpen, setTagOpen] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -72,15 +73,14 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
     setScrapeProgress(null);
     setScrapeFinished(null);
     try {
-      const allItems = await listItems();
-      const targetItems = allItems.filter((it) => ids.includes(it.id));
+      const targetItems = await listItemsByIds(ids);
       const res = await batchScrapeItems(targetItems, (current, total, item) => {
         setScrapeProgress({ current, total, title: item?.title || item?.url || 'Kayıt' });
       });
       setScrapeFinished({ success: res.successCount, errors: res.errorCount });
       onDone();
     } catch (err) {
-      console.error('[BulkActions] Toplu kazıma hatası:', err);
+      notice.push({ text: describeError(err, 'Toplu kazıma başarısız.'), tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -95,8 +95,10 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
   const runDelete = async (): Promise<void> => {
     setBusy(true);
     try {
-      for (const id of ids) await removeItem(id);
+      await removeItems(ids);
       onDone();
+    } catch (e) {
+      notice.push({ text: describeError(e, 'Kayıtlar silinemedi.'), tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -107,14 +109,12 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
     setBusy(true);
     try {
       const tags = await Promise.all(tagNames.map((n) => getOrCreateTag(n)));
-      for (const id of ids) {
-        const existing = await getTagsForItem(id);
-        const merged = [...new Set([...existing.map((t) => t.id), ...tags.map((t) => t.id)])];
-        await setTagsForItem(id, merged);
-      }
+      await addTagsToItems(ids, tags.map((t) => t.id));
       setTagNames([]);
       setTagOpen(false);
       onDone();
+    } catch (e) {
+      notice.push({ text: describeError(e, 'Etiketler eklenemedi.'), tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -123,9 +123,11 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
   const handleMove = async (): Promise<void> => {
     setBusy(true);
     try {
-      for (const id of ids) await updateItem(id, { collection_id: collectionId || null });
+      await setCollectionForItems(ids, collectionId || null);
       setMoveOpen(false);
       onDone();
+    } catch (e) {
+      notice.push({ text: describeError(e, 'Koleksiyona taşınamadı.'), tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -136,14 +138,12 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
     setBusy(true);
     try {
       const cats = await Promise.all(catNames.map((n) => getOrCreateCategory(n)));
-      for (const id of ids) {
-        const existing = await getCategoriesForItem(id);
-        const merged = [...new Set([...existing.map((c) => c.id), ...cats.map((c) => c.id)])];
-        await setCategoriesForItem(id, merged);
-      }
+      await addCategoriesToItems(ids, cats.map((c) => c.id));
       setCatNames([]);
       setCatOpen(false);
       onDone();
+    } catch (e) {
+      notice.push({ text: describeError(e, 'Kategoriler eklenemedi.'), tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -158,6 +158,8 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
       setCollections((prev) => [...prev, created]);
       setCollectionId(created.id);
       setNewCollection('');
+    } catch (e) {
+      notice.push({ text: describeError(e, 'Koleksiyon oluşturulamadı.'), tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -168,8 +170,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
     setAiProgress(null);
     setAiFinished(null);
     try {
-      const allItems = await listItems();
-      const targetItems = allItems.filter((it) => ids.includes(it.id));
+      const targetItems = await listItemsByIds(ids);
       const res = await batchCategorizeItems(targetItems, {
         forceAutoApply: aiAutoApply,
         onProgress: (current, total, title) => {
@@ -179,7 +180,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
       setAiFinished(res);
       onDone();
     } catch (err) {
-      console.error('[BulkActions] AI Toplu İşlem hatası:', err);
+      notice.push({ text: describeError(err, 'Toplu AI işlemi başarısız.'), tone: 'error' });
     } finally {
       setBusy(false);
     }
@@ -193,8 +194,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
     try {
       // Yedek ZORUNLU: alınamazsa işlem başlamaz.
       await createBackup(await getDb());
-      const allItems = await listItems();
-      const targetItems = allItems.filter((it) => ids.includes(it.id));
+      const targetItems = await listItemsByIds(ids);
       const res = await batchCategorizeItems(targetItems, {
         forceAutoApply: true,
         replaceExisting: true,
@@ -205,7 +205,7 @@ export function BulkActions({ ids, total, allSelected, onSelectAll, onClear, onD
       setAiFinished(res);
       onDone();
     } catch (err) {
-      console.error('[BulkActions] yeniden kategorize hatası:', err);
+      notice.push({ text: describeError(err, 'Yeniden kategorize başarısız.'), tone: 'error' });
     } finally {
       setBusy(false);
     }

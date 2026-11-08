@@ -147,7 +147,17 @@ pub async fn download_media(app: AppHandle, payload: serde_json::Value) -> Resul
         .filter(|s| !s.is_empty());
     let target_dir = match subfolder {
         Some(sub) => {
+            // Alt klasör adı bir AD'dır, yol değildir: ayırıcı ve `..` kabul etme.
+            // Aksi hâlde renderer `..\..\` ile indirme kökünün dışına yazdırabilirdi.
+            if sub.contains("..")
+                || sub.contains('/')
+                || sub.contains('\\')
+                || sub.contains(':')
+            {
+                return Err(format!("Geçersiz alt klasör adı: {sub}"));
+            }
             let p = dir.join(sub);
+            crate::paths::ensure_allowed(&app, &p)?;
             let _ = std::fs::create_dir_all(&p);
             p
         }

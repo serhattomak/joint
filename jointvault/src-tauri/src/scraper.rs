@@ -34,6 +34,71 @@ fn client() -> Result<reqwest::Client, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Önizleme kapağını diske indirir; çevrimdışı gösterim ve platforma IP
+/// sızdırmama için. Yalnızca yeni kayıtlarda çağrılır (eski kayıtlar dokunulmaz).
+#[tauri::command]
+pub async fn cache_thumbnail(
+    app: AppHandle,
+    url: String,
+    item_id: String,
+) -> Result<String, String> {
+    let u = url.trim();
+    if !(u.starts_with("http://") || u.starts_with("https://")) {
+        return Err("Yalnızca http(s) kapak indirilir.".to_string());
+    }
+    let safe_id: String = item_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if safe_id.is_empty() {
+        return Err("Geçersiz kayıt kimliği.".to_string());
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("thumbnails");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for ext in ["jpg", "png", "webp", "gif", "avif"] {
+        let p = dir.join(format!("{safe_id}.{ext}"));
+        if p.exists() {
+            return Ok(p.to_string_lossy().to_string());
+        }
+    }
+    let resp = client()?.get(u).send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Kapak indirilemedi: HTTP {}", resp.status()));
+    }
+    if resp.content_length().unwrap_or(0) > 8 * 1024 * 1024 {
+        return Err("Kapak 8 MB sınırını aşıyor.".to_string());
+    }
+    let ext = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| {
+            if ct.contains("png") {
+                "png"
+            } else if ct.contains("webp") {
+                "webp"
+            } else if ct.contains("gif") {
+                "gif"
+            } else if ct.contains("avif") {
+                "avif"
+            } else {
+                "jpg"
+            }
+        })
+        .unwrap_or("jpg");
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err("Kapak 8 MB sınırını aşıyor.".to_string());
+    }
+    let dest = dir.join(format!("{safe_id}.{ext}"));
+    std::fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub async fn scrape_item_content(url: String) -> Result<ScrapedArticle, String> {
     let raw_url = url.trim();

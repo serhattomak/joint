@@ -22,6 +22,7 @@ import {
   getTagsForItem,
   listCategories,
   listCollections,
+  listItemUrls,
   listTags,
   setCategoriesForItem,
   setTagsForItem,
@@ -31,6 +32,8 @@ import {
 import type { Collection, Item } from '@/lib/db/types';
 import { detectPlatform, fetchPreview } from '@/lib/platform';
 import { scrapeAndStoreArticle } from '@/lib/scraper';
+import { cacheThumbnail } from '@/lib/thumbnails';
+import { canonicalizeUrl } from '@/lib/urls';
 
 interface AddItemDialogProps {
   open: boolean;
@@ -108,6 +111,17 @@ export function AddItemDialog({
     setSaving(true);
     setError(null);
     try {
+      // Aynı bağlantı ikinci kez arşive girmesin: kanonik URL karşılaştırması
+      // (x.com/twitter.com, youtu.be/watch, sondaki /) tek kaynaktan gelir.
+      const existing = await listItemUrls();
+      const key = canonicalizeUrl(cleanUrl);
+      const dup = existing.find(
+        (e) => canonicalizeUrl(e.url) === key && e.id !== initial?.id,
+      );
+      if (dup) {
+        setError(`Bu bağlantı zaten arşivde${dup.title ? `: ${dup.title}` : ''}.`);
+        return;
+      }
       const tagNames = tags;
       const payload = {
         url: cleanUrl,
@@ -118,6 +132,11 @@ export function AddItemDialog({
         collection_id: collectionId || null,
       };
       const saved = editing && initial ? await updateItem(initial.id, payload) : await createItem(payload);
+      // Kapak yerelde dursun: çevrimdışı gösterim + platforma IP sızdırmama.
+      const localThumb = await cacheThumbnail(saved.id, saved.thumbnail);
+      if (localThumb && localThumb !== saved.thumbnail) {
+        await updateItem(saved.id, { thumbnail: localThumb });
+      }
       if (favorite !== saved.favorite) await toggleFavorite(saved.id);
       const tagIds = await Promise.all(tagNames.map((name) => getOrCreateTag(name)));
       await setTagsForItem(saved.id, tagIds.map((t) => t.id));

@@ -8,6 +8,7 @@ import { MIGRATIONS, runMigrations, type MigrationExecutor } from './migrations'
 import { buildMergeBlob } from './merge-sql';
 import { getVectorIndex, invalidateVectorIndex } from '../vector-cache';
 import { MAX_DEPTH, validateCategoryCreate, validateCategoryMove } from '../taxonomy-tree';
+import { escapeLike, normalizeSearchText } from '../search-text';
 
 /*
  * Veritabanı yolu.
@@ -72,8 +73,24 @@ async function initDb(): Promise<Database> {
     console.info(`[db] göç öncesi yedek alındı (${pending.length} göç bekliyordu)`);
   });
 
+  /* `search_text` göçle NULL gelen eski satırlar için tek seferlik doldurma.
+     Yazma yolları yeni değeri zaten üretir; burada kalan boşluk kapatılır. */
+  await backfillSearchText(db);
+
   liveDb = db;
   return db;
+}
+
+async function backfillSearchText(db: Database): Promise<void> {
+  const rows = await db.select<
+    { id: string; url: string; title: string | null; note: string | null }[]
+  >('SELECT id, url, title, note FROM items WHERE search_text IS NULL');
+  if (rows.length === 0) return;
+  const statements = rows
+    .map((_, i) => `UPDATE items SET search_text = $${i * 2 + 1} WHERE id = $${i * 2 + 2};`)
+    .join(' ');
+  const params = rows.flatMap((r) => [normalizeSearchText(r.url, r.title, r.note), r.id]);
+  await runAtomic(db, statements, params);
 }
 
 const hasExistingVault = async (db: Database): Promise<boolean> => {
@@ -146,9 +163,22 @@ export async function createItem(input: NewItem): Promise<Item> {
     updated_at: now(),
   };
   await db.execute(
-    `INSERT INTO items (id, url, title, note, platform, thumbnail, favorite, collection_id, user_id, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-    [item.id, item.url, item.title, item.note, item.platform, item.thumbnail, item.favorite, item.collection_id, item.user_id, item.created_at, item.updated_at],
+    `INSERT INTO items (id, url, title, note, platform, thumbnail, search_text, favorite, collection_id, user_id, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [
+      item.id,
+      item.url,
+      item.title,
+      item.note,
+      item.platform,
+      item.thumbnail,
+      normalizeSearchText(item.url, item.title, item.note),
+      item.favorite,
+      item.collection_id,
+      item.user_id,
+      item.created_at,
+      item.updated_at,
+    ],
   );
   return toItem(item);
 }
@@ -156,6 +186,26 @@ export async function createItem(input: NewItem): Promise<Item> {
 export async function listItems(): Promise<Item[]> {
   const db = await getDb();
   const rows = await db.select<ItemRow[]>('SELECT * FROM items ORDER BY created_at DESC');
+  return rows.map(toItem);
+}
+
+/**
+ * Tekilleştirme için yalnızca kimlik + URL + başlık. Tam satır çekmek
+ * gereksiz: 2000 kayıtta `listItems()` tüm not/kapak/yol alanlarını taşır.
+ */
+export async function listItemUrls(): Promise<{ id: string; url: string; title: string | null }[]> {
+  const db = await getDb();
+  return db.select<{ id: string; url: string; title: string | null }[]>(
+    'SELECT id, url, title FROM items',
+  );
+}
+
+/** Yalnızca seçili kimliklerin satırları (toplu işlemler tam tabloyu çekmesin). */
+export async function listItemsByIds(ids: string[]): Promise<Item[]> {
+  if (ids.length === 0) return [];
+  const db = await getDb();
+  const inClause = ids.map((_, i) => `$${i + 1}`).join(', ');
+  const rows = await db.select<ItemRow[]>(`SELECT * FROM items WHERE id IN (${inClause})`, ids);
   return rows.map(toItem);
 }
 
@@ -182,6 +232,10 @@ export async function updateItem(id: string, patch: ItemPatch): Promise<Item> {
 
   // İndekslenen metin (başlık/not/platform/url) değiştiyse arama tazelensin.
   if (entries.some(([k]) => k === 'title' || k === 'note' || k === 'platform' || k === 'url')) {
+    await db.execute('UPDATE items SET search_text = $1 WHERE id = $2', [
+      normalizeSearchText(row.url, row.title, row.note),
+      id,
+    ]);
     emitItemIndexDirty(id);
   }
 
@@ -194,6 +248,15 @@ export async function removeItem(id: string): Promise<void> {
   invalidateVectorIndex();
 }
 
+/** Toplu silme: tek DELETE, tek indeks geçersizleştirme. */
+export async function removeItems(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getDb();
+  const inClause = ids.map((_, i) => `$${i + 1}`).join(', ');
+  await db.execute(`DELETE FROM items WHERE id IN (${inClause})`, ids);
+  invalidateVectorIndex();
+}
+
 export async function toggleFavorite(id: string): Promise<Item> {
   const db = await getDb();
   await db.execute('UPDATE items SET favorite = 1 - favorite, updated_at = $1 WHERE id = $2', [now(), id]);
@@ -201,12 +264,13 @@ export async function toggleFavorite(id: string): Promise<Item> {
   return toItem(row);
 }
 
-export async function searchItems(q: string): Promise<Item[]> {
+export async function searchItems(q: string, limit = 50): Promise<Item[]> {
+  const term = normalizeSearchText(q);
+  if (!term) return [];
   const db = await getDb();
-  const like = `%${q}%`;
   const rows = await db.select<ItemRow[]>(
-    'SELECT * FROM items WHERE title LIKE $1 OR note LIKE $1 OR url LIKE $1 ORDER BY created_at DESC',
-    [like],
+    "SELECT * FROM items WHERE search_text LIKE $1 ESCAPE '\\' ORDER BY created_at DESC LIMIT $2",
+    [`%${escapeLike(term)}%`, limit],
   );
   return rows.map(toItem);
 }
@@ -252,11 +316,12 @@ export async function listItemsPage(
   const db = await getDb();
   const conds: string[] = [];
   const params: unknown[] = [];
-  const q = f.query?.trim();
+  // Türkçe katlama tek yerde: `search_text` yazma anında normalize edilir,
+  // sorgu da aynı fonksiyondan geçer. `NOCASE`e güvenilmez (ASCII-only).
+  const q = f.query ? normalizeSearchText(f.query) : '';
   if (q) {
-    conds.push('(i.title LIKE ? OR i.note LIKE ? OR i.url LIKE ?)');
-    const like = `%${q}%`;
-    params.push(like, like, like);
+    conds.push("i.search_text LIKE ? ESCAPE '\\'");
+    params.push(`%${escapeLike(q)}%`);
   }
   if (f.platform && f.platform !== 'all') {
     conds.push('i.platform = ?');
@@ -347,6 +412,12 @@ export async function listCollections(): Promise<Collection[]> {
   return db.select<Collection[]>('SELECT * FROM collections ORDER BY created_at DESC');
 }
 
+export async function getOrCreateCollection(name: string): Promise<Collection> {
+  const trimmed = name.trim();
+  const existing = (await listCollections()).find((c) => c.name === trimmed);
+  return existing ?? createCollection(trimmed);
+}
+
 export async function updateCollection(id: string, name: string): Promise<Collection> {
   const db = await getDb();
   await db.execute('UPDATE collections SET name = $1, updated_at = $2 WHERE id = $3', [name, now(), id]);
@@ -433,10 +504,16 @@ export async function getTagsForItem(item_id: string): Promise<Tag[]> {  const d
 }
 
 // ponytail: tek JOIN ile tüm eşleşmeler — filtre değişiminde N+1 IPC yerine 1 tur.
-export async function getAllTagsByItem(): Promise<Record<string, Tag[]>> {
+export async function getAllTagsByItem(itemIds?: string[]): Promise<Record<string, Tag[]>> {
+  if (itemIds && itemIds.length === 0) return {};
   const db = await getDb();
+  const where =
+    itemIds && itemIds.length > 0
+      ? ` WHERE it.item_id IN (${itemIds.map((_, i) => `$${i + 1}`).join(', ')})`
+      : '';
   const rows = await db.select<(Tag & { item_id: string })[]>(
-    'SELECT t.*, it.item_id FROM tags t JOIN item_tags it ON it.tag_id = t.id',
+    `SELECT t.*, it.item_id FROM tags t JOIN item_tags it ON it.tag_id = t.id${where}`,
+    itemIds && itemIds.length > 0 ? itemIds : [],
   );
   const map: Record<string, Tag[]> = {};
   for (const r of rows) {
@@ -481,6 +558,20 @@ export async function setTagsForItem(item_id: string, tag_ids: string[]): Promis
     statements.push(`INSERT INTO item_tags (item_id, tag_id) VALUES ${tuples.join(', ')};`);
   }
   await runAtomicSafe(db, statements.join(' '), values);
+}
+
+/** Toplu etiket ekleme: tek INSERT, satır başına okuma/yazma yok. */
+export async function addTagsToItems(itemIds: string[], tagIds: string[]): Promise<void> {
+  if (itemIds.length === 0 || tagIds.length === 0) return;
+  const db = await getDb();
+  const itemClause = itemIds.map((_, i) => `$${i + 1}`).join(', ');
+  const tagClause = tagIds.map((_, i) => `$${itemIds.length + i + 1}`).join(', ');
+  await db.execute(
+    `INSERT OR IGNORE INTO item_tags (item_id, tag_id)
+     SELECT i.id, t.id FROM items i, tags t
+     WHERE i.id IN (${itemClause}) AND t.id IN (${tagClause})`,
+    [...itemIds, ...tagIds],
+  );
 }
 
 // --- categories (mirror of tags: broad topics, many-to-many) ---
@@ -687,10 +778,16 @@ export async function getCategoriesForItem(item_id: string): Promise<Category[]>
 }
 
 // ponytail: tek JOIN ile tüm eşleşmeler — filtre değişiminde N+1 IPC yerine 1 tur.
-export async function getAllCategoriesByItem(): Promise<Record<string, Category[]>> {
+export async function getAllCategoriesByItem(itemIds?: string[]): Promise<Record<string, Category[]>> {
+  if (itemIds && itemIds.length === 0) return {};
   const db = await getDb();
+  const where =
+    itemIds && itemIds.length > 0
+      ? ` WHERE ic.item_id IN (${itemIds.map((_, i) => `$${i + 1}`).join(', ')})`
+      : '';
   const rows = await db.select<(Category & { item_id: string })[]>(
-    'SELECT c.*, ic.item_id FROM categories c JOIN item_categories ic ON ic.category_id = c.id',
+    `SELECT c.*, ic.item_id FROM categories c JOIN item_categories ic ON ic.category_id = c.id${where}`,
+    itemIds && itemIds.length > 0 ? itemIds : [],
   );
   const map: Record<string, Category[]> = {};
   for (const r of rows) {
@@ -712,6 +809,34 @@ export async function setCategoriesForItem(item_id: string, category_ids: string
     statements.push(`INSERT INTO item_categories (item_id, category_id) VALUES ${tuples.join(', ')};`);
   }
   await runAtomicSafe(db, statements.join(' '), values);
+}
+
+/** Toplu kategori ekleme: tek INSERT. */
+export async function addCategoriesToItems(itemIds: string[], categoryIds: string[]): Promise<void> {
+  if (itemIds.length === 0 || categoryIds.length === 0) return;
+  const db = await getDb();
+  const itemClause = itemIds.map((_, i) => `$${i + 1}`).join(', ');
+  const catClause = categoryIds.map((_, i) => `$${itemIds.length + i + 1}`).join(', ');
+  await db.execute(
+    `INSERT OR IGNORE INTO item_categories (item_id, category_id)
+     SELECT i.id, c.id FROM items i, categories c
+     WHERE i.id IN (${itemClause}) AND c.id IN (${catClause})`,
+    [...itemIds, ...categoryIds],
+  );
+}
+
+/** Toplu koleksiyon taşıma: tek UPDATE. */
+export async function setCollectionForItems(
+  itemIds: string[],
+  collectionId: string | null,
+): Promise<void> {
+  if (itemIds.length === 0) return;
+  const db = await getDb();
+  const inClause = itemIds.map((_, i) => `$${i + 3}`).join(', ');
+  await db.execute(
+    `UPDATE items SET collection_id = $1, updated_at = $2 WHERE id IN (${inClause})`,
+    [collectionId, now(), ...itemIds],
+  );
 }
 
 // --- backup (JSON export/import, merge by id) ---
@@ -929,12 +1054,15 @@ export async function searchHybridChunks(
   query: string,
   queryEmbedding: number[] | Float32Array | null,
   limit = 20,
+  offset = 0,
 ): Promise<HybridSearchResult[]> {
   const db = await getDb();
   const ftsScores = new Map<string, number>();
   const vectorScores = new Map<string, { score: number; chunk?: ItemChunkRow }>();
 
-  const cleanQuery = query.trim().replace(/['"*^]/g, ' ');
+  // FTS5 unicode61 Türkçe harfleri tutarsız katlıyor (`ŞARKI` ↔ `sarki` çalışır,
+  // `şarkı` çalışmaz). Sorgu, indekslenen metinle aynı normalizasyondan geçer.
+  const cleanQuery = normalizeSearchText(query).replace(/['"*^]/g, ' ');
   if (cleanQuery) {
     try {
       const tokens = cleanQuery.split(/\s+/).filter(Boolean);
@@ -1057,7 +1185,7 @@ export async function searchHybridChunks(
       perItem.set(entry.chunk.item_id, n + 1);
       return true;
     })
-    .slice(0, limit);
+    .slice(offset, offset + limit);
 
   const itemIds = Array.from(new Set(scored.map((entry) => entry.chunk.item_id)));
   if (itemIds.length === 0) return [];
@@ -1087,6 +1215,20 @@ export async function searchHybridChunks(
   }
 
   return results;
+}
+
+/**
+ * Sayfalı hibrit arama. `hasMore` fazladan bir satır isteyerek ölçülür;
+ * böylece ItemGrid "1/1" yalanı söylemez ve ikinci sayfa açılabilir.
+ */
+export async function searchHybridChunksPage(
+  query: string,
+  queryEmbedding: number[] | Float32Array | null,
+  limit: number,
+  offset: number,
+): Promise<{ rows: HybridSearchResult[]; hasMore: boolean }> {
+  const probe = await searchHybridChunks(query, queryEmbedding, limit + 1, offset);
+  return { rows: probe.slice(0, limit), hasMore: probe.length > limit };
 }
 
 // --- Taksonomi & Koleksiyon Özetleri (CollectionsView için) ---
@@ -1161,6 +1303,77 @@ export async function listTagsWithCounts(): Promise<TagWithCount[]> {
     ...t,
     count: countMap.get(t.id) ?? 0,
   }));
+}
+
+export interface VaultStats {
+  total: number;
+  favorites: number;
+  downloaded: number;
+  inFlight: number;
+  failed: number;
+  tagCount: number;
+  platforms: { name: string; value: number }[];
+  collections: { name: string; value: number }[];
+  categories: { name: string; value: number }[];
+  tags: { name: string; value: number }[];
+}
+
+/**
+ * İstatistik ekranı için SQL tarafında toplanmış sayılar.
+ * Tüm arşivi JS'e çekip tekrar tekrar `filter` etmek yerine tek tur sorgu.
+ */
+export async function getVaultStats(): Promise<VaultStats> {
+  const db = await getDb();
+  const [totals] = await db.select<
+    {
+      total: number;
+      favorites: number;
+      downloaded: number;
+      in_flight: number;
+      failed: number;
+      tag_count: number;
+    }[]
+  >(`SELECT
+       COUNT(*) AS total,
+       COALESCE(SUM(favorite = 1), 0) AS favorites,
+       COALESCE(SUM(download_status = 'done'), 0) AS downloaded,
+       COALESCE(SUM(download_status IN ('active','queued')), 0) AS in_flight,
+       COALESCE(SUM(download_status = 'error'), 0) AS failed,
+       (SELECT COUNT(*) FROM tags) AS tag_count
+     FROM items`);
+  const [platforms, collections, categories, tags] = await Promise.all([
+    db.select<{ name: string; value: number }[]>(
+      'SELECT platform AS name, COUNT(*) AS value FROM items GROUP BY platform ORDER BY value DESC',
+    ),
+    db.select<{ name: string; value: number }[]>(
+      `SELECT c.name AS name, COUNT(i.id) AS value
+       FROM collections c JOIN items i ON i.collection_id = c.id
+       GROUP BY c.id ORDER BY value DESC LIMIT 8`,
+    ),
+    db.select<{ name: string; value: number }[]>(
+      `SELECT c.name AS name, COUNT(ic.item_id) AS value
+       FROM categories c JOIN item_categories ic ON ic.category_id = c.id
+       GROUP BY c.id ORDER BY value DESC LIMIT 8`,
+    ),
+    db.select<{ name: string; value: number }[]>(
+      `SELECT t.name AS name, COUNT(it.item_id) AS value
+       FROM tags t JOIN item_tags it ON it.tag_id = t.id
+       GROUP BY t.id ORDER BY value DESC LIMIT 8`,
+    ),
+  ]);
+
+  return {
+    total: totals?.total ?? 0,
+    favorites: totals?.favorites ?? 0,
+    downloaded: totals?.downloaded ?? 0,
+    inFlight: totals?.in_flight ?? 0,
+    failed: totals?.failed ?? 0,
+    tagCount: totals?.tag_count ?? 0,
+    platforms,
+    collections,
+    categories,
+    tags,
+  };
 }
 
 // --- IDM Turbo Download Jobs ---
@@ -1256,6 +1469,14 @@ export async function listDownloadJobs(statusFilter?: DownloadStatus): Promise<D
     return db.select<DownloadJob[]>('SELECT * FROM downloads WHERE status = $1 ORDER BY created_at DESC', [statusFilter]);
   }
   return db.select<DownloadJob[]>('SELECT * FROM downloads ORDER BY created_at DESC');
+}
+
+/** Şerit için yalnızca süren/kuyruktaki işler: tamamlanmış geçmişi çekme. */
+export async function listOpenDownloadJobs(): Promise<DownloadJob[]> {
+  const db = await getDb();
+  return db.select<DownloadJob[]>(
+    "SELECT * FROM downloads WHERE status IN ('active','queued') ORDER BY created_at DESC",
+  );
 }
 
 export async function getDownloadJob(id: string): Promise<DownloadJob | null> {
@@ -1371,6 +1592,20 @@ export async function getArticleItemIds(itemIds?: string[]): Promise<Set<string>
       : 'SELECT item_id FROM item_articles';
   const rows = await db.select<{ item_id: string }[]>(query, itemIds && itemIds.length > 0 ? itemIds : []);
   return new Set(rows.map((r) => r.item_id));
+}
+
+/** Şerit için yalnızca sayaç: tüm satırları çekmek gereksiz. */
+export async function countDownloadedStatuses(): Promise<{ active: number; queued: number }> {
+  const db = await getDb();
+  const rows = await db.select<{ status: string; n: number }[]>(
+    "SELECT download_status AS status, COUNT(*) AS n FROM items WHERE download_status IN ('active','queued') GROUP BY download_status",
+  );
+  const out = { active: 0, queued: 0 };
+  for (const r of rows) {
+    if (r.status === 'active') out.active = r.n;
+    else if (r.status === 'queued') out.queued = r.n;
+  }
+  return out;
 }
 
 export async function listDownloadedItems(): Promise<Item[]> {

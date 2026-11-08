@@ -13,15 +13,17 @@ pub async fn fetch_preview(url: String) -> Result<Preview, String> {
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?;
-    let html = client
+    let resp = client
         .get(&url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JointVault/1.0")
         .send()
         .await
-        .map_err(|e| e.to_string())?
-        .text()
-        .await
         .map_err(|e| e.to_string())?;
+    // Önizleme yalnızca <head> için: 8 MB üstü yanıt belleğe alınmaz.
+    if resp.content_length().unwrap_or(0) > 8 * 1024 * 1024 {
+        return Err("Sayfa 8 MB sınırını aşıyor.".to_string());
+    }
+    let html = resp.text().await.map_err(|e| e.to_string())?;
 
     let head = head_slice(&html);
     let mut title = meta_content(head, "og:title");

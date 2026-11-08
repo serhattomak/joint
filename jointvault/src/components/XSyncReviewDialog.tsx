@@ -11,7 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { createItem, listItems } from '@/lib/db/client';
+import { createItem, listItems, updateItem } from '@/lib/db/client';
+import { cacheThumbnail } from '@/lib/thumbnails';
 import type { FormatTarget } from '@/components/FormatDialog';
 import {
   getDefaultQuality,
@@ -113,6 +114,9 @@ export function XSyncReviewDialog({ onDone, onPickFormat }: XSyncReviewDialogPro
             thumbnail ??= preview?.thumbnail ?? null;
           }
           const item = await createItem({ url: row.url, platform, title, thumbnail });
+          void cacheThumbnail(item.id, item.thumbnail)
+            .then((local) => (local && local !== item.thumbnail ? updateItem(item.id, { thumbnail: local }) : null))
+            .catch(() => undefined);
           // Arka planda tweet/post içeriğini kazı ve FTS5'e indeksle
           void scrapeAndStoreArticle(item.id, row.url).catch(() => {});
 

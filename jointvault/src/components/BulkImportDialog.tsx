@@ -9,15 +9,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { createItem } from '@/lib/db/client';
+import { Input } from '@/components/ui/input';
+import {
+  createItem,
+  getOrCreateCategory,
+  getOrCreateCollection,
+  getOrCreateTag,
+  listItemUrls,
+  setCategoriesForItem,
+  setTagsForItem,
+  updateItem,
+} from '@/lib/db/client';
 import { detectPlatform, fetchPreview } from '@/lib/platform';
+import { cacheThumbnail } from '@/lib/thumbnails';
+import { canonicalizeUrl } from '@/lib/urls';
 
 const MAX_URLS = 50;
 
 interface BulkStatus {
   url: string;
   platform: string;
-  state: 'pending' | 'ok' | 'fail';
+  state: 'pending' | 'ok' | 'fail' | 'dup';
   reason?: string;
 }
 
@@ -35,10 +47,14 @@ export function BulkImportDialog({ open, onOpenChange, onDone }: BulkImportDialo
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collectionName, setCollectionName] = useState('');
+  const [categoryName, setCategoryName] = useState('');
+  const [tagText, setTagText] = useState('');
 
   const urls = parseUrls(text);
   const okCount = statuses.filter((s) => s.state === 'ok').length;
   const failCount = statuses.filter((s) => s.state === 'fail').length;
+  const dupCount = statuses.filter((s) => s.state === 'dup').length;
 
   const handleImport = async (): Promise<void> => {
     if (urls.length === 0) {
@@ -54,17 +70,49 @@ export function BulkImportDialog({ open, onOpenChange, onDone }: BulkImportDialo
     setFinished(false);
     // ponytail: sequential loop, no worker pool — 50 items max, simplicity wins.
     setStatuses(urls.map((url) => ({ url, platform: detectPlatform(url), state: 'pending' })));
+    // Tek okuma: mevcut URL kümesi döngü boyunca güncellenir; her satır için
+    // ayrı tam tarama yapılmaz.
+    const known = new Set((await listItemUrls()).map((e) => canonicalizeUrl(e.url)));
+    // Taksonomi bir kez çözülür, her satırda yeniden aranmaz.
+    const collection = collectionName.trim()
+      ? await getOrCreateCollection(collectionName.trim())
+      : null;
+    const category = categoryName.trim()
+      ? await getOrCreateCategory(categoryName.trim())
+      : null;
+    const tagIds = (
+      await Promise.all(
+        tagText
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .map((t) => getOrCreateTag(t)),
+      )
+    ).map((t) => t.id);
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i];
       const platform = detectPlatform(url);
+      const key = canonicalizeUrl(url);
+      if (known.has(key)) {
+        setStatuses((prev) => prev.map((s, j) => (j === i ? { ...s, state: 'dup', reason: 'Zaten arşivde' } : s)));
+        continue;
+      }
       try {
         const preview = await fetchPreview(url);
-        await createItem({
+        const created = await createItem({
           url,
           platform,
           title: preview?.title ?? null,
           thumbnail: preview?.thumbnail ?? null,
+          collection_id: collection?.id ?? null,
         });
+        if (category) await setCategoriesForItem(created.id, [category.id]);
+        if (tagIds.length > 0) await setTagsForItem(created.id, tagIds);
+        // Kapak indirmesi satırı bekletmesin: arka planda yerelleşir.
+        void cacheThumbnail(created.id, created.thumbnail)
+          .then((local) => (local && local !== created.thumbnail ? updateItem(created.id, { thumbnail: local }) : null))
+          .catch(() => undefined);
+        known.add(key);
         setStatuses((prev) => prev.map((s, j) => (j === i ? { ...s, state: 'ok' } : s)));
       } catch (e) {
         // Tauri IPC string reject dönebilir (Error değil) — gerçek mesajı yutma.
@@ -84,6 +132,9 @@ export function BulkImportDialog({ open, onOpenChange, onDone }: BulkImportDialo
       setStatuses([]);
       setFinished(false);
       setError(null);
+      setCollectionName('');
+      setCategoryName('');
+      setTagText('');
     }
     onOpenChange(next);
   };
@@ -107,13 +158,33 @@ export function BulkImportDialog({ open, onOpenChange, onDone }: BulkImportDialo
           <p className="text-xs text-muted-foreground">
             {urls.length}/{MAX_URLS} link
           </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              value={collectionName}
+              onChange={(e) => setCollectionName(e.target.value)}
+              placeholder="Koleksiyon (isteğe bağlı)"
+              disabled={running}
+            />
+            <Input
+              value={categoryName}
+              onChange={(e) => setCategoryName(e.target.value)}
+              placeholder="Kategori (isteğe bağlı)"
+              disabled={running}
+            />
+          </div>
+          <Input
+            value={tagText}
+            onChange={(e) => setTagText(e.target.value)}
+            placeholder="Etiketler, virgülle (isteğe bağlı)"
+            disabled={running}
+          />
           {error && <p className="text-sm text-destructive">{error}</p>}
           {statuses.length > 0 && (
             <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
               {statuses.map((s) => (
                 <li key={s.url} className="flex items-center gap-2 text-xs">
                   <Badge variant={s.state === 'ok' ? 'default' : s.state === 'fail' ? 'destructive' : 'secondary'}>
-                    {s.state === 'pending' ? (running ? '…' : '•') : s.state}
+                    {s.state === 'pending' ? (running ? '…' : '•') : s.state === 'dup' ? 'atlandı' : s.state}
                   </Badge>
                   <Badge variant="outline">{s.platform}</Badge>
                   <span className="truncate">{s.url}</span>
@@ -124,7 +195,8 @@ export function BulkImportDialog({ open, onOpenChange, onDone }: BulkImportDialo
           )}
           {finished && (
             <p className="text-sm">
-              {okCount} kaydedildi{failCount > 0 && `, ${failCount} başarısız`}.
+              {okCount} kaydedildi{dupCount > 0 && `, ${dupCount} zaten arşivde`}
+              {failCount > 0 && `, ${failCount} başarısız`}.
             </p>
           )}
         </div>

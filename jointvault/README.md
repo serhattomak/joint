@@ -13,7 +13,7 @@ Kişisel medya arşivi: farklı platformlarda kaydedilen post/video/fotoğraflar
 
 ## Teknoloji
 
-Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui. SQLite (`tauri-plugin-sql`), sidecar: yt-dlp + whisper. ffmpeg/ffprobe **repoda tutulmaz** (313 MB'lık yük); ilk kullanımda Ayarlar → Bileşenler bölümünden indirilir — sha256 doğrulamalı, iptal edilebilir ilerlemeli indirme. Araçlar aracı bileşen kaydından çözer (indirilen → gömülü), yani indirilen kopya otomatik kullanılır.
+Tauri v2 (Rust) + React 19 + TypeScript + Vite + Tailwind v4 + `@base-ui/react`. SQLite (`tauri-plugin-sql`), sidecar: yt-dlp + whisper. ffmpeg/ffprobe **repoda tutulmaz** (313 MB'lık yük); ilk kullanımda Ayarlar → Bileşenler bölümünden indirilir — sha256 doğrulamalı, iptal edilebilir ilerlemeli indirme. Araçlar aracı bileşen kaydından çözer (indirilen → gömülü), yani indirilen kopya otomatik kullanılır.
 
 ## Geliştirme
 
@@ -25,7 +25,7 @@ npm install
 npx tauri dev        # arayüz + backend birlikte
 ```
 
-Doğrulama: `npm run build` (tsc + vite), `cd src-tauri; cargo check`.
+Doğrulama: `npm run check` (typecheck + lint + test), `cd src-tauri; cargo test` ve `cargo check`.
 
 ## Eklenti
 
@@ -39,4 +39,4 @@ npx tauri build      # src-tauri/target/release/bundle/ altına MSI/NSIS
 
 ## Veri
 
-SQLite: `jointvault.db` (uygulama veri dizini). İndirilenler: `Downloads/JointVault` (Ayarlar'dan değişir); kategori klasörleri açıkken dosya türüne göre alt klasöre iner. Eşleşme anahtarı, indirme klasörü ve indirme ayarları (`download_settings.json`) uygulama veri dizinindeki dosyalarda saklanır. İndirilen bileşenler (ffmpeg/ffprobe) uygulama veri dizinindeki `components/` klasörüne yazılır; yönetici izni gerekmez.
+SQLite: `jointvault.db` (uygulama veri dizini). İndirilenler: `Downloads/JointVault` (Ayarlar'dan değişir); kategori klasörleri açıkken dosya türüne göre alt klasöre iner. Eşleşme anahtarı, indirme klasörü ve indirme ayarları (`download_settings.json`) uygulama veri dizinindeki dosyalarda saklanır. İndirilen bileşenler (ffmpeg/ffprobe) uygulama veri dizinindeki `components/` klasörüne yazılır; yönetici izni gerekmez. Önizleme kapakları `thumbnails/` altında yerelleşir (çevrimdışı gösterim).

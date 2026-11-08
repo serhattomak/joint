@@ -35,6 +35,16 @@ export function canonicalizeUrl(raw: string): string {
   return `${url.protocol}//${host}${url.port ? `:${url.port}` : ''}${path}`;
 }
 
+/** Sistem tarayıcısına yalnızca web adresleri verilir; `file:`/`javascript:` reddedilir. */
+export function isSafeExternalUrl(raw: string): boolean {
+  try {
+    const protocol = new URL(raw).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function isKnownUrl(existing: Iterable<string>, candidate: string): boolean {
   const want = canonicalizeUrl(candidate);
   const known = new Set<string>();

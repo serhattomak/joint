@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS items (
   note TEXT,
   platform TEXT NOT NULL DEFAULT 'other',
   thumbnail TEXT,
+  -- Arama için normalize edilmiş metin (Türkçe küçültme + aksan katlama).
+  -- SQLite NOCASE yalnızca ASCII'de çalıştığı için ayrı kolon gerekir.
+  search_text TEXT,
   favorite INTEGER NOT NULL DEFAULT 0,
   collection_id TEXT NULL REFERENCES collections(id) ON DELETE SET NULL,
   user_id TEXT NULL,

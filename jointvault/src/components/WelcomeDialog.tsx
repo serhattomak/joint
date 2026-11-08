@@ -33,7 +33,7 @@ const STEPS: { title: string; body: string }[] = [
   },
   {
     title: 'Kısayollar',
-    body: 'Ctrl+K komut paletini açar. Boşluk oynatır, I/O aralığı işaretler. Tema ve görünüm Ayarlar → Görünüm sekmesinde.',
+    body: 'Ctrl+K komut paleti · Ctrl+N yeni kayıt · Ctrl+F veya / arama · Ctrl+, ayarlar · Ctrl+1–9 görünüm. Oynatıcıda boşluk oynatır, I/O aralığı işaretler.',
   },
 ];
 

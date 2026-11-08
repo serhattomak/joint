@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { BarChart3, Captions, Clapperboard, Combine, Copy, Download, Film, LayoutGrid, Plus, RefreshCw, Rows3, Scissors, Settings, SlidersHorizontal, Sparkles, Star, Sun, Upload, Wrench, Zap } from 'lucide-react';
 import { AddItemDialog } from '@/components/AddItemDialog';
 import { BulkImportDialog } from '@/components/BulkImportDialog';
@@ -8,29 +8,15 @@ import { DownloadCaptureBridge } from '@/components/DownloadCaptureBridge';
 import { DownloadStrip } from '@/components/DownloadStrip';
 import { CommandPalette, type PaletteCommand } from '@/components/CommandPalette';
 import { ComponentInstallerProvider } from '@/components/ComponentInstaller';
-import { ConverterStudio } from '@/components/ConverterStudio';
 import { DownloadDialog } from '@/components/DownloadDialog';
-import { DownloadsView } from '@/components/DownloadsView';
-import { DuplicatesView } from '@/components/DuplicatesView';
 import { WelcomeDialog, isOnboarded } from '@/components/WelcomeDialog';
 import { OnboardingWizard } from '@/components/OnboardingWizard';
 import { EditorDialog, type EditorSource } from '@/components/EditorDialog';
 import { FormatDialog, type FormatTarget } from '@/components/FormatDialog';
 import { ItemGrid, PAGE_SIZES, readPageSize } from '@/components/ItemGrid';
-import { ItemRecord } from '@/components/ItemRecord';
-import { MediaPlayerModal } from '@/components/MediaPlayerModal';
-import { MergeTool } from '@/components/MergeTool';
-import { GifTool } from '@/components/GifTool';
-import { CollectionsView } from '@/components/CollectionsView';
-import { NotebookView } from '@/components/NotebookView';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
-import { AiAssistantView } from '@/components/AiAssistantView';
-import { SyncView } from '@/components/SyncView';
-import { SettingsView, type SettingsTab } from '@/components/SettingsView';
 import { Sidebar, SidebarStrip, type SidebarView } from '@/components/Sidebar';
-import { SilenceTool } from '@/components/SilenceTool';
-import { SubtitleTool } from '@/components/SubtitleTool';
-import { ToolboxHub } from '@/components/ToolboxHub';
+import type { SettingsTab } from '@/components/SettingsView';
 import { XSyncReviewDialog } from '@/components/XSyncReviewDialog';
 import { CrashScreen } from '@/components/CrashScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -50,6 +36,24 @@ const StatsView = lazy(() =>
   import('@/components/StatsView').then((m) => ({ default: m.StatsView })),
 );
 
+/* Ağır görünümler yalnız açıldıklarında yüklenir: ana paket ~1 MB'tı ve
+   kullanıcı çoğu oturumda İndirme/Koleksiyon/Ayarlar ekranlarını hiç açmıyor. */
+const DownloadsView = lazy(() => import('@/components/DownloadsView').then((m) => ({ default: m.DownloadsView })));
+const SyncView = lazy(() => import('@/components/SyncView').then((m) => ({ default: m.SyncView })));
+const AiAssistantView = lazy(() => import('@/components/AiAssistantView').then((m) => ({ default: m.AiAssistantView })));
+const SettingsView = lazy(() => import('@/components/SettingsView').then((m) => ({ default: m.SettingsView })));
+const CollectionsView = lazy(() => import('@/components/CollectionsView').then((m) => ({ default: m.CollectionsView })));
+const NotebookView = lazy(() => import('@/components/NotebookView').then((m) => ({ default: m.NotebookView })));
+const ConverterStudio = lazy(() => import('@/components/ConverterStudio').then((m) => ({ default: m.ConverterStudio })));
+const DuplicatesView = lazy(() => import('@/components/DuplicatesView').then((m) => ({ default: m.DuplicatesView })));
+const MergeTool = lazy(() => import('@/components/MergeTool').then((m) => ({ default: m.MergeTool })));
+const SilenceTool = lazy(() => import('@/components/SilenceTool').then((m) => ({ default: m.SilenceTool })));
+const GifTool = lazy(() => import('@/components/GifTool').then((m) => ({ default: m.GifTool })));
+const SubtitleTool = lazy(() => import('@/components/SubtitleTool').then((m) => ({ default: m.SubtitleTool })));
+const ToolboxHub = lazy(() => import('@/components/ToolboxHub').then((m) => ({ default: m.ToolboxHub })));
+const ItemRecord = lazy(() => import('@/components/ItemRecord').then((m) => ({ default: m.ItemRecord })));
+const MediaPlayerModal = lazy(() => import('@/components/MediaPlayerModal').then((m) => ({ default: m.MediaPlayerModal })));
+
 // ponytail: no node:path in bundle — basename via string split.
 function basename(p: string): string {
   const parts = p.split(/[/\\]/);
@@ -61,6 +65,18 @@ function readSort(): ItemSort {
   return v === 'old' || v === 'title' || v === 'title-desc' ? v : 'new';
 }
 
+type AppRoute =
+  | 'vault'
+  | 'downloads'
+  | 'sync'
+  | 'ai'
+  | 'settings'
+  | 'collections'
+  | 'notebook'
+  | 'converter'
+  | 'toolbox'
+  | 'stats';
+
 function App() {
   const [query, setQuery] = useState('');
   const [semantic, setSemantic] = useState(false);
@@ -70,23 +86,17 @@ function App() {
   const [tagId, setTagId] = useState('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [localOnly, setLocalOnly] = useState(false);
-  const [downloadedOnly, setDownloadedOnly] = useState(false);
+  // Görünüm kimliği TEK değer: 10 ayrı boolean'ın birleşimi yerine
+  // ayrık bir union. `vault` arşiv ızgarasıdır; gerisi tam ekran yüzey.
+  const [route, setRoute] = useState<AppRoute>('vault');
   const [quickDlOpen, setQuickDlOpen] = useState(false);
   const [quickDlUrl, setQuickDlUrl] = useState('');
-  const [converterOnly, setConverterOnly] = useState(false);
-  const [toolboxOnly, setToolboxOnly] = useState(false);
   const [toolboxTool, setToolboxTool] = useState<'merge' | 'silence' | 'gif' | 'subtitle' | 'duplicates' | null>(null);
-  const [statsOnly, setStatsOnly] = useState(false);
-  const [notebookOnly, setNotebookOnly] = useState(false);
-  const [aiOnly, setAiOnly] = useState(false);
   // AI açık/kapalı TEK karar noktasından okunur; `null` = henüz bilinmiyor.
   // Bilinmeyen durumda yüzeyler yanıltıcı "kapalı" göstermez (fail-closed
   // kararı yalnızca `isAiEnabled` verir, UI onu aynen yansıtır).
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
-  const [syncOnly, setSyncOnly] = useState(false);
-  const [settingsOnly, setSettingsOnly] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai');
-  const [collectionsOnly, setCollectionsOnly] = useState(false);
   // Ray açık/kapalı — kullanıcı tercihi kalıcı (dar pencerede zaten gizli).
   const [sidebarOpen, setSidebarOpen] = useState(
     () => window.localStorage.getItem('jv-sidebar') !== 'closed',
@@ -114,6 +124,11 @@ function App() {
   const [playingInitialTime, setPlayingInitialTime] = useState<number>(0);
   // İlk kurulumda tur yerine sihirbaz; mevcut kullanıcıda tur replay yolu aynen durur.
   const [wizardOpen, setWizardOpen] = useState(() => !isOnboarded());
+
+  // Efekt bağımlılıkları için türetilmiş bayraklar: `route` her gezinmede
+  // değişir; taksonomi/AI tazelemesi yalnız ilgili yüzey açılınca çalışmalı.
+  const collectionsActive = route === 'collections';
+  const settingsActive = route === 'settings';
 
   const refresh = useCallback((): void => setRefreshKey((k) => k + 1), []);
 
@@ -179,18 +194,9 @@ function App() {
     return () => {
       live = false;
     };
-  }, [refreshKey, collectionsOnly]);
+  }, [refreshKey, collectionsActive]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+
 
   // İçerik/taksonomi değişince ilgili öğenin indeksini arka planda tazele.
   useEffect(() => initItemIndexRefresh(), []);
@@ -208,7 +214,7 @@ function App() {
   // Ayarlar kendi durumunu okur; çıkışta burada tazelenir. Yalnızca durum
   // OKUNUR, hiçbir süreç başlatılmaz.
   useEffect(() => {
-    if (settingsOnly) return;
+    if (settingsActive) return;
     let live = true;
     void getAiStatus()
       .then((s) => {
@@ -223,9 +229,9 @@ function App() {
     return () => {
       live = false;
     };
-  }, [settingsOnly]);
+  }, [settingsActive]);
 
-  const isVault = !converterOnly && !toolboxOnly && !statsOnly && !aiOnly && !settingsOnly && !collectionsOnly && !downloadedOnly && !syncOnly && !notebookOnly;
+  const isVault = route === 'vault';
 
   const showAll = (): void => {
     setPlatform('all');
@@ -234,88 +240,47 @@ function App() {
     setTagId('all');
     setFavoritesOnly(false);
     setLocalOnly(false);
-    setDownloadedOnly(false);
-    setConverterOnly(false);
-    setToolboxOnly(false);
     setToolboxTool(null);
-    setStatsOnly(false);
-    setAiOnly(false);
-    setSyncOnly(false);
-    setSettingsOnly(false);
-    setCollectionsOnly(false);
-    setNotebookOnly(false);
+    setRoute('vault');
   };
 
-  const openAi = (): void => {
+  /** Filtreleri sıfırlar ve tam ekran yüzeye geçer. */
+  const openRoute = (next: Exclude<AppRoute, 'vault'>): void => {
     showAll();
-    setAiOnly(true);
+    setRoute(next);
   };
 
-  const openSync = (): void => {
-    showAll();
-    setSyncOnly(true);
-  };
-
+  const openAi = (): void => openRoute('ai');
+  const openSync = (): void => openRoute('sync');
   const openSettings = (initialTab: SettingsTab = 'ai'): void => {
-    showAll();
-    setSettingsOnly(true);
+    openRoute('settings');
     setSettingsTab(initialTab);
   };
-
-  const openCollections = (): void => {
-    showAll();
-    setCollectionsOnly(true);
-  };
-
-  const openConverter = (): void => {
-    showAll();
-    setConverterOnly(true);
-  };
-
-  const openToolbox = (): void => {
-    showAll();
-    setToolboxOnly(true);
-  };
-
+  const openCollections = (): void => openRoute('collections');
+  const openConverter = (): void => openRoute('converter');
+  const openToolbox = (): void => openRoute('toolbox');
   const openMerge = (): void => {
-    showAll();
-    setToolboxOnly(true);
+    openRoute('toolbox');
     setToolboxTool('merge');
   };
-
   const openSilence = (): void => {
-    showAll();
-    setToolboxOnly(true);
+    openRoute('toolbox');
     setToolboxTool('silence');
   };
-
   const openGif = (): void => {
-    showAll();
-    setToolboxOnly(true);
+    openRoute('toolbox');
     setToolboxTool('gif');
   };
-
   const openSubtitle = (): void => {
-    showAll();
-    setToolboxOnly(true);
+    openRoute('toolbox');
     setToolboxTool('subtitle');
   };
-
   const openDuplicates = (): void => {
-    showAll();
-    setToolboxOnly(true);
+    openRoute('toolbox');
     setToolboxTool('duplicates');
   };
-
-  const openStats = (): void => {
-    showAll();
-    setStatsOnly(true);
-  };
-
-  const openNotebook = (): void => {
-    showAll();
-    setNotebookOnly(true);
-  };
+  const openStats = (): void => openRoute('stats');
+  const openNotebook = (): void => openRoute('notebook');
 
   const goFavorites = (): void => {
     leaveViews();
@@ -344,10 +309,7 @@ function App() {
     else showAll();
   };
 
-  const goDownloads = (): void => {
-    showAll();
-    setDownloadedOnly(true);
-  };
+  const goDownloads = (): void => openRoute('downloads');
 
   // Yakala çubuğu her ekranda durur. Bir araç yüzeyindeyken yazmaya başlamak
   // arşivi açar; aksi hâlde yazılan şeyin karşılığı görünmez olurdu.
@@ -385,17 +347,9 @@ function App() {
 
   const leaveViews = (): void => {
     /* Favoriler/Yerel artık birer görünüm değil, ızgaranın kapsam sekmesidir:
-       filtre uygulamak seçili sekmeyi bozmaz. Yalnızca araç yüzeyleri kapanır. */
-    setDownloadedOnly(false);
-    setConverterOnly(false);
-    setToolboxOnly(false);
+       filtre uygulamak seçili sekmeyi bozmaz. Yalnızca tam ekran yüzey kapanır. */
     setToolboxTool(null);
-    setStatsOnly(false);
-    setAiOnly(false);
-    setSyncOnly(false);
-    setSettingsOnly(false);
-    setCollectionsOnly(false);
-    setNotebookOnly(false);
+    setRoute('vault');
   };
   const pickPlatform = (p: string): void => {
     setPlatform(p);
@@ -415,25 +369,7 @@ function App() {
   };
 
   // Görünüm = gezinmenin kimliği; geçmiş bu kimlik üzerinden yürür.
-  const currentView: SidebarView = settingsOnly
-    ? 'settings'
-    : collectionsOnly
-      ? 'collections'
-      : aiOnly
-        ? 'ai'
-        : syncOnly
-          ? 'sync'
-          : converterOnly
-            ? 'converter'
-            : toolboxOnly
-              ? 'toolbox'
-              : statsOnly
-                ? 'stats'
-                : notebookOnly
-                  ? 'notebook'
-                  : downloadedOnly
-                    ? 'downloads'
-                    : 'all';
+  const currentView: SidebarView = route === 'vault' ? 'all' : route;
 
   const [hist, setHist] = useState<NavHistory<SidebarView>>(() => ({ stack: ['all'], index: 0 }));
 
@@ -456,6 +392,77 @@ function App() {
     else if (d === 'notebook') openNotebook();
     else showAll();
   };
+
+  /* Global kısayollar. Eylemler her render'da tazelenir; dinleyici bir kez
+     bağlanır (işlev kimlikleri değişse de yeniden abone olmayız). */
+  const shortcutsRef = useRef<{
+    add: () => void;
+    settings: () => void;
+    view: (n: number) => void;
+  }>({ add: () => undefined, settings: () => undefined, view: () => undefined });
+
+  useEffect(() => {
+    shortcutsRef.current = {
+      add: () => {
+        setAddUrl('');
+        setAddOpen(true);
+      },
+      settings: () => openSettings(),
+      view: (n: number) => {
+        const destinations = [
+          showAll,
+          goDownloads,
+          openCollections,
+          openNotebook,
+          openSync,
+          openConverter,
+          openToolbox,
+          openStats,
+          openAi,
+        ];
+        destinations[n - 1]?.();
+      },
+    };
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const mod = e.ctrlKey || e.metaKey;
+      const target = e.target as HTMLElement | null;
+      const typing =
+        !!target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (mod && e.code === 'KeyK') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
+      if (mod && e.code === 'KeyN') {
+        e.preventDefault();
+        shortcutsRef.current.add();
+        return;
+      }
+      if (mod && e.key === ',') {
+        e.preventDefault();
+        shortcutsRef.current.settings();
+        return;
+      }
+      if ((mod && e.code === 'KeyF') || (!mod && !typing && e.key === '/')) {
+        e.preventDefault();
+        document.getElementById('jv-search')?.focus();
+        return;
+      }
+      if (mod && e.code.startsWith('Digit')) {
+        const n = Number(e.code.slice(5));
+        if (n >= 1 && n <= 9) {
+          e.preventDefault();
+          shortcutsRef.current.view(n);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const canGoBack = hist.index > 0;
   const canGoForward = hist.index < hist.stack.length - 1;
@@ -551,6 +558,7 @@ function App() {
               <SidebarStrip {...sidebarProps} />
 
               <main className="flex min-h-0 flex-1">
+              <Suspense fallback={<p className="flex-1 py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
               {isVault ? (
                 <div className="flex min-w-0 flex-1 flex-col">
                   <ItemGrid
@@ -595,7 +603,7 @@ function App() {
                     onOpenAiSettings={() => openSettings('ai')}
                   />
                 </div>
-              ) : downloadedOnly ? (
+              ) : route === 'downloads' ? (
                 <div className="min-w-0 flex-1">
                   <DownloadsView
                     onClose={showAll}
@@ -612,9 +620,9 @@ function App() {
                     onPickFormat={(t) => setFormatTarget(t)}
                   />
                 </div>
-              ) : syncOnly ? (
+              ) : route === 'sync' ? (
                 <SyncView onSyncDone={refresh} />
-              ) : aiOnly ? (
+              ) : route === 'ai' ? (
                 <div className="min-w-0 flex-1">
                   <AiAssistantView
                     onOpenSettings={() => openSettings('ai')}
@@ -629,7 +637,7 @@ function App() {
                     }}
                   />
                 </div>
-              ) : settingsOnly ? (
+              ) : route === 'settings' ? (
                 <div className="min-w-0 flex-1">
                   <SettingsView
                     pageSize={pageSize}
@@ -643,7 +651,7 @@ function App() {
                     initialTab={settingsTab}
                   />
                 </div>
-              ) : collectionsOnly ? (
+              ) : route === 'collections' ? (
                 <div className="min-w-0 flex-1">
                   <CollectionsView
                     onClose={showAll}
@@ -661,11 +669,11 @@ function App() {
                     }}
                   />
                 </div>
-              ) : statsOnly ? (
+              ) : route === 'stats' ? (
                 <Suspense fallback={<p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor…</p>}>
                   <StatsView refreshKey={refreshKey} />
                 </Suspense>
-              ) : notebookOnly ? (
+              ) : route === 'notebook' ? (
                 <div className="min-w-0 flex-1">
                   <NotebookView
                     refreshKey={refreshKey}
@@ -673,7 +681,7 @@ function App() {
                     onOpenSettings={() => openSettings('ai')}
                   />
                 </div>
-              ) : converterOnly ? (
+              ) : route === 'converter' ? (
                 <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
               ) : toolboxTool === 'duplicates' ? (
                 <DuplicatesView onDone={refresh} onClose={() => setToolboxTool(null)} />
@@ -697,6 +705,7 @@ function App() {
                   }}
                 />
               )}
+              </Suspense>
               </main>
             </div>
           </div>
@@ -719,6 +728,7 @@ function App() {
           <FormatDialog target={formatTarget} onClose={() => setFormatTarget(null)} onDone={refresh} />
           <EditorDialog source={editorSource} onClose={() => setEditorSource(null)} onDone={refresh} />
           {record && (
+            <Suspense fallback={null}>
             <ItemRecord
               item={record}
               initialTab={recordInitialTab}
@@ -736,7 +746,9 @@ function App() {
               onAudio={startAudio}
               onPlayMedia={handlePlayMedia}
             />
+            </Suspense>
           )}
+          <Suspense fallback={null}>
           <MediaPlayerModal
             item={playingItem}
             initialTime={playingInitialTime}
@@ -754,6 +766,7 @@ function App() {
             }}
             onOpenItem={(item) => openRecord(item, 'detail')}
           />
+          </Suspense>
           <BulkImportDialog open={bulkOpen} onOpenChange={setBulkOpen} onDone={refresh} />
           <XSyncReviewDialog
             onDone={refresh}
@@ -783,7 +796,15 @@ function App() {
           />
           {/* Tarayıcı eklentisinin devrettiği indirmeler: diyalog yok, doğrudan kuyruk. */}
           <DownloadCaptureBridge onStarted={refresh} />
-          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={paletteCommands} />
+          <CommandPalette
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+            commands={paletteCommands}
+            onOpenItem={(item) => {
+              showAll();
+              openRecord(item, 'detail');
+            }}
+          />
         </div>
       </TooltipProvider>
       )}

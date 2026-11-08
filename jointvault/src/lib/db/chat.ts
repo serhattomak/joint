@@ -6,6 +6,7 @@
  */
 import { getDb } from './client';
 import { runAtomic } from './atomic';
+import { normalizeSearchText } from '../search-text';
 import {
   formatChatMarkdown,
   sanitizeFtsQuery,
@@ -159,7 +160,9 @@ export async function listChatMessages(sessionId: string): Promise<ChatMessageRo
 }
 
 export async function searchChatMessages(q: string): Promise<ChatSearchHit[]> {
-  const match = sanitizeFtsQuery(q);
+  // FTS5 unicode61 Türkçe harfleri tutarsız katlıyor; sorguyu indeksle aynı
+  // normalizasyondan geçir (`ŞARKI` ↔ `sarki`).
+  const match = sanitizeFtsQuery(normalizeSearchText(q));
   if (!match) return [];
 
   const db = await getDb();

@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { SettingRow } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { PageSurface } from '@/components/ui/page-surface';
+import { useNotice } from '@/components/ui/notice';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { openExternal } from '@/lib/external';
@@ -62,6 +63,7 @@ const YOUTUBE_SOURCE_OPTIONS: SelectOption[] = [
 ];
 
 export function SyncView({ onSyncDone }: SyncViewProps) {
+  const notice = useNotice();
   const [config, setConfig] = useState<SyncConfig | null>(null);
   const [browserOk, setBrowserOk] = useState<boolean | null>(null);
   const [scanning, setScanning] = useState<Record<string, boolean>>({});
@@ -141,9 +143,12 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       const text = await file.text();
       await uploadCookies(text);
       setHasCookies(true);
-      alert('cookies.txt başarıyla yüklendi! Artık tarama yapabilirsiniz.');
+      notice.push({ text: 'cookies.txt yüklendi. Artık tarama yapabilirsiniz.', tone: 'ok' });
     } catch (err) {
-      alert('Dosya okunamadı: ' + (err instanceof Error ? err.message : err));
+      notice.push({
+        text: 'Dosya okunamadı: ' + (err instanceof Error ? err.message : String(err)),
+        tone: 'error',
+      });
     }
   };
 
@@ -178,17 +183,21 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
     if (!config) return;
     if (platform === 'x') {
       await openExternal('https://x.com/i/bookmarks');
-      alert(
-        "X Yer İmleri (x.com/i/bookmarks) tarayıcınızda açıldı.\n\nLütfen açılan sekmede JointVault Collector eklentisini açıp 'Topla' butonuna tıklayın. Yer imleriniz otomatik olarak buraya aktarılacaktır."
-      );
+      notice.push({
+        text: "X Yer İmleri tarayıcıda açıldı. Eklentiyi açıp 'Topla'ya basın.",
+        tone: 'info',
+        ttl: 10000,
+      });
       return;
     }
     if (platform === 'instagram') {
       const url = config.instagram_url || 'https://www.instagram.com/saved/all-posts/';
       await openExternal(url);
-      alert(
-        "Instagram Kaydedilenler sayfası tarayıcınızda açıldı.\n\nLütfen açılan sekmede JointVault Collector eklentisini açıp 'Topla' butonuna tıklayın. Kayıtlarınız otomatik olarak buraya aktarılacaktır."
-      );
+      notice.push({
+        text: "Instagram Kaydedilenler tarayıcıda açıldı. Eklentiyi açıp 'Topla'ya basın.",
+        tone: 'info',
+        ttl: 10000,
+      });
       return;
     }
 
@@ -222,7 +231,10 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
       setConfig(updated);
       void saveSyncConfig(updated);
     } catch (e) {
-      alert(`Tarama hatası (youtube): ${e instanceof Error ? e.message : String(e)}`);
+      notice.push({
+        text: `Tarama hatası (youtube): ${e instanceof Error ? e.message : String(e)}`,
+        tone: 'error',
+      });
     } finally {
       setScanning((prev) => ({ ...prev, [platform]: false }));
     }
@@ -232,9 +244,11 @@ export function SyncView({ onSyncDone }: SyncViewProps) {
     if (!config) return;
     if (config.youtube_enabled) void handleScanPlatform('youtube');
     if (config.x_enabled || config.instagram_enabled) {
-      alert(
-        "YouTube listesi taranıyor.\n\nX ve Instagram yer imleri tarayıcı oturumu gerektirdiğinden, tarayıcınızda ilgili sayfaları açıp JointVault Collector eklentisindeki 'Topla' butonuna basarak aktarabilirsiniz."
-      );
+      notice.push({
+        text: "YouTube taranıyor. X/Instagram için eklentideki 'Topla'yı kullanın.",
+        tone: 'info',
+        ttl: 10000,
+      });
     }
   };
 

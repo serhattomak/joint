@@ -94,7 +94,7 @@ fn pace(bytes: u64) -> Option<Duration> {
     if limit <= 0.0 {
         return None;
     }
-    let mut p = pacer().lock().unwrap();
+    let mut p = pacer().lock().unwrap_or_else(|e| e.into_inner());
     let now = Instant::now();
     let dt = now.duration_since(p.last).as_secs_f64();
     p.last = now;
@@ -152,7 +152,7 @@ async fn acquire_slot(
         // bir serbest bırakma böylece kaçmaz (yoksa GATE_POLL_MS kadar bekleriz).
         let notified = gate().1.notified();
         {
-            let mut m = gate().0.lock().unwrap();
+            let mut m = gate().0.lock().unwrap_or_else(|e| e.into_inner());
             if m.active < MAX_CONCURRENT.load(Ordering::Relaxed) {
                 m.active += 1;
                 return Ok(SlotGuard);
@@ -323,7 +323,7 @@ fn get_controller_map() -> &'static Mutex<Option<std::collections::HashMap<Strin
 /// `.part_N` dosyalarına yazar ve indirilen dosya bozulur. (Arayüz aynı işi
 /// yeniden gönderebilir: görünüm yeniden bağlanır, kuyruk uzlaştırması çalışır.)
 fn register_job_if_idle(job_id: &str) -> Option<Arc<JobController>> {
-    let mut lock = get_controller_map().lock().unwrap();
+    let mut lock = get_controller_map().lock().unwrap_or_else(|e| e.into_inner());
     let map = lock.get_or_insert_with(std::collections::HashMap::new);
     if let Some(existing) = map.get(job_id) {
         let running = !existing.paused.load(Ordering::SeqCst)
@@ -341,12 +341,12 @@ fn register_job_if_idle(job_id: &str) -> Option<Arc<JobController>> {
 }
 
 fn get_job(job_id: &str) -> Option<Arc<JobController>> {
-    let lock = get_controller_map().lock().unwrap();
+    let lock = get_controller_map().lock().unwrap_or_else(|e| e.into_inner());
     lock.as_ref().and_then(|m| m.get(job_id).cloned())
 }
 
 fn unregister_job(job_id: &str) {
-    let mut lock = get_controller_map().lock().unwrap();
+    let mut lock = get_controller_map().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(map) = lock.as_mut() {
         map.remove(job_id);
     }
@@ -781,6 +781,10 @@ pub async fn turbo_start_download(app: AppHandle, payload: Value) -> Result<(), 
     }
     let url = trimmed.to_string();
 
+    // Hedef yol renderer'dan gelir: diğer yazma/silme komutlarıyla aynı kapıdan
+    // geçmeli. Aksi hâlde `.part_*` dosyaları izinli köklerin dışına yazılabilir.
+    crate::paths::ensure_allowed(&app, std::path::Path::new(&destination_path))?;
+
     let Some(ctrl) = register_job_if_idle(&job_id) else {
         // Zaten çalışıyor: ikinci bir motor başlatmak dosyayı bozar.
         return Ok(());
@@ -842,14 +846,14 @@ struct SegCtx {
 
 impl SegCtx {
     fn set_error(&self, msg: &str) {
-        let mut e = self.error.lock().unwrap();
+        let mut e = self.error.lock().unwrap_or_else(|e| e.into_inner());
         if e.is_none() {
             *e = Some(msg.to_string());
         }
     }
 
     fn take_error(&self) -> Option<String> {
-        self.error.lock().unwrap().take()
+        self.error.lock().unwrap_or_else(|e| e.into_inner()).take()
     }
 }
 
@@ -868,7 +872,7 @@ fn part_path(dest_base: &str, index: usize) -> String {
 /// bölünme sırasında kardeşine devredilmiştir (o da `done` sayılır).
 async fn download_one_segment(ctx: &SegCtx, seg_idx: usize) -> Result<(), SegErr> {
     let (start, end) = {
-        let pool = ctx.segments.lock().unwrap();
+        let pool = ctx.segments.lock().unwrap_or_else(|e| e.into_inner());
         let Some(s) = pool.iter().find(|s| s.index == seg_idx) else {
             return Ok(());
         };
@@ -888,7 +892,7 @@ async fn download_one_segment(ctx: &SegCtx, seg_idx: usize) -> Result<(), SegErr
     let mut written = if truncated { 0 } else { existing.min(cap) };
 
     if written == cap && cap != u64::MAX {
-        let mut pool = ctx.segments.lock().unwrap();
+        let mut pool = ctx.segments.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(s) = pool.iter_mut().find(|s| s.index == seg_idx) {
             s.downloaded = written;
             s.done = true;
@@ -912,7 +916,7 @@ async fn download_one_segment(ctx: &SegCtx, seg_idx: usize) -> Result<(), SegErr
             .map_err(|e| SegErr::Fatal(format!("{PERMANENT_MARK}Part dosyası açılamadı: {e}")))?
     };
     {
-        let mut pool = ctx.segments.lock().unwrap();
+        let mut pool = ctx.segments.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(s) = pool.iter_mut().find(|s| s.index == seg_idx) {
             s.downloaded = written;
         }
@@ -952,7 +956,7 @@ async fn download_one_segment(ctx: &SegCtx, seg_idx: usize) -> Result<(), SegErr
     }
     if status == reqwest::StatusCode::OK && fetch_from > 0 {
         // Sunucu Range'i yok saydı ve tüm gövdeyi gönderiyor.
-        let count = ctx.segments.lock().unwrap().len();
+        let count = ctx.segments.lock().unwrap_or_else(|e| e.into_inner()).len();
         if count > 1 {
             return Err(SegErr::Fatal(format!(
                 "{PERMANENT_MARK}Sunucu parça indirmeyi (Range) desteklemiyor."
@@ -986,7 +990,7 @@ async fn download_one_segment(ctx: &SegCtx, seg_idx: usize) -> Result<(), SegErr
             // Kilit, diske yazma boyunca tutulur. Böylece "ikiye böl" kararı
             // havuzdaki `downloaded`ı okuduğunda diskteki baytla birebir
             // aynıdır; aksi hâlde yeni parça çakışır ve dosya bozulur.
-            let mut pool = ctx.segments.lock().unwrap();
+            let mut pool = ctx.segments.lock().unwrap_or_else(|e| e.into_inner());
             let Some(s) = pool.iter_mut().find(|s| s.index == seg_idx) else {
                 return Ok(());
             };
@@ -1018,7 +1022,7 @@ async fn download_one_segment(ctx: &SegCtx, seg_idx: usize) -> Result<(), SegErr
 
         if take < chunk.len() as u64 {
             // Parçamız bölündü; artan baytlar kardeş parçaya ait.
-            let mut pool = ctx.segments.lock().unwrap();
+            let mut pool = ctx.segments.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(s) = pool.iter_mut().find(|s| s.index == seg_idx) {
                 s.downloaded = written;
                 s.done = true;
@@ -1030,7 +1034,7 @@ async fn download_one_segment(ctx: &SegCtx, seg_idx: usize) -> Result<(), SegErr
 
     let _ = file.flush();
     let finished = {
-        let mut pool = ctx.segments.lock().unwrap();
+        let mut pool = ctx.segments.lock().unwrap_or_else(|e| e.into_inner());
         match pool.iter_mut().find(|s| s.index == seg_idx) {
             Some(s) => {
                 s.downloaded = written;
@@ -1171,7 +1175,7 @@ async fn run_turbo_download(
     let _slot = match acquire_slot(&rep, &job_id, file_size, &ctrl).await {
         Ok(slot) => slot,
         Err(SlotDenied::Paused) => {
-            let segs = segments_state.lock().unwrap().clone();
+            let segs = segments_state.lock().unwrap_or_else(|e| e.into_inner()).clone();
             write_meta(
                 &meta_path,
                 &snapshot_meta(
@@ -1189,7 +1193,7 @@ async fn run_turbo_download(
             return Ok(());
         }
         Err(SlotDenied::Cancelled) => {
-            let segs = segments_state.lock().unwrap().clone();
+            let segs = segments_state.lock().unwrap_or_else(|e| e.into_inner()).clone();
             cleanup_parts(&dest_path_str, &segs);
             let _ = std::fs::remove_file(&meta_path);
             return Ok(());
@@ -1221,7 +1225,7 @@ async fn run_turbo_download(
                 last_meta = Instant::now();
             }
             let (total, progs, all_done, snap) = {
-                let pool = pool_progress.lock().unwrap();
+                let pool = pool_progress.lock().unwrap_or_else(|e| e.into_inner());
                 let mut total = 0u64;
                 let mut progs = Vec::with_capacity(pool.len());
                 let mut all_done = true;
@@ -1341,7 +1345,7 @@ async fn run_turbo_download(
                     return;
                 }
                 let next = {
-                    let mut pool = ctx_w.segments.lock().unwrap();
+                    let mut pool = ctx_w.segments.lock().unwrap_or_else(|e| e.into_inner());
                     claim_work(&mut pool, ctx_w.can_split)
                 };
                 let Some(seg_idx) = next else {
@@ -1378,7 +1382,7 @@ async fn run_turbo_download(
     }
     let _ = progress_handle.await;
 
-    let segs_now = segments_state.lock().unwrap().clone();
+    let segs_now = segments_state.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
     // 1) Duraklatıldı → meta yaz, part dosyaları yerinde kalsın.
     if ctrl.paused.load(Ordering::Relaxed) {
@@ -1702,7 +1706,7 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let seen_rep = seen.clone();
         let rep = Reporter(Arc::new(move |p: TurboProgressPayload| {
-            seen_rep.lock().unwrap().push((p.error.clone(), p.retryable));
+            seen_rep.lock().unwrap_or_else(|e| e.into_inner()).push((p.error.clone(), p.retryable));
         }));
 
         emit(
@@ -1731,7 +1735,7 @@ mod tests {
         );
         emit(&rep, "j", "active", 0, 0, 0.0, 0, 0, Vec::new(), None);
 
-        let got = seen.lock().unwrap().clone();
+        let got = seen.lock().unwrap_or_else(|e| e.into_inner()).clone();
         assert_eq!(
             got[0],
             (Some("Parça 0 HTTP hatası: 403 Forbidden".to_string()), false),

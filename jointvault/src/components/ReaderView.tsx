@@ -395,6 +395,26 @@ function MarkdownRenderer({ content }: { content: string }) {
         const trimmed = block.trim();
         if (!trimmed) return null;
 
+        // Fenced code
+        if (trimmed.startsWith('```')) {
+          const lines = trimmed.split('\n');
+          const closed = lines.length > 1 && lines[lines.length - 1].trim().startsWith('```');
+          const code = lines.slice(1, closed ? -1 : undefined).join('\n');
+          return (
+            <pre
+              key={idx}
+              className="my-3 overflow-x-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground/90"
+            >
+              <code>{code}</code>
+            </pre>
+          );
+        }
+
+        // Yatay çizgi
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+          return <hr key={idx} className="my-5 border-border" />;
+        }
+
         // Headings
         if (trimmed.startsWith('### ')) {
           return (
@@ -418,15 +438,34 @@ function MarkdownRenderer({ content }: { content: string }) {
           );
         }
 
-        // Blockquotes
-        if (trimmed.startsWith('> ')) {
+        // Blockquotes (çok satırlı alıntı tek paragrafa iner)
+        if (trimmed.startsWith('>')) {
+          const quote = trimmed
+            .split('\n')
+            .map((line) => line.replace(/^>\s?/, ''))
+            .join(' ');
           return (
             <blockquote
               key={idx}
               className="border-l-2 border-primary pl-3.5 italic text-muted-foreground my-3"
             >
-              {trimmed.replace(/^>\s+/, '')}
+              {formatInlineText(quote)}
             </blockquote>
+          );
+        }
+
+        // Numaralı liste
+        if (/^\d+\.\s/.test(trimmed)) {
+          const items = trimmed
+            .split('\n')
+            .filter((line) => /^\d+\.\s/.test(line.trim()))
+            .map((line) => line.replace(/^\s*\d+\.\s+/, ''));
+          return (
+            <ol key={idx} className="my-2 list-decimal pl-5 space-y-1 text-foreground/90">
+              {items.map((it, i) => (
+                <li key={i}>{formatInlineText(it)}</li>
+              ))}
+            </ol>
           );
         }
 
@@ -436,7 +475,7 @@ function MarkdownRenderer({ content }: { content: string }) {
           return (
             <ul key={idx} className="my-2 list-disc pl-5 space-y-1 text-foreground/90">
               {items.map((it, i) => (
-                <li key={i}>{it.replace(/^[-*]\s+/, '')}</li>
+                <li key={i}>{formatInlineText(it.replace(/^[-*]\s+/, ''))}</li>
               ))}
             </ul>
           );
@@ -454,9 +493,19 @@ function MarkdownRenderer({ content }: { content: string }) {
 }
 
 function formatInlineText(text: string): React.ReactNode {
-  // Simple bold and link matcher
-  const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
+  // Inline code + bold + link (kod önce gelir; içindeki ** yorumlanmaz)
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
   return parts.map((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+      return (
+        <code
+          key={index}
+          className="rounded-xs border border-border bg-muted/60 px-1 py-0.5 font-mono text-[0.85em] text-foreground/90"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
     if (part.startsWith('**') && part.endsWith('**')) {
       return (
         <strong key={index} className="font-semibold text-foreground">

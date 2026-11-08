@@ -324,6 +324,7 @@ const Thumb = memo(function Thumb({
       alt=""
       loading="lazy"
       decoding="async"
+      referrerPolicy="no-referrer"
       className={className}
       onError={() => setDead(true)}
     />

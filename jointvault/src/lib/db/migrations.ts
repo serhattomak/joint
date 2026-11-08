@@ -148,6 +148,12 @@ export const MIGRATIONS: Migration[] = [
     ],
     ignore: /duplicate column name/i,
   },
+  {
+    version: 9,
+    description: 'türkçe arama metni',
+    statements: ['ALTER TABLE items ADD COLUMN search_text TEXT'],
+    ignore: /duplicate column name/i,
+  },
 ];
 
 /** Sürümü `current` olan bir arşivden sonra uygulanacak göçleri sırayla döndürür. */

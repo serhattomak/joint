@@ -76,7 +76,9 @@ import { openExternal } from '@/lib/external';
 import { PLATFORM_META, type Platform } from '@/lib/platform';
 import { scrapeAndStoreArticle } from '@/lib/scraper';
 import { useComponentInstaller } from '@/components/ComponentInstaller';
+import { useNotice } from '@/components/ui/notice';
 import { missingComponentText, parseMissingComponent } from '@/lib/components';
+import { describeError } from '@/lib/errors';
 
 interface ItemRecordProps {
   item: Item;
@@ -117,6 +119,7 @@ export function ItemRecord({
   onPlayMedia,
 }: ItemRecordProps) {
   const { open, reveal } = useOpenTarget();
+  const notice = useNotice();
   const installer = useComponentInstaller();
   /* Çekip-kapat: kayıt yaprağı merkezîdir — aşağı çekince kapanır. */
   const drag = useDragDismiss('y', onClose);
@@ -156,7 +159,9 @@ export function ItemRecord({
   const [downloadSpeed, setDownloadSpeed] = useState<string | null>(null);
   const [downloadEta, setDownloadEta] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(item.download_error ?? null);
-  const [deleteDiskFile, setDeleteDiskFile] = useState<boolean>(true);
+  // Varsayılan KAPALI: tek tıkla diskten kalıcı silme, kazara veri kaybının
+  // en pahalı yolu. Kullanıcı bilinçli olarak açmalı (bkz. DESIGN · silme).
+  const [deleteDiskFile, setDeleteDiskFile] = useState<boolean>(false);
   const embeddedTimeRef = useRef<number>(0);
   const [embeddedPaused, setEmbeddedPaused] = useState<boolean>(false);
 
@@ -410,12 +415,12 @@ export function ItemRecord({
       if (deleteDiskFile) {
         if (localPath) {
           await invoke('delete_file', { path: localPath }).catch((err) => {
-            console.warn('[delete_file] Yerel dosya silinemedi (zaten silinmiş olabilir):', err);
+            notice.push({ text: `Yerel dosya silinemedi: ${describeError(err)}`, tone: 'error' });
           });
         }
         if (item.converted_path) {
           await invoke('delete_file', { path: item.converted_path }).catch((err) => {
-            console.warn('[delete_file] Dönüştürülen dosya silinemedi:', err);
+            notice.push({ text: `Dönüştürülen dosya silinemedi: ${describeError(err)}`, tone: 'error' });
           });
         }
       }
@@ -423,7 +428,7 @@ export function ItemRecord({
       onChanged();
       onClose();
     } catch (e) {
-      console.error('[record:destroy]', e);
+      notice.push({ text: `Kayıt silinemedi: ${describeError(e)}`, tone: 'error' });
     }
   };
 
@@ -1195,7 +1200,7 @@ export function ItemRecord({
                     <span className="text-2xs text-muted-foreground leading-relaxed">
                       {deleteDiskFile
                         ? 'Video/ses dosyası kalıcı olarak diskten silinecektir.'
-                        : 'Dosya bilgisayarınızda saklanır, yalnızca arşiv kaydı silinir.'}
+                        : 'Dosya bilgisayarınızda saklanır, yalnızca arşiv kaydı silinir (varsayılan).'}
                     </span>
                   </div>
                 </div>

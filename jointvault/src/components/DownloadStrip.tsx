@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { listDownloadJobs, listDownloadedItems } from '@/lib/db/client';
+import { countDownloadedStatuses, listOpenDownloadJobs } from '@/lib/db/client';
 import {
   DOWNLOADS_CHANGED_EVENT,
   useDownloadProgress,
@@ -37,7 +37,7 @@ export function DownloadStrip({ onOpen }: { onOpen?: () => void }) {
 
   const refreshCounts = useCallback(async (): Promise<void> => {
     try {
-      const [jobs, items] = await Promise.all([listDownloadJobs(), listDownloadedItems()]);
+      const [jobs, counts] = await Promise.all([listOpenDownloadJobs(), countDownloadedStatuses()]);
       setTurbo((prev) => {
         const next: Record<string, { percent: number; speed: number }> = {};
         for (const job of jobs) {
@@ -50,10 +50,7 @@ export function DownloadStrip({ onOpen }: { onOpen?: () => void }) {
         }
         return next;
       });
-      setItemCounts({
-        active: items.filter((i) => i.download_status === 'active').length,
-        queued: items.filter((i) => i.download_status === 'queued').length,
-      });
+      setItemCounts(counts);
     } catch {
       // Arşiv okunamıyorsa şerit sessiz kalır; hata zaten başka yerde bildirilir.
     }

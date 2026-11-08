@@ -13,7 +13,7 @@ import {
   getArticleItemIds,
   listItemsPage,
   removeItem,
-  searchHybridChunks,
+  searchHybridChunksPage,
   setDownloadState,
   toggleFavorite,
   type ItemSort,
@@ -164,9 +164,14 @@ export function ItemGrid({
           // Gömme yoksa hibrit arama yalnızca tam-metin (FTS) yapar; bu durum
           // görünür bir nota taşınır (panel içinde saklanmaz).
           setEmbedFallback(queryEmbedding === null);
-          const results = await searchHybridChunks(q, queryEmbedding, size);
-          setRows(results.map((r) => r.item));
-          setTotal(results.length);
+          const page = await searchHybridChunksPage(q, queryEmbedding, size, p * size);
+          // Aynı öğe iki chunk'la dönebilir: ızgarada tek satır olmalı.
+          const unique = Array.from(new Map(page.rows.map((r) => [r.item.id, r.item])).values());
+          setRows(unique);
+          // Kesin toplam chunk tabanlı aramada yok; bilinen alt sınır + "devamı var"
+          // işareti sayfalama düğmelerini doğru çalıştırır.
+          setTotal(p * size + page.rows.length + (page.hasMore ? 1 : 0));
+          setLoadError(null);
           setLoaded(true);
           return;
         } catch (e) {
@@ -213,12 +218,21 @@ export function ItemGrid({
   // Eşleşmeler: refresh değişince tek tur (2 IPC), filtre tıklamasında YOK.
   useEffect(() => {
     let live = true;
+    const ids = rows.map((r) => r.id);
+    /* Yalnızca görünen sayfanın ilişkileri: tüm arşivin etiket/kategori haritası
+       2000 kayıtta gereksiz bellek ve IPC demekti. */
+    if (ids.length === 0) {
+      setTagsByItem({});
+      setCatsByItem({});
+      setHasArticleIds(new Set());
+      return;
+    }
     void (async () => {
       try {
         const [tagMap, catMap, articleIds] = await Promise.all([
-          getAllTagsByItem(),
-          getAllCategoriesByItem(),
-          getArticleItemIds(),
+          getAllTagsByItem(ids),
+          getAllCategoriesByItem(ids),
+          getArticleItemIds(ids),
         ]);
         if (!live) return;
         setTagsByItem(tagMap);
@@ -232,7 +246,7 @@ export function ItemGrid({
     return () => {
       live = false;
     };
-  }, [refreshKey, bump]);
+  }, [refreshKey, bump, rows]);
 
   // Yazma sonrası (sil/kaydet): efektler bump ile tazelenir.
   const refreshAll = useCallback((): void => {
@@ -632,7 +646,7 @@ export function ItemGrid({
           if (!o) setPendingDelete(null);
         }}
         title="Bu kayıt silinsin mi?"
-        description={pendingDelete?.title ?? pendingDelete?.url ?? undefined}
+        description={`${pendingDelete?.title ?? pendingDelete?.url ?? ''} — indirilen dosya diskte kalır.`}
         confirmLabel="Sil"
         onConfirm={() => void confirmDelete()}
       />

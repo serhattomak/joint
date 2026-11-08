@@ -2,6 +2,12 @@
 
 Tarih: 2026-09-20
 Durum: Onaylandı (grilling oturumu çıktısı)
+
+> **Durum notu (2026-11-08):** Bu belge tarihsel plandır. P0 fazlarının büyük kısmı
+> (göç/yedek, ErrorBoundary, CSP, path kapısı, bileşen yöneticisi, AI opt-in, transkript)
+> uygulandı. 2026-11-08 denetiminde kalan işler: silme semantiği, URL tekilleştirme,
+> Türkçe arama normalizasyonu, sorgu ölçeği, lazy yükleme, kapak yerelleştirme,
+> hata yüzeyleri ve CI. Ayrıntı: `docs/audit-2026-11-08.md`.
 Kapsam kararı: **Dar çevre için gerçek ürün** (birkaç kişi kurup kullanacak). Ticari hedef yok.
 Platform kararı: **Bugün Windows**; kod platform-bağımsız dikişlerle yazılır, macOS pipeline'ı yazılmaz.
 

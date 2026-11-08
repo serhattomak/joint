@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: jointvault
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: jointvault/package-lock.json
+
+      - name: Frontend gate (typecheck + lint + tests)
+        run: npm ci && npm run check
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: jointvault/src-tauri
+
+      - name: Rust tests
+        working-directory: jointvault/src-tauri
+        run: cargo test
+
+      - name: Rust check (all targets)
+        working-directory: jointvault/src-tauri
+        run: cargo check --all-targets

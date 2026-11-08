@@ -477,7 +477,7 @@ fn resolve_embed_path(app: &AppHandle, cfg: &AiConfig) -> Option<PathBuf> {
 }
 
 fn init_manager_if_needed(app: &AppHandle) {
-    let mut lock = MANAGER.lock().unwrap();
+    let mut lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
     if lock.is_none() {
         let cfg = load_config(app);
         *lock = Some(AiProcessManager {
@@ -504,7 +504,7 @@ pub fn start_watchdog(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
-            let mut lock = MANAGER.lock().unwrap();
+            let mut lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(ref mut mgr) = *lock {
                 let idle_secs = mgr
                     .config
@@ -566,7 +566,7 @@ fn should_warmup(ai_enabled: bool, auto_warmup: bool) -> bool {
 pub async fn warmup_ai_async(app: AppHandle) -> Result<(), String> {
     init_manager_if_needed(&app);
     let (ai_enabled, auto_warmup, has_engine, has_llm, has_embed) = {
-        let lock = MANAGER.lock().unwrap();
+        let lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ref mgr) = *lock {
             let eng = resolve_engine_path(&app, &mgr.config).is_some();
             let llm = resolve_llm_path(&app, &mgr.config).is_some();
@@ -669,7 +669,7 @@ async fn ensure_server_running(
 ) -> Result<u16, String> {
     init_manager_if_needed(app);
     let (engine, model, port) = {
-        let mut lock = MANAGER.lock().unwrap();
+        let mut lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
         let mgr = lock.as_mut().ok_or("Manager başlatılamadı")?;
 
         // İSTEK-ANI KAPISI: AI kapalıyken sunucu BAŞLATILMAZ. Kapı, slot
@@ -768,7 +768,7 @@ async fn ensure_server_running(
         .map_err(|e| format!("llama-server başlatılamadı: {e}"))?;
 
     {
-        let mut lock = MANAGER.lock().unwrap();
+        let mut lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ref mut mgr) = *lock {
             let slot = if slot_type == "chat" {
                 &mut mgr.chat
@@ -807,7 +807,7 @@ pub(crate) async fn ensure_chat_ready(app: &AppHandle) -> Result<(), String> {
 
 // Uygulama kapanırken süreçleri temizle
 pub fn cleanup_ai_servers() {
-    let mut lock = MANAGER.lock().unwrap();
+    let mut lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(ref mut mgr) = *lock {
         if let Some(ref mut ch) = mgr.chat.child {
             let _ = ch.kill();
@@ -831,7 +831,7 @@ pub async fn ai_status(app: AppHandle) -> Result<Value, String> {
     // Toplam RAM (MiB) — sihirbazın donanıma göre model önerisi için. Ayrı tespit;
     // önbellekli olduğundan pahalı süreç yalnızca ilk çağrıda başlar.
     let ram_mb = hardware::detect_ram();
-    let mut lock = MANAGER.lock().unwrap();
+    let mut lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
     let mgr = lock.as_mut().ok_or("Manager başlatılamadı")?;
 
     let engine = resolve_engine_path(&app, &mgr.config);
@@ -924,7 +924,7 @@ pub async fn ai_warmup(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn ai_save_config(app: AppHandle, payload: Value) -> Result<(), String> {
     init_manager_if_needed(&app);
-    let mut lock = MANAGER.lock().unwrap();
+    let mut lock = MANAGER.lock().unwrap_or_else(|e| e.into_inner());
     let mgr = lock.as_mut().ok_or("Manager başlatılamadı")?;
 
     // ANA anahtar önce: kullanıcının açık/kapalı seçimi kalıcı yazılır.

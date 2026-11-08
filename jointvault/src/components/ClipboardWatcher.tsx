@@ -3,7 +3,7 @@ import { Link2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNotice } from '@/components/ui/notice';
 import { readClipboardText } from '@/lib/clipboard';
-import { createItem, listItems } from '@/lib/db/client';
+import { createItem, listItemUrls } from '@/lib/db/client';
 import { detectPlatform } from '@/lib/platform';
 import { isKnownUrl } from '@/lib/urls';
 
@@ -62,7 +62,7 @@ export function ClipboardWatcher({
 
         if (dismissedRef.current.has(canonicalKey(text))) return;
         try {
-          const existing = (await listItems()).map((i) => i.url);
+          const existing = (await listItemUrls()).map((i) => i.url);
           if (isKnownUrl(existing, text)) return;
         } catch {
           return;

@@ -185,7 +185,7 @@ export function CollectionsView({
       }
       await loadData();
     } catch (e) {
-      console.error('[Taksonomi] birleştirme hatası:', e);
+      setNotice(`Birleştirme başarısız: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -202,7 +202,7 @@ export function CollectionsView({
       window.dispatchEvent(new CustomEvent('vault-items-updated'));
       await loadData();
     } catch (e) {
-      console.error('[Taksonomi] kullanılmayan silme hatası:', e);
+      setNotice(`Silme başarısız: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 

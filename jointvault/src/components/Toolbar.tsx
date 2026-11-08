@@ -287,6 +287,7 @@ export function Toolbar({
             />
           )}
           <Input
+            id="jv-search"
             value={value}
             onChange={(e) => handleChange(e.target.value)}
             onKeyDown={(e) => {

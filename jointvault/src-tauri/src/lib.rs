@@ -115,7 +115,8 @@ pub fn run() {
       sync::sync_upload_cookies,
       sync::sync_clear_cookies_file,
       scraper::scrape_item_content,
-      scraper::cache_article_images
+      scraper::cache_article_images,
+      scraper::cache_thumbnail
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
