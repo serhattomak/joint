@@ -513,6 +513,7 @@ export function ItemGrid({
               <ItemRowView
                 key={item.id}
                 item={item}
+                highlight={debouncedQuery}
                 tags={tagsByItem[item.id] ?? []}
                 categories={catsByItem[item.id] ?? []}
                 allCategories={categories}
@@ -539,6 +540,7 @@ export function ItemGrid({
               <ItemCardView
                 key={item.id}
                 item={item}
+                highlight={debouncedQuery}
                 tags={tagsByItem[item.id] ?? []}
                 categories={catsByItem[item.id] ?? []}
                 allCategories={categories}

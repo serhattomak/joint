@@ -60,6 +60,26 @@ export interface ItemViewProps {
   onPickVideo: (item: Item) => void;
   onConvert: (item: Item) => void;
   onPlayMedia?: (item: Item) => void;
+  /** Arama sorgusu: başlıktaki eşleşmeler işaretlenir. */
+  highlight?: string;
+}
+
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function highlighted(text: string, query?: string): React.ReactNode {
+  const q = query?.trim();
+  if (!q) return text;
+  const lower = q.toLocaleLowerCase('tr-TR');
+  const parts = text.split(new RegExp(`(${escapeRegex(q)})`, 'gi'));
+  return parts.map((part, i) =>
+    part.toLocaleLowerCase('tr-TR') === lower ? (
+      <mark key={i} className="rounded-xs bg-primary/20 px-0.5 text-foreground">
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  );
 }
 
 const platformLabel = (p: string): string =>
@@ -435,6 +455,7 @@ export const ItemRowView = memo(function ItemRowView({
   onPickVideo,
   onConvert,
   onPlayMedia,
+  highlight,
 }: ItemViewProps) {
   return (
     <div
@@ -476,7 +497,7 @@ export const ItemRowView = memo(function ItemRowView({
             <TooltipTrigger
               render={
                 <p className="truncate text-sm leading-snug font-medium transition-colors hover:text-primary hover:underline">
-                  {item.title || item.url}
+                  {highlighted(item.title || item.url, highlight)}
                 </p>
               }
             />
@@ -524,6 +545,7 @@ export const ItemCardView = memo(function ItemCardView({
   onPickVideo,
   onConvert,
   onPlayMedia,
+  highlight,
 }: ItemViewProps) {
   return (
     <article
@@ -576,7 +598,7 @@ export const ItemCardView = memo(function ItemCardView({
           className="block w-full min-w-0 cursor-pointer text-left focus-visible:outline-none"
         >
           <h3 className="line-clamp-2 text-[15px] leading-snug font-medium transition-colors hover:text-primary hover:underline">
-            {item.title || item.url}
+            {highlighted(item.title || item.url, highlight)}
           </h3>
         </button>
         <Accession item={item} tags={tags} categories={categories} allCategories={allCategories} collectionLabel={collectionLabel} hasArticle={hasArticle} variant="card" />
