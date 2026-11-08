@@ -1,31 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
-  Archive,
   ArrowDownUp,
   ArrowLeft,
   Check,
-  ChevronDown,
-  Copy,
   Download,
-  ExternalLink,
-  FileCode,
-  FileText,
-  Film,
   FolderOpen,
   Link2,
   MoreHorizontal,
-  Music,
-  Package,
   Pause,
-  Pencil,
   Play,
   Plus,
-  RotateCw,
-  Scissors,
   Search,
   Trash2,
-  TriangleAlert,
 } from 'lucide-react';
 import { useOpenTarget } from '@/lib/open-target';
 import { QuickDownloadDialog } from '@/components/QuickDownloadDialog';
@@ -56,7 +43,6 @@ import {
   setDownloadState,
   updateDownloadJob,
   updateItem,
-  type DownloadCategory,
   type DownloadJob,
   type DownloadStatus,
 } from '@/lib/db/client';
@@ -70,13 +56,21 @@ import {
   useDownloadProgress,
   DOWNLOADS_CHANGED_EVENT,
   startDownload,
-  type TransferSort,
 } from '@/lib/downloads';
-import { missingComponentText, parseMissingComponent } from '@/lib/components';
 import { describeError } from '@/lib/errors';
+import { TransferRow, type TransferRowActions } from '@/components/downloads/TransferRow';
+import {
+  CATEGORY_LABEL,
+  SORT_LABELS,
+  TURBO_STATUS,
+  baseName,
+  isToday,
+  type RowStatus,
+  type SortKey,
+  type Transfer,
+} from '@/components/downloads/model';
 import {
   cancelTurboDownload,
-  formatEta,
   formatSpeed,
   getDownloadSettings,
   pauseTurboDownload,
@@ -105,112 +99,6 @@ export interface DownloadsViewProps {
   onPickFormat?: (target: { id: string; url: string; title?: string | null }) => void;
 }
 
-type RowStatus = 'active' | 'queued' | 'paused' | 'error' | 'done';
-type SortKey = TransferSort;
-
-interface BaseTransfer {
-  key: string;
-  id: string;
-  title: string;
-  source: string;
-  engine: string;
-  detail: string;
-  status: RowStatus;
-  progress: number;
-  size: number;
-  downloaded: number;
-  speed: number;
-  eta: number;
-  speedText: string | null;
-  etaText: string | null;
-  path: string | null;
-  convertedPath: string | null;
-  createdAt: string;
-  platform: string;
-  category: DownloadCategory;
-  error: string | null;
-}
-
-interface TurboTransfer extends BaseTransfer {
-  kind: 'turbo';
-  job: DownloadJob;
-}
-
-interface VaultTransfer extends BaseTransfer {
-  kind: 'vault';
-  item: Item;
-}
-
-type Transfer = TurboTransfer | VaultTransfer;
-
-const SORT_LABELS: Record<SortKey, string> = {
-  newest: 'En yeni',
-  oldest: 'En eski',
-  name: 'Ad (A→Z)',
-  size: 'Boyut',
-};
-
-const CATEGORY_LABEL: Record<DownloadCategory, string> = {
-  video: 'Video',
-  audio: 'Ses',
-  archive: 'Sıkıştırılmış',
-  document: 'Belge',
-  program: 'Program',
-  other: 'Dosya',
-};
-
-const TURBO_STATUS: Record<DownloadStatus, RowStatus> = {
-  active: 'active',
-  queued: 'queued',
-  paused: 'paused',
-  error: 'error',
-  completed: 'done',
-};
-
-const TIME_FORMAT = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' });
-const DATE_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit' });
-
-function isToday(iso: string): boolean {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return false;
-  const now = new Date();
-  return (
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear()
-  );
-}
-
-function stamp(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return isToday(iso) ? TIME_FORMAT.format(d) : DATE_FORMAT.format(d);
-}
-
-function shortSource(url: string): string {
-  return url.replace(/^https?:\/\/(www\.)?/, '');
-}
-
-function baseName(path: string): string {
-  return path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? path;
-}
-
-function categoryIcon(category: DownloadCategory) {
-  switch (category) {
-    case 'video':
-      return <Film className="size-3.5" />;
-    case 'audio':
-      return <Music className="size-3.5" />;
-    case 'archive':
-      return <Archive className="size-3.5" />;
-    case 'document':
-      return <FileText className="size-3.5" />;
-    case 'program':
-      return <FileCode className="size-3.5" />;
-    default:
-      return <Package className="size-3.5" />;
-  }
-}
 
 export function DownloadsView({
   onClose,
@@ -487,6 +375,7 @@ export function DownloadsView({
       });
       if (payload.status === 'completed') {
         delete attemptsRef.current[payload.job_id];
+        notice.push({ text: 'İndirme tamamlandı.', tone: 'ok' });
         runAfterComplete(payload.job_id);
       } else if (payload.status === 'error') {
         scheduleRetry(payload.job_id, payload.retryable !== false);
@@ -507,7 +396,7 @@ export function DownloadsView({
       speed_bps: payload.speed_bps,
       eta_secs: payload.eta_secs,
     });
-  }, [runAfterComplete, scheduleRetry]);
+  }, [notice, runAfterComplete, scheduleRetry]);
 
   useTurboProgressListener(handleProgress);
 
@@ -673,7 +562,7 @@ export function DownloadsView({
         await cancelTurboDownload(job.id);
         if (deleteDisk && job.destination_path) {
           await invoke('delete_file', { path: job.destination_path }).catch((err) => {
-            console.warn('[delete_file] Turbo hedef dosyası silinemedi:', err);
+            notice.push({ text: describeError(err, 'Dosya silinemedi.'), tone: 'error' });
           });
         }
         await removeDownloadJob(job.id);
@@ -683,12 +572,12 @@ export function DownloadsView({
         if (deleteDisk) {
           if (item.local_path) {
             await invoke('delete_file', { path: item.local_path }).catch((err) => {
-              console.warn('[delete_file] Yerel dosya silinemedi (zaten silinmiş olabilir):', err);
+              notice.push({ text: describeError(err, 'Yerel dosya silinemedi.'), tone: 'error' });
             });
           }
           if (item.converted_path) {
             await invoke('delete_file', { path: item.converted_path }).catch((err) => {
-              console.warn('[delete_file] Dönüştürülen dosya silinemedi:', err);
+              notice.push({ text: describeError(err, 'Dönüştürülen dosya silinemedi.'), tone: 'error' });
             });
           }
         }
@@ -900,443 +789,33 @@ export function DownloadsView({
 
   // --- Satır -----------------------------------------------------------------
 
-  const renderRow = (row: Transfer) => {
-    const isSelected = selected.has(row.key);
-    const isOpen = expanded.has(row.key);
-    const error = row.error;
-    const missing = row.kind === 'turbo' ? parseMissingComponent(error) : null;
-    const errorText = missing ? missingComponentText(missing) : error;
-    const chunks = row.kind === 'turbo' ? (liveChunks[row.job.id] ?? []) : [];
-    const isDone = row.status === 'done';
-
-    const primary = (() => {
-      if (row.kind === 'turbo') {
-        if (row.status === 'active') {
-          return (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Duraklat"
-              title="Duraklat"
-              onClick={() => void handlePause(row.job)}
-            >
-              <Pause className="size-3.5 text-amber-500" />
-            </Button>
-          );
-        }
-        if (row.status === 'paused' || row.status === 'queued') {
-          return (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Başlat"
-              title="Başlat"
-              onClick={() => void handleResume(row.job)}
-            >
-              <Play className="size-3.5 text-emerald-500" />
-            </Button>
-          );
-        }
-        if (row.status === 'error') {
-          return (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Yeniden dene"
-              title="Yeniden dene"
-              onClick={() => void handleResume(row.job)}
-            >
-              <RotateCw className="size-3.5 text-primary" />
-            </Button>
-          );
-        }
-        return (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1 text-xs"
-            aria-label="Dosyayı aç"
-            onClick={() => open(row.job.destination_path)}
-          >
-            <ExternalLink className="size-3.5" /> Aç
-          </Button>
-        );
-      }
-
-      if (row.status === 'error') {
-        return (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1 text-xs"
-            onClick={() => void retryVaultDownload(row.item)}
-          >
-            <RotateCw className="size-3.5" /> Dene
-          </Button>
-        );
-      }
-      if (row.status === 'done') {
-        return (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1 text-xs"
-            onClick={() => {
-              if (onPlayMedia) onPlayMedia(row.item);
-              else if (row.item.local_path) open(row.item.local_path);
-            }}
-          >
-            {onPlayMedia ? (
-              <Play className="size-3 text-emerald-500 fill-emerald-500" />
-            ) : (
-              <ExternalLink className="size-3.5" />
-            )}
-            {onPlayMedia ? 'Oynat' : 'Aç'}
-          </Button>
-        );
-      }
-      return null;
-    })();
-
-    return (
-      <div key={row.key} className="border-b border-border/70">
-        <div
-          className={`transfer-row cursor-pointer px-1.5 py-2.5 transition-colors ${
-            isSelected ? 'bg-primary/5' : 'hover:bg-muted/30'
-          } ${isDone ? 'is-done' : ''}`}
-          onClick={(e) => {
-            if ((e.target as HTMLElement).closest('button, input, a, label')) return;
-            toggleExpanded(row.key);
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => toggleSelected(row.key)}
-            aria-label={`${row.title} seç`}
-            className="tr-check size-3.5 shrink-0 cursor-pointer rounded-2xs border-border"
-          />
-
-          <span
-            className={`tr-glyph flex size-7 shrink-0 items-center justify-center rounded-md border ${
-              row.status === 'error'
-                ? 'border-state-error/25 bg-state-error/10 text-state-error'
-                : row.status === 'done'
-                  ? 'border-state-acquired/25 bg-state-acquired/10 text-state-acquired'
-                  : row.status === 'active'
-                    ? 'border-primary/20 bg-primary/10 text-primary'
-                    : row.status === 'paused'
-                      ? 'border-amber-500/25 bg-amber-500/10 text-amber-500'
-                      : 'border-border/40 bg-muted/60 text-muted-foreground'
-            }`}
-          >
-            {row.status === 'error' ? (
-              <TriangleAlert className="size-3.5" />
-            ) : row.status === 'done' ? (
-              <Check className="size-3.5" strokeWidth={2.5} />
-            ) : (
-              categoryIcon(row.category)
-            )}
-          </span>
-
-          <span className="tr-name flex flex-col gap-0.5">
-            <span className="truncate text-sm font-medium leading-tight" title={row.title}>
-              {row.title}
-            </span>
-            <span
-              className="truncate font-mono text-2xs text-muted-foreground"
-              title={`${row.source}${row.platform ? ` · ${row.platform}` : ''}`}
-            >
-              {row.status === 'error' && errorText ? (
-                <span className="text-destructive">{errorText}</span>
-              ) : (
-                <>
-                  {shortSource(row.source)}
-                  <span className="px-1 opacity-60">·</span>
-                  {row.engine}
-                  <span className="px-1 opacity-60">·</span>
-                  {row.detail}
-                </>
-              )}
-            </span>
-          </span>
-
-          <span className="tr-actions shrink-0">
-            {primary}
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={row.path ? 'Klasörde göster' : 'İndirme klasörünü aç'}
-              title={row.path ? 'Klasörde göster' : 'İndirme klasörünü aç'}
-              onClick={() => {
-                if (row.path) reveal(row.path);
-                else if (downloadDir) open(downloadDir);
-              }}
-            >
-              <FolderOpen className="size-3.5 text-muted-foreground" />
-            </Button>
-
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label="Daha fazla eylem"
-                    title="Daha fazla eylem"
-                  />
-                }
-              >
-                <MoreHorizontal className="size-3.5 text-muted-foreground" />
-              </MenuTrigger>
-              <MenuContent align="end" className="min-w-48">
-                <MenuItem onClick={() => void copyText(row.source, 'Bağlantı')}>
-                  <Link2 className="size-3.5" /> Bağlantıyı kopyala
-                </MenuItem>
-                {row.path && (
-                  <MenuItem onClick={() => void copyText(row.path!, 'Dosya yolu')}>
-                    <Copy className="size-3.5" /> Dosya yolunu kopyala
-                  </MenuItem>
-                )}
-                {row.kind === 'vault' && row.status === 'done' && (
-                  <>
-                    <MenuSeparator />
-                    {onConvert && row.item.local_path && (
-                      <MenuItem onClick={() => onConvert(row.item)}>
-                        <Scissors className="size-3.5" /> Dönüştür / Kırp
-                      </MenuItem>
-                    )}
-                    {onOpenItem && (
-                      <MenuItem onClick={() => onOpenItem(row.item)}>
-                        <Pencil className="size-3.5" /> Kaydı Aç
-                      </MenuItem>
-                    )}
-                  </>
-                )}
-                <MenuSeparator />
-                <MenuItem
-                  onClick={() =>
-                    requestDelete(
-                      row.kind === 'turbo' ? [row.job] : [],
-                      row.kind === 'vault' ? [row.item] : [],
-                    )
-                  }
-                >
-                  <Trash2 className="size-3.5" /> Sil
-                </MenuItem>
-              </MenuContent>
-            </Menu>
-
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={isOpen ? 'Ayrıntıyı kapat' : 'Ayrıntıyı aç'}
-              title={isOpen ? 'Ayrıntıyı kapat' : 'Ayrıntıyı aç'}
-              onClick={() => toggleExpanded(row.key)}
-            >
-              <ChevronDown
-                className={`size-3.5 text-muted-foreground transition-transform duration-200 ${
-                  isOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </Button>
-          </span>
-
-          {!isDone && (
-            <span className="tr-progress">
-              <span className="flex items-baseline justify-between gap-2 font-mono text-2xs text-muted-foreground">
-                <span data-num className="font-medium text-foreground">
-                  %{Math.round(row.progress)}
-                </span>
-                <span data-num className="truncate">
-                  {row.size > 0
-                    ? `${formatBytes(row.downloaded)} / ${formatBytes(row.size)}`
-                    : ''}
-                </span>
-              </span>
-              <span className="h-1 w-full overflow-hidden rounded-full bg-muted">
-                <span
-                  className={`block h-full rounded-full transition-[width] duration-300 ${
-                    row.status === 'error'
-                      ? 'bg-destructive'
-                      : row.status === 'paused'
-                        ? 'bg-amber-500'
-                        : 'bg-primary'
-                  }`}
-                  style={{ width: `${row.progress}%` }}
-                />
-              </span>
-            </span>
-          )}
-
-          {!isDone ? (
-            <span className="tr-metrics font-mono text-2xs text-muted-foreground">
-              <span data-num className="truncate font-medium text-foreground">
-                {row.kind === 'turbo'
-                  ? row.status === 'active'
-                    ? `${formatSpeed(row.speed)}${row.eta > 0 ? ` · ${formatEta(row.eta)}` : ''}`
-                    : row.status === 'queued'
-                      ? 'Sırada'
-                      : row.status === 'paused'
-                        ? 'Duraklatıldı'
-                        : 'Yeniden denenebilir'
-                  : [row.speedText, row.etaText ? `kalan ${row.etaText}` : null]
-                      .filter(Boolean)
-                      .join(' · ') || 'yt-dlp'}
-              </span>
-              <span className="truncate">
-                {row.kind === 'turbo'
-                  ? row.detail
-                  : row.platform || row.engine}
-              </span>
-            </span>
-          ) : (
-            <span className="tr-metrics font-mono text-2xs text-muted-foreground">
-              <span data-num>{stamp(row.createdAt)}</span>
-              {row.size > 0 && <span data-num>{formatBytes(row.size)}</span>}
-            </span>
-          )}
-        </div>
-
-        {isOpen && (
-          <div className="border-t border-border/60 bg-muted/25 px-1.5 py-2.5 lg:pl-[54px]">
-            <div className="flex flex-col gap-2">
-              {row.path && (
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="w-11 shrink-0 text-2xs text-muted-foreground">Hedef</span>
-                  <code
-                    className="min-w-0 flex-1 truncate font-mono text-2xs"
-                    title={row.path}
-                  >
-                    {row.path}
-                  </code>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label="Dosya yolunu kopyala"
-                    title="Dosya yolunu kopyala"
-                    onClick={() => void copyText(row.path!, 'Dosya yolu')}
-                  >
-                    <Copy className="size-3" />
-                  </Button>
-                </div>
-              )}
-              {row.convertedPath && row.convertedPath !== row.path && (
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="w-11 shrink-0 text-2xs text-muted-foreground">Dönüşen</span>
-                  <code
-                    className="min-w-0 flex-1 truncate font-mono text-2xs"
-                    title={row.convertedPath}
-                  >
-                    {row.convertedPath}
-                  </code>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label="Dönüşen dosya yolunu kopyala"
-                    title="Dönüşen dosya yolunu kopyala"
-                    onClick={() => void copyText(row.convertedPath!, 'Dosya yolu')}
-                  >
-                    <Copy className="size-3" />
-                  </Button>
-                </div>
-              )}
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="w-11 shrink-0 text-2xs text-muted-foreground">Kaynak</span>
-                <code className="min-w-0 flex-1 truncate font-mono text-2xs" title={row.source}>
-                  {row.source}
-                </code>
-                <Button
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label="Bağlantıyı kopyala"
-                  title="Bağlantıyı kopyala"
-                  onClick={() => void copyText(row.source, 'Bağlantı')}
-                >
-                  <Link2 className="size-3" />
-                </Button>
-              </div>
-
-              {row.kind === 'turbo' && row.status === 'active' && chunks.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-2xs text-muted-foreground">Parçalar</span>
-                  <div className="flex h-5 items-stretch gap-1">
-                    {chunks.map((chunk) => (
-                      <span key={chunk.id} className="relative flex-1 overflow-hidden rounded-xs bg-muted">
-                        <span
-                          className="absolute inset-y-0 left-0 bg-primary"
-                          style={{ width: `${chunk.percent}%` }}
-                        />
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {errorText && (
-                <div className="flex flex-wrap items-center gap-2 rounded-md bg-destructive/10 px-2 py-1.5">
-                  <p className="min-w-0 flex-1 font-mono text-2xs text-destructive">
-                    Hata: {errorText}
-                  </p>
-                  {missing && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 gap-1 text-2xs"
-                      onClick={() =>
-                        installer.request(missing.id, () => {
-                          if (row.kind === 'turbo') void handleResume(row.job);
-                        })
-                      }
-                    >
-                      <Download className="size-3" /> Bileşeni kur
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                {row.kind === 'vault' && row.status === 'done' && onConvert && row.item.local_path && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1 text-2xs"
-                    onClick={() => onConvert(row.item)}
-                  >
-                    <Scissors className="size-3" /> Dönüştür / Kırp
-                  </Button>
-                )}
-                {row.kind === 'vault' && onOpenItem && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1 text-2xs"
-                    onClick={() => onOpenItem(row.item)}
-                  >
-                    <Pencil className="size-3" /> Kaydı aç
-                  </Button>
-                )}
-                {row.kind === 'turbo' && row.status === 'active' && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1 text-2xs"
-                    onClick={() => void handlePause(row.job)}
-                  >
-                    <Pause className="size-3" /> Duraklat
-                  </Button>
-                )}
-                <span className="ml-auto font-mono text-2xs text-muted-foreground">
-                  {row.kind === 'turbo' ? `#${row.id.slice(0, 8)}` : row.platform}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
+  const rowActions: TransferRowActions = {
+    toggleSelected,
+    toggleExpanded,
+    pause: (job) => void handlePause(job),
+    resume: (job) => void handleResume(job),
+    retryVault: (item) => void retryVaultDownload(item),
+    copyText: (text, label) => void copyText(text, label),
+    open,
+    reveal,
+    requestDelete,
+    installComponent: (id, retry) => installer.request(id, retry),
+    openItem: onOpenItem,
+    convert: onConvert,
+    playMedia: onPlayMedia,
   };
 
+  const renderRow = (row: Transfer) => (
+    <TransferRow
+      key={row.key}
+      row={row}
+      selected={selected.has(row.key)}
+      expanded={expanded.has(row.key)}
+      downloadDir={downloadDir}
+      chunks={row.kind === 'turbo' ? (liveChunks[row.job.id] ?? []) : []}
+      actions={rowActions}
+    />
+  );
   const renderLane = (lane: (typeof lanes)[number]) => {
     const laneSpeed = lane.rows.reduce(
       (sum, row) => sum + (row.status === 'active' ? row.speed : 0),
