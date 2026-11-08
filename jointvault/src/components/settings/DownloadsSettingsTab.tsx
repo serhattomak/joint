@@ -27,6 +27,7 @@ import {
   RETRY_OPTIONS,
   SPEED_LIMIT_OPTIONS,
 } from './options';
+import { StorageCard } from './StorageCard';
 
 export function DownloadsSettingsTab() {
   const { reveal } = useOpenTarget();
@@ -89,6 +90,7 @@ export function DownloadsSettingsTab() {
   };
 
   return (
+    <>
     <div className="settings-card flex flex-col divide-y divide-border/70 p-4">
       <div className="flex flex-col gap-1.5">
         <label htmlFor="set-dir" className="text-sm font-medium">
@@ -240,5 +242,7 @@ export function DownloadsSettingsTab() {
         />
       </SettingRow>
     </div>
+    <StorageCard />
+    </>
   );
 }

@@ -23,6 +23,7 @@ mod sync;
 mod scraper;
 mod hardware;
 mod similarity;
+mod storage;
 
 use tauri::Manager;
 
@@ -52,6 +53,7 @@ pub fn run() {
       pairing::extension_info,
       settings::get_download_dir,
       similarity::dedupe_candidates,
+      storage::scan_storage,
     settings::app_data_path,
     backup::database_path,
     backup::backups_path,
