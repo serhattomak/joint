@@ -30,7 +30,6 @@ import { Input } from '@/components/ui/input';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { useNotice } from '@/components/ui/notice';
 import { PageSurface } from '@/components/ui/page-surface';
-import { Switch } from '@/components/ui/switch';
 import { writeClipboardText } from '@/lib/clipboard';
 import {
   clearCompletedDownloads,
@@ -58,6 +57,7 @@ import {
   startDownload,
 } from '@/lib/downloads';
 import { describeError } from '@/lib/errors';
+import { DeleteTransfersDialog } from '@/components/downloads/DeleteTransfersDialog';
 import { TransferRow, type TransferRowActions } from '@/components/downloads/TransferRow';
 import {
   CATEGORY_LABEL,
@@ -140,7 +140,7 @@ export function DownloadsView({
     jobs: DownloadJob[];
     items: Item[];
   } | null>(null);
-  const [deleteDisk, setDeleteDisk] = useState(true);
+  const [deleteDisk, setDeleteDisk] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -548,7 +548,7 @@ export function DownloadsView({
   const requestDelete = (jobsToDelete: DownloadJob[], itemsToDelete: Item[]) => {
     if (jobsToDelete.length === 0 && itemsToDelete.length === 0) return;
     setDeleteTarget({ jobs: jobsToDelete, items: itemsToDelete });
-    setDeleteDisk(true);
+    setDeleteDisk(false);
     setDeleteRecord(false);
   };
 
@@ -746,12 +746,6 @@ export function DownloadsView({
     (job) => job.status === 'paused' || job.status === 'error',
   );
   const selectedLiveCount = selectedJobs.length + selectedItems.length;
-
-  const deleteCount = (deleteTarget?.jobs.length ?? 0) + (deleteTarget?.items.length ?? 0);
-  const deleteNames = [
-    ...(deleteTarget?.jobs.map((job) => job.filename) ?? []),
-    ...(deleteTarget?.items.map((item) => item.title || baseName(item.local_path ?? item.url)) ?? []),
-  ];
 
   const toggleSelected = (key: string): void => {
     setSelected((prev) => {
@@ -1197,106 +1191,16 @@ export function DownloadsView({
         </DialogContent>
       </Dialog>
 
-      {/* SİLME (turbo + arşiv, tek diyalog) */}
-      <Dialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !deleteBusy) setDeleteTarget(null);
-        }}
-      >
-        <DialogContent className="max-w-md gap-4 p-6">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
-              <Trash2 className="size-5" />
-              {deleteCount === 1
-                ? deleteTarget?.items.length
-                  ? 'Medyayı Sil'
-                  : 'İndirmeyi Sil'
-                : `${deleteCount} Kaydı Sil`}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              {deleteCount === 1
-                ? `"${deleteNames[0]}" için silme seçeneklerini belirleyin.`
-                : `${deleteCount} kayıt için silme seçeneklerini belirleyin.`}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-3 py-1">
-            <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-xs">
-              <span className="mb-1 block text-3xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Dosya
-              </span>
-              {deleteNames.slice(0, 4).map((name, i) => (
-                <p key={`${name}-${i}`} className="truncate text-2xs text-foreground" title={name}>
-                  {name}
-                </p>
-              ))}
-              {deleteNames.length > 4 && (
-                <p data-num className="mt-1 text-2xs text-muted-foreground">
-                  +{deleteNames.length - 4} dosya daha
-                </p>
-              )}
-            </div>
-
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 bg-card p-3 select-none transition hover:bg-muted/30">
-              <Switch
-                checked={deleteDisk}
-                onCheckedChange={setDeleteDisk}
-                className="pointer-events-none mt-0.5"
-              />
-              <span className="flex flex-col gap-0.5">
-                <span className="text-xs font-semibold text-foreground">
-                  Dosyaları diskten de sil
-                </span>
-                <span className="text-2xs leading-relaxed text-muted-foreground">
-                  İndirilen dosya kalıcı olarak silinir; yer açılır.
-                </span>
-              </span>
-            </label>
-
-            {(deleteTarget?.items.length ?? 0) > 0 && (
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 bg-card p-3 select-none transition hover:bg-muted/30">
-                <Switch
-                  checked={deleteRecord}
-                  onCheckedChange={setDeleteRecord}
-                  className="pointer-events-none mt-0.5"
-                />
-                <span className="flex flex-col gap-0.5">
-                  <span className="text-xs font-semibold text-foreground">
-                    Arşiv kaydını da kaldır
-                  </span>
-                  <span className="text-2xs leading-relaxed text-muted-foreground">
-                    {deleteRecord
-                      ? 'Kayıt ve bağlantısı arşivden tamamen silinir.'
-                      : 'Kapalı: kayıt arşivde kalır, yalnızca indirilmiş medya temizlenir.'}
-                  </span>
-                </span>
-              </label>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDeleteTarget(null)}
-              disabled={deleteBusy}
-            >
-              Vazgeç
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => void handleConfirmDelete()}
-              disabled={deleteBusy}
-              className="gap-1.5"
-            >
-              <Trash2 className="size-3.5" />
-              {deleteBusy ? 'Siliniyor…' : deleteCount === 1 ? 'Sil' : `${deleteCount} Kaydı Sil`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteTransfersDialog
+        target={deleteTarget}
+        busy={deleteBusy}
+        disk={deleteDisk}
+        record={deleteRecord}
+        onDiskChange={setDeleteDisk}
+        onRecordChange={setDeleteRecord}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => void handleConfirmDelete()}
+      />
     </PageSurface>
   );
 }
