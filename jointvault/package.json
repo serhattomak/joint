@@ -29,6 +29,7 @@
     "verify:security": "node dev/verify-security.mjs",
     "verify:ai-optin": "node dev/verify-ai-optin.mjs",
     "version:set": "node dev/set-version.mjs",
+    "package:extension": "node dev/package-extension.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
