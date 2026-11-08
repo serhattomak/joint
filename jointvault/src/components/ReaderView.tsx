@@ -415,6 +415,49 @@ function MarkdownRenderer({ content }: { content: string }) {
           return <hr key={idx} className="my-5 border-border" />;
         }
 
+        // GFM tablosu: başlık satırı + `|---|` ayırıcı
+        const tableLines = trimmed.split('\n');
+        if (
+          tableLines.length >= 2 &&
+          tableLines[0].includes('|') &&
+          /^\s*\|?[\s:-]+\|/.test(tableLines[1])
+        ) {
+          const cells = (line: string): string[] =>
+            line
+              .replace(/^\s*\|/, '')
+              .replace(/\|\s*$/, '')
+              .split('|')
+              .map((cell) => cell.trim());
+          const head = cells(tableLines[0]);
+          const rows = tableLines.slice(2).filter((line) => line.includes('|')).map(cells);
+          return (
+            <div key={idx} className="my-3 overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    {head.map((cell, i) => (
+                      <th key={i} className="px-2 py-1.5 font-medium text-foreground">
+                        {formatInlineText(cell)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, r) => (
+                    <tr key={r} className="border-b border-border/50 text-foreground/90">
+                      {row.map((cell, c) => (
+                        <td key={c} className="px-2 py-1.5 align-top">
+                          {formatInlineText(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
         // Headings
         if (trimmed.startsWith('### ')) {
           return (
