@@ -9,6 +9,10 @@ target/
 # graft yerel graf önbelleği — yeniden üretilebilir (`graft build`), commit edilmez.
 /graft/
 
+# trail repo grafiği/öğrenimleri — yerel, yeniden üretilebilir (`trail build`), commit edilmez.
+/.trail/
+/.openchamber/
+
 # --- Ajan/araç yerel ayarları: makineye özgü ---
 .ignore
 .mcp.json
