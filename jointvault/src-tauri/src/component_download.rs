@@ -17,8 +17,11 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -313,13 +316,24 @@ pub enum Payload {
         wanted: Vec<String>,
         max_entry_bytes: u64,
     },
+    /// MSI: `msiexec /a` ile tüm ağaç `<dest_dir>` altına çıkarılır.
+    Msi { dest_dir: PathBuf },
+    /// Tar.gz: yalnızca seçilen girdiler basename ile `<dest_dir>` altına çıkar.
+    TarGz {
+        dest_dir: PathBuf,
+        wanted: Vec<String>,
+        max_entry_bytes: u64,
+    },
 }
 
 impl Payload {
     /// İndirme/çıkarma hedef klasörü.
     pub fn dest_dir(&self) -> &Path {
         match self {
-            Payload::Raw { dest_dir, .. } | Payload::Zip { dest_dir, .. } => dest_dir.as_path(),
+            Payload::Raw { dest_dir, .. }
+            | Payload::Zip { dest_dir, .. }
+            | Payload::Msi { dest_dir }
+            | Payload::TarGz { dest_dir, .. } => dest_dir.as_path(),
         }
     }
 }
@@ -611,7 +625,9 @@ fn part_path(plan: &DownloadPlan, job_id: &str) -> Result<PathBuf, DownloadError
         Payload::Raw { file_name, .. } => {
             part_path_for_file(dest_dir, &safe_basename(file_name)?)
         }
-        Payload::Zip { .. } => part_path_for_archive(dest_dir, &plan.component_id, job_id),
+        Payload::Zip { .. } | Payload::Msi { .. } | Payload::TarGz { .. } => {
+            part_path_for_archive(dest_dir, &plan.component_id, job_id)
+        }
     })
 }
 
@@ -774,9 +790,188 @@ fn extract_selected_zip(
     Ok(())
 }
 
-/// Doğrulanmış `.part`'ı hedefe yerleştir: Raw'da atomik rename, Zip'te güvenli
-/// çıkarma. Başarıda temizlik bekçisini "succeeded" yapar (çıkarılan dosyalar kalır,
-/// `.part` yine silinir).
+/// Doğrulanmış tar.gz arşivinden yalnızca `wanted` basename'lerini çıkar.
+///
+/// PDFium bu biçimde dağıtılıyor. Zip yolundaki güvenlik kuralları aynen geçerli:
+/// basename'e indirgeme (zip-slip), gerçekten okunan bayt sayımı (şişirilmiş girdi)
+/// ve iptal bayrağı. Arşiv girdileri sıralı okunur; önce liste çıkarmak gerekmez.
+fn extract_selected_targz(
+    part: &Path,
+    dest_dir: &Path,
+    wanted: &[String],
+    max_entry_bytes: u64,
+    cancel: &AtomicBool,
+    cleanup: &mut Cleanup,
+) -> Result<(), DownloadError> {
+    let file = std::fs::File::open(part)
+        .map_err(|e| DownloadError::Archive { detail: e.to_string() })?;
+    let decoder = flate2::read::GzDecoder::new(BufReader::new(file));
+    let mut archive = tar::Archive::new(decoder);
+    let entries = archive
+        .entries()
+        .map_err(|e| DownloadError::Archive { detail: e.to_string() })?;
+
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| DownloadError::WriteFailed { detail: e.to_string() })?;
+    let mut extracted: Vec<String> = Vec::new();
+    let mut seen: usize = 0;
+
+    for entry in entries {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(DownloadError::Cancelled);
+        }
+        seen += 1;
+        if seen > 20_000 {
+            return Err(DownloadError::Archive {
+                detail: "arşivde çok fazla girdi var".to_string(),
+            });
+        }
+        let mut entry = entry.map_err(|e| DownloadError::Archive { detail: e.to_string() })?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+        let path = entry
+            .path()
+            .map_err(|e| DownloadError::Archive { detail: e.to_string() })?;
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !wanted.iter().any(|w| w.eq_ignore_ascii_case(name)) {
+            continue;
+        }
+        let declared = entry.header().size().unwrap_or(0);
+        if declared > max_entry_bytes {
+            return Err(DownloadError::ZipBomb {
+                entry: name.to_string(),
+                size: declared,
+                limit: max_entry_bytes,
+            });
+        }
+        let safe = safe_basename(name)?;
+        if extracted.iter().any(|n| n == &safe) {
+            continue;
+        }
+        let target = dest_dir.join(&safe);
+        if !target.exists() {
+            cleanup.track_partial(target.clone());
+        }
+        let mut out = std::fs::File::create(&target)
+            .map_err(|e| DownloadError::WriteFailed { detail: e.to_string() })?;
+        let mut buf = vec![0u8; IO_BUFFER_BYTES];
+        let mut written: u64 = 0;
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                return Err(DownloadError::Cancelled);
+            }
+            let n = entry
+                .read(&mut buf)
+                .map_err(|e| DownloadError::Archive { detail: e.to_string() })?;
+            if n == 0 {
+                break;
+            }
+            written = account_bytes(&safe, written, n as u64, max_entry_bytes)?;
+            out.write_all(&buf[..n])
+                .map_err(|e| DownloadError::WriteFailed { detail: e.to_string() })?;
+        }
+        out.flush()
+            .map_err(|e| DownloadError::WriteFailed { detail: e.to_string() })?;
+        extracted.push(safe);
+    }
+
+    if extracted.len() < wanted.len() {
+        return Err(DownloadError::Archive {
+            detail: "arşivde istenen dosyaların tamamı bulunamadı".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// MSI'ı `msiexec /a` ile geçici bir kardeş klasöre çıkar, sonra hedefe taşı.
+///
+/// Yönetici izni GEREKMEZ (administrative install). Geçici klasör sayesinde yarım
+/// kalan kurulum çalışan bir kurulumu bozmaz. `bootstrap.ini` yaması, indirme
+/// motorunun kurulum-sonrası kancasında (`apply_post_install`) bu hedefe uygulanır.
+fn extract_msi(
+    part: &Path,
+    dest_dir: &Path,
+    job_id: &str,
+    cancel: &AtomicBool,
+) -> Result<(), DownloadError> {
+    if cancel.load(Ordering::SeqCst) {
+        return Err(DownloadError::Cancelled);
+    }
+    let name = dest_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "component".to_string());
+    let staging = dest_dir.with_file_name(format!(".{name}-{job_id}.msi-extract"));
+    let _ = std::fs::remove_dir_all(&staging);
+    let out_dir = staging.join("out");
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|e| DownloadError::WriteFailed { detail: e.to_string() })?;
+    let msi = staging.join("installer.msi");
+    std::fs::rename(part, &msi).or_else(|_| {
+        std::fs::copy(part, &msi).map(|_| ()).map_err(|e| {
+            DownloadError::WriteFailed { detail: e.to_string() }
+        })
+    })?;
+
+    let mut command = Command::new("msiexec");
+    command
+        .arg("/a")
+        .arg(&msi)
+        .arg("/qn")
+        .arg("/norestart")
+        .arg(format!("TARGETDIR={}", out_dir.display()));
+    #[cfg(windows)]
+    {
+        // Konsol penceresi açma; msiexec zaten arka planda çalışır.
+        command.creation_flags(0x0800_0000);
+    }
+    let status = command.status().map_err(|e| DownloadError::Archive {
+        detail: format!("msiexec başlatılamadı: {e}"),
+    })?;
+    if !status.success() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(DownloadError::Archive {
+            detail: format!(
+                "MSI kurulumu başarısız (çıkış kodu {:?})",
+                status.code()
+            ),
+        });
+    }
+    if cancel.load(Ordering::SeqCst) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(DownloadError::Cancelled);
+    }
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| DownloadError::WriteFailed { detail: e.to_string() })?;
+    move_dir_contents(&out_dir, dest_dir).map_err(|e| DownloadError::WriteFailed {
+        detail: e.to_string(),
+    })?;
+    let _ = std::fs::remove_dir_all(&staging);
+    Ok(())
+}
+
+/// `src` içeriğini `dst` altına taşı; aynı ad varsa önce sil (Windows rename töleransı).
+fn move_dir_contents(src: &Path, dst: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            std::fs::create_dir_all(&to)?;
+            move_dir_contents(&from, &to)?;
+        } else {
+            let _ = std::fs::remove_file(&to);
+            std::fs::rename(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Doğrulanmış `.part`'ı hedefe yerleştir: Raw'da atomik rename, Zip/TarGz'de güvenli
+/// çıkarma, MSI'da yönetici kurulumu. Başarıda temizlik bekçisini "succeeded" yapar.
 fn place_payload(
     app: &AppHandle,
     plan: &DownloadPlan,
@@ -810,6 +1005,34 @@ fn place_payload(
                 "extracting",
             );
             extract_selected_zip(part, dest_dir, wanted, *max_entry_bytes, cancel, cleanup)?;
+        }
+        Payload::TarGz {
+            wanted,
+            max_entry_bytes,
+            ..
+        } => {
+            emit_progress(
+                app,
+                plan,
+                job_id,
+                progress_percent(downloaded, total),
+                downloaded,
+                total,
+                "extracting",
+            );
+            extract_selected_targz(part, dest_dir, wanted, *max_entry_bytes, cancel, cleanup)?;
+        }
+        Payload::Msi { .. } => {
+            emit_progress(
+                app,
+                plan,
+                job_id,
+                progress_percent(downloaded, total),
+                downloaded,
+                total,
+                "extracting",
+            );
+            extract_msi(part, dest_dir, job_id, cancel)?;
         }
     }
     cleanup.succeed();
@@ -943,6 +1166,15 @@ fn plan_from_spec(spec: &crate::components::DownloadSpec, dest_dir: PathBuf) -> 
             wanted,
             max_entry_bytes,
         } => Payload::Zip {
+            dest_dir,
+            wanted: wanted.iter().map(|name| (*name).to_string()).collect(),
+            max_entry_bytes: *max_entry_bytes,
+        },
+        crate::components::PayloadRule::Msi => Payload::Msi { dest_dir },
+        crate::components::PayloadRule::TarGz {
+            wanted,
+            max_entry_bytes,
+        } => Payload::TarGz {
             dest_dir,
             wanted: wanted.iter().map(|name| (*name).to_string()).collect(),
             max_entry_bytes: *max_entry_bytes,
@@ -1509,6 +1741,7 @@ mod tests {
                 assert!(max_entry_bytes > 164_232_192);
             }
             Payload::Raw { .. } => panic!("ffmpeg zip arşivi olmalı"),
+            _ => panic!("ffmpeg zip arşivi olmalı"),
         }
     }
 
@@ -1520,5 +1753,48 @@ mod tests {
         // whisper artık 7c-3 ile kayıttan iner (motor DLL'leriyle birlikte geldiği için
         // indirilen kopya ÇALIŞIR — gömülü kopyadaki DLL kusuru bu yolda yok).
         assert!(crate::components::download_spec("whisper").is_some());
+    }
+
+    #[test]
+    fn targz_extracts_only_the_wanted_basename() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+
+        let dir = std::env::temp_dir().join(format!("jv-targz-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("test klasörü");
+        let tgz = dir.join("test.tgz");
+        let file = std::fs::File::create(&tgz).expect("tgz");
+        let encoder = GzEncoder::new(file, Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let payload = b"pdfium-dll";
+        for (name, bytes) in [
+            ("bin/pdfium.dll", payload.as_slice()),
+            ("bin/other.txt", b"ignore".as_slice()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_path(name).expect("tar yolu");
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append(&header, bytes).expect("tar girdisi");
+        }
+        builder.into_inner().expect("tar kapat").finish().expect("gz kapat");
+
+        let dest = dir.join("out");
+        let mut cleanup = Cleanup::new(dir.join("dummy.part"));
+        extract_selected_targz(
+            &tgz,
+            &dest,
+            &["pdfium.dll".to_string()],
+            1024,
+            &AtomicBool::new(false),
+            &mut cleanup,
+        )
+        .expect("çıkarma başarılı");
+        assert_eq!(std::fs::read(dest.join("pdfium.dll")).unwrap(), payload);
+        assert!(!dest.join("other.txt").exists());
+        cleanup.succeed();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

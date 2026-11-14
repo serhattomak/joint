@@ -1,5 +1,6 @@
 mod collect;
 mod convert;
+mod conversion;
 mod download;
 mod dupes;
 mod gif;
@@ -44,6 +45,7 @@ pub fn run() {
       tauri_plugin_autostart::MacosLauncher::LaunchAgent,
       Some(vec!["--autostart"]),
     ))
+    .manage(conversion::ConversionState::default())
     .invoke_handler(tauri::generate_handler![
       preview::fetch_preview,
       preview_media::media_probe,
@@ -79,6 +81,11 @@ pub fn run() {
       download::download_media,
       download::list_formats,
       convert::convert_media,
+      conversion::convert_file,
+      conversion::convert_cancel,
+      conversion::conversion_pdf_tool,
+      conversion::conversion_inspect,
+      conversion::conversion_scan_dir,
       merge::merge_media,
       gif::make_gif,
       silence::trim_silence,

@@ -154,6 +154,25 @@ export const MIGRATIONS: Migration[] = [
     statements: ['ALTER TABLE items ADD COLUMN search_text TEXT'],
     ignore: /duplicate column name/i,
   },
+  {
+    version: 10,
+    description: 'dönüşüm geçmişi',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS conversion_jobs (
+        id TEXT PRIMARY KEY,
+        input_path TEXT NOT NULL,
+        output_paths_json TEXT NOT NULL DEFAULT '[]',
+        target TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error_message TEXT,
+        size_bytes INTEGER,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        finished_at TEXT
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_conversion_jobs_created ON conversion_jobs(created_at)',
+    ],
+  },
 ];
 
 /** Sürümü `current` olan bir arşivden sonra uygulanacak göçleri sırayla döndürür. */

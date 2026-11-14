@@ -118,3 +118,19 @@ export interface ItemArticle {
   site_name: string | null;
   scraped_at: string;
 }
+
+export type ConversionStatus = 'done' | 'error' | 'cancelled';
+
+/** Dönüşüm geçmişi satırı (migration 10). */
+export interface ConversionJobRow {
+  id: string;
+  input_path: string;
+  output_paths: string[];
+  target: string;
+  source_kind: string;
+  status: ConversionStatus;
+  error_message: string | null;
+  size_bytes: number | null;
+  created_at: string;
+  finished_at: string | null;
+}

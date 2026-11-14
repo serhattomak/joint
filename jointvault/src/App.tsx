@@ -47,7 +47,7 @@ const AiAssistantView = lazy(() => import('@/components/AiAssistantView').then((
 const SettingsView = lazy(() => import('@/components/SettingsView').then((m) => ({ default: m.SettingsView })));
 const CollectionsView = lazy(() => import('@/components/CollectionsView').then((m) => ({ default: m.CollectionsView })));
 const NotebookView = lazy(() => import('@/components/NotebookView').then((m) => ({ default: m.NotebookView })));
-const ConverterStudio = lazy(() => import('@/components/ConverterStudio').then((m) => ({ default: m.ConverterStudio })));
+const ConversionStudio = lazy(() => import('@/components/ConversionStudio').then((m) => ({ default: m.ConversionStudio })));
 const DuplicatesView = lazy(() => import('@/components/DuplicatesView').then((m) => ({ default: m.DuplicatesView })));
 const MergeTool = lazy(() => import('@/components/MergeTool').then((m) => ({ default: m.MergeTool })));
 const SilenceTool = lazy(() => import('@/components/SilenceTool').then((m) => ({ default: m.SilenceTool })));
@@ -694,7 +694,7 @@ function App() {
                   />
                 </div>
               ) : route === 'converter' ? (
-                <ConverterStudio refreshKey={refreshKey} onDone={refresh} />
+                <ConversionStudio refreshKey={refreshKey} onDone={refresh} />
               ) : toolboxTool === 'duplicates' ? (
                 <DuplicatesView onDone={refresh} onClose={() => setToolboxTool(null)} />
               ) : toolboxTool === 'merge' ? (

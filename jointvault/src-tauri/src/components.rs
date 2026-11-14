@@ -74,6 +74,10 @@ pub enum Dest {
     /// CPU motoruyla AYNI dosya adlarını (`whisper.exe`, `ggml.dll`, …) taşıdığı
     /// için aynı dizine çıkarılamaz; ikisi birbirini ezerdi.
     ComponentsCuda,
+    /// LibreOffice ağacı (`components/libreoffice`). Yönetici MSI çıkarması tüm
+    /// `program/`, `share/` ağacını buraya bırakır; `soffice.exe` alt yolda yaşar.
+    /// Ayrı hedef olması, diğer bileşenlerin `components/` kökünü kirletmemesini sağlar.
+    LibreOffice,
 }
 
 /// Bileşenin türü. "Çalıştırılamıyor" hükmü YALNIZCA buradan türer.
@@ -145,6 +149,18 @@ pub enum PostInstall {
         from: &'static str,
         to: &'static str,
     },
+    /// Bir metin dosyasındaki `prefix` ile başlayan satırı `line` ile değiştir.
+    ///
+    /// LibreOffice yönetici çıkarması `program/bootstrap.ini` içinde
+    /// `UserInstallation=$SYSUSERCONFIG/LibreOffice/4` bırakır. Bu satır
+    /// `$ORIGIN/../lo-profile` yapılmazsa `-env:UserInstallation` ile profil
+    /// açılamıyor ve süreç dönüşümden sonra asılı kalıyor (26.8.3'te ölçüldü).
+    /// Satır yoksa dosyanın SONUNA eklenir: yama sessizce kaybolmaz.
+    RewriteLine {
+        file: &'static str,
+        prefix: &'static str,
+        line: &'static str,
+    },
 }
 
 /// Tek bir bileşenin değişmez tarifi.
@@ -188,6 +204,15 @@ pub enum PayloadRule {
         wanted: &'static [&'static str],
         max_entry_bytes: u64,
     },
+    /// MSI: `msiexec /a` ile yönetici izni gerekmeden hedefe çıkarılır.
+    /// Tüm ağaç gerekir (LibreOffice `program/` + `share/`); seçilecek dosya yok.
+    Msi,
+    /// Tar.gz: yalnızca `wanted` basename'leri hedefe çıkarılır; her girdi
+    /// `max_entry_bytes`'ı aşarsa reddedilir. PDFium bu biçimde dağıtılıyor.
+    TarGz {
+        wanted: &'static [&'static str],
+        max_entry_bytes: u64,
+    },
 }
 
 /// Pinlenmiş indirme kaynağı.
@@ -214,6 +239,8 @@ impl DownloadSpec {
     pub fn framework(&self) -> &'static str {
         match &self.payload {
             PayloadRule::Zip { .. } => "archive",
+            PayloadRule::Msi => "msi",
+            PayloadRule::TarGz { .. } => "tarball",
             PayloadRule::Raw { .. } => "plain",
         }
     }
@@ -259,6 +286,36 @@ const FFMPEG_TOOLS_WANTED: &[&str] = &["ffmpeg.exe", "ffprobe.exe"];
 /// Paylaşılan arşivin MB cinsinden gösterimi (iki satır da bu sayıyı taşır:
 /// 80+80 değil, TEK ~191 MB indirme).
 const FFMPEG_TOOLS_APPROX_MB: u32 = 191;
+
+// --- LibreOffice + PDFium: Dönüşüm Merkezi'nin iki motoru ---
+//
+// LibreOffice neden MSI? Resmî Windows dağıtımı yalnız MSI/EXE. `msiexec /a`
+// yönetici izni istemez ve ağacı hedef klasöre çıkarır (26.8.3 ile ölçüldü).
+// Kurulum-sonrası `bootstrap.ini` yaması izole profili açar; aksi hâlde süreç
+// dönüşümden sonra asılı kalıyor.
+const LIBREOFFICE_BUNDLE: &str = "libreoffice";
+const LIBREOFFICE_URL: &str = "https://download.documentfoundation.org/libreoffice/stable/26.8.3/win/x86_64/LibreOffice_26.8.3_Win_x86-64.msi";
+/// TDF'nin `.msi.sha256` dosyasından birebir (14 Kasım 2026).
+const LIBREOFFICE_SHA256: &str =
+    "0e6918c273eabbdbbd800ee0dacbbf130a14c13c2e4cec861b06dd59e015bf94";
+/// `Content-Length` / yayıncı boyutu: 376_311_808 bayt = 358.88 MiB.
+const LIBREOFFICE_ARCHIVE_BYTES: u64 = 376_311_808;
+/// Tepe disk: arşiv + açılan ağaç (~1.6 GB) bir an birlikte. 2.4 GiB güvenli sınır.
+const LIBREOFFICE_PEAK_BYTES: u64 = 2_400 * MIB;
+const LIBREOFFICE_APPROX_MB: u32 = 359;
+const LIBREOFFICE_DIR_NAME: &str = "libreoffice";
+
+const PDFIUM_BUNDLE: &str = "pdfium";
+const PDFIUM_URL: &str =
+    "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8152/pdfium-win-x64.tgz";
+/// GitHub asset `digest` alanından birebir (`sha256:...`).
+const PDFIUM_SHA256: &str = "cee2b0e9990bc67c0721774932961b9dbf2766046c10eec925acd4cfba6fdfe3";
+const PDFIUM_ARCHIVE_BYTES: u64 = 4_037_307;
+/// Tek arşiv girdisi sınırı: `pdfium.dll` ~7.8 MB; 64 MiB emniyet kemeri.
+const PDFIUM_ENTRY_CAP_BYTES: u64 = 64 * MIB;
+const PDFIUM_PEAK_BYTES: u64 = 64 * MIB;
+const PDFIUM_APPROX_MB: u32 = 4;
+const PDFIUM_WANTED: &[&str] = &["pdfium.dll"];
 
 /// `app_data_dir()` altındaki mevcut klasör adları — DEĞİŞTİRİLMEZ. whisper/AI
 /// dosyaları bugün bu adlarda kurulu; taşımak onları öksüz bırakırdı. Bu iki ad
@@ -689,6 +746,57 @@ const SPECS: &[Spec] = &[
         post_install: None,
     },
     Spec {
+        id: "libreoffice",
+        label: "LibreOffice (belge motoru)",
+        approx_mb: LIBREOFFICE_APPROX_MB,
+        dest: Dest::LibreOffice,
+        kind: Kind::Binary,
+        // Yönetici çıkarması `program/` ağacını kök altına bırakır.
+        downloaded_file: "program/soffice.exe",
+        sidecar: None,
+        // LibreOffice'te `--version` süreci asılı bırakıyor (26.8.3'te ölçüldü).
+        // Boş arg = prob yok: dosya ağacı varsa kurulu sayılır; gerçek hata
+        // dönüşüm sırasında okunur. `components_status` bu değeri görünce
+        // hiçbir süreç başlatmaz.
+        version_arg: "",
+        download: Some(DownloadSpec {
+            bundle: LIBREOFFICE_BUNDLE,
+            url: LIBREOFFICE_URL,
+            sha256: LIBREOFFICE_SHA256,
+            expected_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+            disk_required_bytes: LIBREOFFICE_PEAK_BYTES,
+            payload: PayloadRule::Msi,
+        }),
+        // İzole profil: aksi hâlde dönüşüm sonrası süreç kapanmıyor.
+        post_install: Some(PostInstall::RewriteLine {
+            file: "program/bootstrap.ini",
+            prefix: "UserInstallation=",
+            line: "UserInstallation=$ORIGIN/../lo-profile",
+        }),
+    },
+    Spec {
+        id: "pdfium",
+        label: "PDF motoru (PDFium)",
+        approx_mb: PDFIUM_APPROX_MB,
+        dest: Dest::Components,
+        kind: Kind::Asset,
+        downloaded_file: "pdfium.dll",
+        sidecar: None,
+        version_arg: ASSET_VERSION_ARG,
+        download: Some(DownloadSpec {
+            bundle: PDFIUM_BUNDLE,
+            url: PDFIUM_URL,
+            sha256: PDFIUM_SHA256,
+            expected_bytes: PDFIUM_ARCHIVE_BYTES,
+            disk_required_bytes: PDFIUM_PEAK_BYTES,
+            payload: PayloadRule::TarGz {
+                wanted: PDFIUM_WANTED,
+                max_entry_bytes: PDFIUM_ENTRY_CAP_BYTES,
+            },
+        }),
+        post_install: None,
+    },
+    Spec {
         id: "whisper",
         label: "Whisper motoru",
         approx_mb: WHISPER_ENGINE_APPROX_MB,
@@ -1039,6 +1147,7 @@ pub fn dest_dir(app: &AppHandle, dest: Dest) -> Result<PathBuf, String> {
     match dest {
         Dest::Components => components_dir(app),
         Dest::ComponentsCuda => Ok(components_dir(app)?.join(WHISPER_CUDA_DIR_NAME)),
+        Dest::LibreOffice => Ok(components_dir(app)?.join(LIBREOFFICE_DIR_NAME)),
         Dest::Models => app_data_subdir(app, MODELS_DIR_NAME, "Model klasörü açılamadı"),
         Dest::Binaries => app_data_subdir(app, BINARIES_DIR_NAME, "Binary klasörü açılamadı"),
         Dest::BinariesCuda => Ok(
@@ -1239,6 +1348,18 @@ pub fn require_tool(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| missing_signal(id))
 }
 
+/// Tür ayrımı YAPMADAN bir bileşenin yolunu zorunlu kıl.
+///
+/// `require_tool` yalnız `Binary` kabul eder; `pdfium.dll` bir `Asset`tir ve
+/// yine de bir komuta YOL olarak verilmelidir (çalıştırılmaz, dinamik yüklenir).
+/// Bu kapı yalnızca "dosya var mı" sorusunu sorar; eksikse aynı yapılandırılmış
+/// `BILESEN_EKSIK:<id>` sinyalini döner.
+pub fn require_component(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    resolve_component(app, id)
+        .map(|(path, _)| path)
+        .ok_or_else(|| missing_signal(id))
+}
+
 /// Bir bileşeni GERÇEKTEN çalıştırıp sürümünü okur: kullanılabilirliğin ölçütü.
 ///
 /// Neden tek yer? `health_check` ile `components_status` aynı soruya ("çalışıyor mu")
@@ -1258,6 +1379,10 @@ pub async fn probe_component(app: &AppHandle, id: &str) -> (bool, Option<String>
     let Some((path, _)) = resolve(app, spec) else {
         return (false, None);
     };
+    if spec.version_arg.is_empty() {
+        // Probü olmayan çalıştırılabilir (LibreOffice ağacı): dosya varsa kurulu.
+        return (true, None);
+    }
     match probe_version(app, &path, spec.version_arg).await {
         Some(version) => (true, Some(version)),
         None => (false, None),
@@ -1286,6 +1411,8 @@ pub fn missing_message(id: &str) -> String {
     match id {
         "ffmpeg" => "ffmpeg kurulu değil. Dönüştürme, GIF, birleştirme, sessizlik, önizleme ve altyazı işlemleri bu aracı kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "ffprobe" => "ffprobe kurulu değil. Medya süresi ve biçim bilgisi bu araçla okunur; ffmpeg ile aynı pakette gelir. Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "libreoffice" => "LibreOffice (belge motoru) kurulu değil. Word/Excel/PowerPoint → PDF ve ofis biçimleri arası dönüşümler bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
+        "pdfium" => "PDF motoru (PDFium) kurulu değil. PDF metni, sayfa görüntüleri ve PDF → Word/Excel/PowerPoint dönüşümleri bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.".to_string(),
         "yt-dlp" => "yt-dlp kurulu değil. İndirme Yöneticisi bu araç olmadan çalışamaz; uygulamayla birlikte gelir, eksikse kurulumu onarman gerekir.".to_string(),
         // 7c-3: whisper artık Bileşenler'den kurulabilir; mesaj tek yöneticiyi
         // gösterir (Ayarlar → Konuşma bölümü de çalışmaya devam eder).
@@ -1363,20 +1490,53 @@ pub fn install_recipe(app: &AppHandle, id: &str) -> Result<InstallRecipe, String
 /// demektir: sessizce geçmek yerine hata döneriz (sessiz yutma yasak).
 #[allow(dead_code)] // kurulum-sonrası kanca: yalnız whisper motoru kullanıyor
 pub fn apply_post_install(dir: &Path, hook: Option<PostInstall>) -> Result<(), String> {
-    let Some(PostInstall::Rename { from, to }) = hook else {
+    let Some(hook) = hook else {
         return Ok(());
     };
-    let source = dir.join(from);
-    if !source.is_file() {
-        return Err(format!("Kurulum tamamlanmadı: {from} bulunamadı."));
+    match hook {
+        PostInstall::Rename { from, to } => {
+            let source = dir.join(from);
+            if !source.is_file() {
+                return Err(format!("Kurulum tamamlanmadı: {from} bulunamadı."));
+            }
+            let target = dir.join(to);
+            let _ = std::fs::remove_file(&target);
+            std::fs::rename(&source, &target)
+                .map_err(|e| format!("Kurulum tamamlanamadı ({to}): {e}"))?;
+            if !target.is_file() {
+                return Err(format!("Kurulum tamamlanamadı: {to} oluşmadı."));
+            }
+            Ok(())
+        }
+        PostInstall::RewriteLine { file, prefix, line } => {
+            let path = dir.join(file);
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Kurulum dosyası okunamadı ({file}): {e}"))?;
+            let mut replaced = false;
+            let mut out = String::with_capacity(text.len() + line.len());
+            for existing in text.lines() {
+                if existing.starts_with(prefix) {
+                    out.push_str(line);
+                    replaced = true;
+                } else {
+                    out.push_str(existing);
+                }
+                out.push('\n');
+            }
+            if !replaced {
+                out.push_str(line);
+                out.push('\n');
+            }
+            std::fs::write(&path, out)
+                .map_err(|e| format!("Kurulum dosyası yazılamadı ({file}): {e}"))?;
+            let check = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Kurulum dosyası doğrulanamadı ({file}): {e}"))?;
+            if !check.lines().any(|l| l == line) {
+                return Err(format!("Kurulum yaması uygulanamadı ({file})."));
+            }
+            Ok(())
+        }
     }
-    let target = dir.join(to);
-    let _ = std::fs::remove_file(&target);
-    std::fs::rename(&source, &target).map_err(|e| format!("Kurulum tamamlanamadı ({to}): {e}"))?;
-    if !target.is_file() {
-        return Err(format!("Kurulum tamamlanamadı: {to} oluşmadı."));
-    }
-    Ok(())
 }
 
 /// Çalıştırılabilir bir dosyaya `-version` benzeri bir argüman verip ilk satırı okur.
@@ -1422,7 +1582,10 @@ fn build_status(
         installed: resolved.is_some(),
         // Asset'te KASITLI false: veri dosyası çalıştırılmaz ve sürümü okunmaz.
         // Tür kararı arayüzde `kind` ile verilir (bkz. `is_usable`).
-        runnable: spec.kind == Kind::Binary && version.is_some(),
+        // Probü olmayan bir binary (LibreOffice) kuruluysa çalıştırılabilir sayılır;
+        // gerçek hata dönüşüm komutunda görünür.
+        runnable: spec.kind == Kind::Binary
+            && (version.is_some() || (spec.version_arg.is_empty() && resolved.is_some())),
         path: resolved.map(|(path, _)| path.to_string_lossy().to_string()),
         source: resolved.map(|(_, source)| source),
         version,
@@ -1447,7 +1610,9 @@ pub async fn components_status(app: AppHandle) -> Result<Vec<ComponentStatus>, S
         let resolved = resolve(&app, spec);
         // Sürüm YALNIZCA çalıştırılabilirlerde sorulur: veri dosyası asla başlatılmaz.
         let version = match (&resolved, spec.kind) {
-            (Some((path, _)), Kind::Binary) => probe_version(&app, path, spec.version_arg).await,
+            (Some((path, _)), Kind::Binary) if !spec.version_arg.is_empty() => {
+                probe_version(&app, path, spec.version_arg).await
+            }
             _ => None,
         };
         out.push(build_status(
@@ -1474,6 +1639,8 @@ mod tests {
         "ffmpeg",
         "ffprobe",
         "yt-dlp",
+        "libreoffice",
+        "pdfium",
         "whisper",
         "whisper-cuda",
         "whisper-model-tiny",
@@ -1496,6 +1663,8 @@ mod tests {
 
     /// 7c-3'te kayda eklenen, Bileşenler ekranından indirilebilen id'ler.
     const NEW_IDS: &[&str] = &[
+        "libreoffice",
+        "pdfium",
         "whisper-model-tiny",
         "whisper-model-base",
         "whisper-model-small",
@@ -1513,6 +1682,7 @@ mod tests {
 
     /// Yeni id'lerden VERİ dosyası olanlar (`Asset`): çalıştırılamaz, sürümü yok.
     const NEW_ASSET_IDS: &[&str] = &[
+        "pdfium",
         "whisper-model-tiny",
         "whisper-model-base",
         "whisper-model-small",
@@ -1749,11 +1919,19 @@ mod tests {
         // Kancanın hedefi, spec'in beklediği dosya adıyla AYNI olmalı (kayma olmasın).
         match whisper.post_install {
             Some(PostInstall::Rename { to, .. }) => assert_eq!(to, whisper.downloaded_file),
-            None => panic!("whisper kancası olmalı"),
+            other => panic!("whisper kancası olmalı: {other:?}"),
         }
-        // Kanca yalnızca whisper motorlarında (CPU + CUDA) vardır; diğerlerinde yoktur.
+        // Kanca yalnızca whisper motorlarında (CPU + CUDA) ve LibreOffice'te
+        // (bootstrap profili) vardır; diğerlerinde yoktur.
         for spec in SPECS {
             if spec.id == "whisper" || spec.id == "whisper-cuda" {
+                continue;
+            }
+            if spec.id == "libreoffice" {
+                assert!(
+                    matches!(spec.post_install, Some(PostInstall::RewriteLine { .. })),
+                    "libreoffice bootstrap yaması taşımalı"
+                );
                 continue;
             }
             assert_eq!(spec.post_install, None, "{}: beklenmeyen kanca", spec.id);
@@ -1769,8 +1947,34 @@ mod tests {
         );
         match cuda.post_install {
             Some(PostInstall::Rename { to, .. }) => assert_eq!(to, cuda.downloaded_file),
-            None => panic!("whisper-cuda kancası olmalı"),
+            other => panic!("whisper-cuda kancası olmalı: {other:?}"),
         }
+    }
+
+    #[test]
+    fn rewrite_line_patches_bootstrap_profile() {
+        let dir = std::env::temp_dir().join(format!("jv-bootstrap-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("program")).expect("program klasörü");
+        let ini = dir.join("program").join("bootstrap.ini");
+        std::fs::write(
+            &ini,
+            "[Bootstrap]\nProductKey=LibreOffice 26.8\nUserInstallation=$SYSUSERCONFIG/LibreOffice/4\n",
+        )
+        .expect("bootstrap");
+        apply_post_install(
+            &dir,
+            Some(PostInstall::RewriteLine {
+                file: "program/bootstrap.ini",
+                prefix: "UserInstallation=",
+                line: "UserInstallation=$ORIGIN/../lo-profile",
+            }),
+        )
+        .expect("yama uygulanmalı");
+        let text = std::fs::read_to_string(&ini).expect("okunmalı");
+        assert!(text.contains("UserInstallation=$ORIGIN/../lo-profile"));
+        assert!(!text.contains("$SYSUSERCONFIG"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1981,6 +2185,7 @@ mod tests {
                 );
             }
             PayloadRule::Raw { .. } => panic!("whisper motoru zip olmalı"),
+            _ => panic!("whisper motoru zip olmalı"),
         }
     }
 
@@ -2004,6 +2209,7 @@ mod tests {
                 );
             }
             PayloadRule::Raw { .. } => panic!("llama-engine zip olmalı"),
+            _ => panic!("llama-engine zip olmalı"),
         }
         // OPSİYONEL CUDA motoru ayrı bir spec'tir: CUDA backend'ini taşır, Vulkan'ı taşımaz.
         let cuda = spec_for("llama-engine-cuda").expect("llama-engine-cuda kayıtlı olmalı");
@@ -2015,6 +2221,7 @@ mod tests {
                 assert!(!wanted.contains(&"ggml-vulkan.dll"));
             }
             PayloadRule::Raw { .. } => panic!("llama-engine-cuda zip olmalı"),
+            _ => panic!("llama-engine-cuda zip olmalı"),
         }
         let cudart = spec_for("llama-cudart").expect("llama-cudart kayıtlı olmalı");
         let cudart_download = cudart.download.as_ref().expect("llama-cudart kaynağı");
@@ -2024,6 +2231,7 @@ mod tests {
                 assert!(wanted.contains(&"cudart64_12.dll"));
             }
             PayloadRule::Raw { .. } => panic!("llama-cudart zip olmalı"),
+            _ => panic!("llama-cudart zip olmalı"),
         }
         // Üç AYRI arşiv: ortak bundle verilmez (varsayılan + CUDA motoru + cudart).
         assert_ne!(engine_download.bundle, cudart_download.bundle);
@@ -2056,6 +2264,7 @@ mod tests {
             match &download.payload {
                 PayloadRule::Raw { file_name } => assert_eq!(*file_name, file, "{id}"),
                 PayloadRule::Zip { .. } => panic!("{id} düz dosya olmalı"),
+                _ => panic!("{id} düz dosya olmalı"),
             }
         }
     }

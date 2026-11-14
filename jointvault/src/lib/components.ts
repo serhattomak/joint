@@ -40,8 +40,8 @@ export interface ComponentStatus {
   downloadable: boolean;
   /** Aynı arşivi paylaşan satırların paket kimliği (ör. `ffmpeg-tools`). */
   bundle: string | null;
-  /** İçerik biçimi: `archive` (zip) ya da `plain`; indirilemeyende null. */
-  framework: 'archive' | 'plain' | null;
+  /** İçerik biçimi: `archive` (zip), `tarball` (tar.gz), `msi` ya da `plain`. */
+  framework: 'archive' | 'tarball' | 'msi' | 'plain' | null;
 }
 
 /*
@@ -219,6 +219,14 @@ const MISSING_COMPONENT_FALLBACKS = new Map<string, string>([
   [
     'ffprobe',
     'ffprobe kurulu değil. Medya süresi ve biçim bilgisi bu araçla okunur; ffmpeg ile aynı pakette gelir. Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'libreoffice',
+    'LibreOffice (belge motoru) kurulu değil. Word/Excel/PowerPoint → PDF ve ofis biçimleri arası dönüşümler bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
+  ],
+  [
+    'pdfium',
+    'PDF motoru (PDFium) kurulu değil. PDF metni, sayfa görüntüleri ve PDF → Word/Excel/PowerPoint dönüşümleri bu motoru kullanır; Ayarlar → Bileşenler bölümünden indirebilirsin.',
   ],
   [
     'yt-dlp',

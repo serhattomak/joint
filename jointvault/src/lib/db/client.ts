@@ -1,5 +1,5 @@
 import Database from '@tauri-apps/plugin-sql';
-import type { Category, Collection, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
+import type { Category, Collection, ConversionJobRow, HybridSearchResult, Item, ItemArticle, ItemChunkRow, Tag } from './types';
 import { base64ToVector, cosineSimilarity, type ItemChunk } from '../chunker';
 import { createRetryCache } from '../retry-cache';
 import { runAtomic } from './atomic';
@@ -1798,4 +1798,73 @@ export async function mergeItems(
   invalidateVectorIndex();
 }
 
+// --- Dönüşüm geçmişi (migration 10) -----------------------------------------
 
+export interface NewConversionJob {
+  id: string;
+  inputPath: string;
+  outputPaths: string[];
+  target: string;
+  sourceKind: string;
+  status: 'done' | 'error' | 'cancelled';
+  error?: string | null;
+  sizeBytes?: number | null;
+}
+
+type ConversionJobDbRow = Omit<ConversionJobRow, 'output_paths'> & {
+  output_paths_json: string;
+};
+
+function parseOutputPaths(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function recordConversionJob(job: NewConversionJob): Promise<void> {
+  const db = await getDb();
+  const timestamp = now();
+  await db.execute(
+    `INSERT OR REPLACE INTO conversion_jobs
+      (id, input_path, output_paths_json, target, source_kind, status, error_message, size_bytes, created_at, finished_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      job.id,
+      job.inputPath,
+      JSON.stringify(job.outputPaths),
+      job.target,
+      job.sourceKind,
+      job.status,
+      job.error ?? null,
+      job.sizeBytes ?? null,
+      timestamp,
+      timestamp,
+    ],
+  );
+}
+
+export async function listConversionHistory(limit = 50): Promise<ConversionJobRow[]> {
+  const db = await getDb();
+  const rows = await db.select<ConversionJobDbRow[]>(
+    `SELECT id, input_path, output_paths_json, target, source_kind, status,
+            error_message, size_bytes, created_at, finished_at
+       FROM conversion_jobs
+      ORDER BY created_at DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(200, Math.floor(limit)))],
+  );
+  return rows.map((row) => ({
+    ...row,
+    output_paths: parseOutputPaths(row.output_paths_json),
+  }));
+}
+
+export async function clearConversionHistory(): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM conversion_jobs');
+}

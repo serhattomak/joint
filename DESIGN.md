@@ -603,6 +603,34 @@ der ama sohbet geçmişi okunur kalır.
 yolu (Ayarlar) gösterilir, ya kontrol gizlenir. Aynı iş, AI yokken deterministik fiille görünür —
 ikinci bir "kural tabanlı mod" ekranı açılmaz.
 
+## Dönüşüm Merkezi
+
+Dönüştürücü bir **montaj masasıdır**: solda malzeme, ortada ayar, sağda süren iş. Tam-sayfa
+`PageSurface` (6xl) + üç sekme: **Dönüştür · PDF araçları · Geçmiş**.
+
+- **Üç sütun:** Kaynaklar (`w-[280px]`) · Hedef (esnek) · İşler (`w-[320px]`). `lg` altında tek
+  kolona iner; sıra korunur (malzeme → ayar → iş).
+- **Kaynak satırı:** seçim kutusu · tür ikonu · ad (`text-sm`, truncate) · uzantı/boyut
+  (`text-2xs`, mono) · kaldır. Arşivden gelen satır `arşiv`, harici `harici` damgası taşır.
+  Seçim satırın tamamıdır; ikinci bir "seç" düğmesi yoktur.
+- **Hedef ızgarası:** aile başlıkları (Belge · PDF · Görsel · Ses · Video) altında biçim
+  düğmeleri. Seçili biçim tek damga (systemBlue) taşır; pasif biçim sessiz kenarlıktır.
+  Aynı anda yalnızca bir hedef seçilir.
+- **Seçenekler:** hedefe göre değişir; `SettingRow` + `Select`/`Input`/`Switch`. Yürürlükteki
+  seçenek kapalı panelde de özet satırında görünür (ölçü: kalite · çözünürlük · aralık).
+- **İş satırı (sabit sütun):** durum ikonu · kaynak adı (`flex-1 min-w-0`) · ilerleme
+  (`w-[96px]`) · yüzde (`w-[40px]`, sağa) · iptal (`size-7`). Sağ kenarlar birebir hizalıdır.
+- **Durum sözlüğü:** `kuyrukta · dönüştürülüyor · dönüştürüldü · hata · iptal`. Renk tek
+  başına anlam taşımaz; ikon + sözcük + damga birlikte yazılır. İptal kırmızı değildir.
+- **PDF araçları:** tek `settings-card` içinde araç seçici + o araca ait alanlar + çalıştır.
+  Araç değişince alanlar değişir; sonuç aynı kartın alt satırında listelenir. Modal yok.
+- **Geçmiş:** en son 50 iş, `divide-y` satırlar; solda hedef damgası + kaynak adı, sağda
+  tarih (`data-num`) ve "göster". Boş durum ne yapılacağını öğretir.
+- **Bileşen kapısı:** motor eksikse satır hatası yerine kurulum diyaloğu açılır; kurulunca iş
+  kendiliğinden yeniden denenir. Kurulamayan bileşende dürüst metin gösterilir.
+- **Hareket:** iş satırı girişi `ease-out` + opaklık; ilerleme yalnız genişlikle akar. Azaltılmış
+  harekette geçişler sadeleşir, işlev kaybolmaz.
+
 ## Terimler
 
 Arayüzün sözlüğü Türkçedir ve tekildir; eşanlamlı ikinci bir sözcük kullanılmaz.
@@ -634,7 +662,8 @@ Koordinatlar `jointvault/` köküne göredir.
   (`ItemCardView`, `ItemRowView`, `Stamp`, `DownloadControl`, `ActionButtons`).
 - **Tam-sayfa yüzeyler:** `CollectionsView` · `NotebookView` · `DownloadsView` · `SyncView` · `StatsView` ·
   `ToolboxHub` (+ `MergeTool`/`SilenceTool`/`GifTool`/`SubtitleTool`/`DuplicatesView`) ·
-  `ConverterStudio` · `SettingsView`.
+  `ConversionStudio` (+ `components/conversion/*` — Kaynaklar/Hedef/İşler/PDF araçları/Geçmiş) ·
+  `SettingsView`.
 - **İndirme şeridi:** `src/components/DownloadStrip.tsx` (araç çubuğunun altındaki tek satır;
   iki motorun işlerini toplar, `download-progress` bitişi bildirmediği için bitişi
   `lib/downloads.ts` → `DOWNLOADS_CHANGED_EVENT` taşır).
