@@ -46,7 +46,7 @@ export function PageSurface({
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       <div className={`mx-auto w-full ${WIDTH[width]} px-6 pt-6 pb-12 md:px-8`}>
-        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <div className="flex items-center gap-2.5">
               <span
@@ -60,7 +60,7 @@ export function PageSurface({
             {description && <p className="text-sm text-muted-foreground">{description}</p>}
           </div>
           {actions && (
-            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">{actions}</div>
           )}
         </header>
         {children}

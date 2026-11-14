@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { Clapperboard, FilePlus2, FolderPlus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Clapperboard, Loader2 } from 'lucide-react';
 import { PageSurface } from '@/components/ui/page-surface';
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs';
 import { useNotice } from '@/components/ui/notice';
@@ -21,7 +20,6 @@ import {
   conversionOutputPath,
   defaultOptions,
   familyOfPath,
-  FAMILY_LABEL,
   optionsForTarget,
   requiredComponent,
   type ConversionOptions,
@@ -554,22 +552,28 @@ export function ConversionStudio({ refreshKey, onDone }: ConversionStudioProps) 
     ? conversionOutputPath(selectedSources[0].path, effectiveTarget, outputDir)
     : '';
 
+  // Ctrl/Cmd+Enter: dönüştürme sekmesindeyken birincil eylemi klavyeden çalıştır.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+      if (tab !== 'convert' || running) return;
+      // Açık bir diyalog varken kısayol arka planda iş başlatmaz.
+      if (document.querySelector('[aria-modal="true"], [role="dialog"], [role="alertdialog"]')) {
+        return;
+      }
+      event.preventDefault();
+      startRun();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [tab, running, startRun]);
+
   return (
     <PageSurface
       icon={<Clapperboard />}
       title="Dönüştürücü"
       description="Belge, PDF, görsel, ses ve videoyu yerelde dönüştür; çıktı arşive döner."
       width="6xl"
-      actions={
-        <>
-          <Button variant="outline" size="sm" onClick={() => void addFiles()} disabled={running}>
-            <FilePlus2 /> Dosya ekle
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => void addFolder()} disabled={running}>
-            <FolderPlus /> Klasör ekle
-          </Button>
-        </>
-      }
     >
       <Tabs
         value={tab}
@@ -577,48 +581,49 @@ export function ConversionStudio({ refreshKey, onDone }: ConversionStudioProps) 
         className="gap-3"
       >
         <TabsList>
-          <TabsTab value="convert">Dönüştür</TabsTab>
+          <TabsTab value="convert">
+            {running && <Loader2 className="animate-spin" aria-hidden />}
+            Dönüştür
+            {running && <span className="sr-only">— dönüşüm sürüyor</span>}
+          </TabsTab>
           <TabsTab value="pdf">PDF araçları</TabsTab>
           <TabsTab value="history">Geçmiş</TabsTab>
         </TabsList>
 
         <TabsPanel value="convert">
-          <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
-            <ConversionSources
-              sources={sources}
-              selected={visibleSelected}
-              busy={running}
-              onToggle={toggle}
-              onSelectAll={selectAll}
-              onRemove={remove}
-              onAddFiles={() => void addFiles()}
-              onAddFolder={() => void addFolder()}
-            />
-            <ConversionTarget
-              families={families}
-              target={effectiveTarget}
-              selectedCount={selectedSources.length}
-              options={options}
-              outputPreview={outputPreview}
-              outputDir={outputDir}
-              running={running}
-              overallPercent={overallPercent}
-              onTargetChange={setTarget}
-              onOptionsChange={(patch) =>
-                setOptions((previous) => ({ ...previous, ...patch }))
-              }
-              onPickOutputDir={() => void pickOutputDir()}
-              onClearOutputDir={clearOutputDir}
-              onRun={startRun}
-              onCancel={cancelAll}
-            />
-            <ConversionJobs jobs={jobs} running={running} onCancel={cancelAll} />
+          <div className="studio-bench">
+            <div className="studio-grid">
+              <ConversionSources
+                sources={sources}
+                selected={visibleSelected}
+                busy={running}
+                onToggle={toggle}
+                onSelectAll={selectAll}
+                onRemove={remove}
+                onAddFiles={() => void addFiles()}
+                onAddFolder={() => void addFolder()}
+              />
+              <ConversionTarget
+                families={families}
+                target={effectiveTarget}
+                selectedCount={selectedSources.length}
+                options={options}
+                outputPreview={outputPreview}
+                outputDir={outputDir}
+                running={running}
+                overallPercent={overallPercent}
+                onTargetChange={setTarget}
+                onOptionsChange={(patch) =>
+                  setOptions((previous) => ({ ...previous, ...patch }))
+                }
+                onPickOutputDir={() => void pickOutputDir()}
+                onClearOutputDir={clearOutputDir}
+                onRun={startRun}
+                onCancel={cancelAll}
+              />
+              <ConversionJobs jobs={jobs} running={running} />
+            </div>
           </div>
-          <p className="mt-3 text-2xs text-muted-foreground">
-            {selectedSources.length > 0
-              ? `${FAMILY_LABEL[selectedSources[0].family as Exclude<ConversionSource['family'], 'unknown'>]} seçili · hedef .${effectiveTarget} · ${allowedTargets.length} ortak biçim`
-              : 'Kaynak seçildiğinde hedefler burada görünür.'}
-          </p>
         </TabsPanel>
 
         <TabsPanel value="pdf">

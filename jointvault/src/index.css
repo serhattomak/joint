@@ -484,3 +484,49 @@
     gap: 2px;
   }
 }
+
+/* --- Dönüşüm tezgâhı -------------------------------------------------------
+   Kolon sayısı pencereye değil, yüzeyin gerçek genişliğine bağlıdır: ray
+   açıkken 1280 pencere üç kolonu taşır, 1024'te ikiye, dar pencerede teke iner.
+   Sıra her zaman korunur: malzeme → ayar → iş. */
+.studio-bench {
+  container-type: inline-size;
+}
+
+.studio-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@container (min-width: 44rem) {
+  .studio-grid {
+    grid-template-columns: minmax(14rem, 16rem) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .studio-grid > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (min-width: 58rem) {
+  .studio-grid {
+    grid-template-columns: minmax(15rem, 17rem) minmax(0, 1fr) minmax(16rem, 18rem);
+  }
+
+  .studio-grid > :last-child {
+    grid-column: auto;
+  }
+}
+
+/* PDF tezgâhı: iki bölge (dosyalar · ayarlar) yalnız kart gerçekten genişken
+   yan yana durur; dar pencerede tek kolona iner. */
+.pdf-bench {
+  container-type: inline-size;
+}
+
+@container (min-width: 34rem) {
+  .pdf-bench-grid {
+    grid-template-columns: minmax(0, 1fr) 18rem;
+  }
+}

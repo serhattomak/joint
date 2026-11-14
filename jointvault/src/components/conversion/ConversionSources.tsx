@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import {
+  FilePlus2,
   FileText,
   FileType2,
   Film,
-  FolderOpen,
+  FolderPlus,
   Image as ImageIcon,
   Music,
   Presentation,
@@ -13,8 +14,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import type { ConversionSource } from '@/components/conversion/types';
+import { cn } from 'cn';
 
 const FAMILY_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   document: FileText,
@@ -26,12 +27,20 @@ const FAMILY_ICON: Record<string, React.ComponentType<{ className?: string }>> =
   video: Film,
 };
 
+const ORIGIN_LABEL: Record<ConversionSource['origin'], string> = {
+  vault: 'arşiv',
+  external: 'harici',
+  folder: 'klasör',
+};
+
+const SIZE_NUMBER = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
+
 function formatBytes(size: number | null): string {
-  if (size === null || size <= 0) return 'boyut bilinmiyor';
+  if (size === null) return '—';
   if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (size < 1024 * 1024) return `${SIZE_NUMBER.format(size / 1024)} KB`;
+  if (size < 1024 * 1024 * 1024) return `${SIZE_NUMBER.format(size / (1024 * 1024))} MB`;
+  return `${SIZE_NUMBER.format(size / (1024 * 1024 * 1024))} GB`;
 }
 
 interface ConversionSourcesProps {
@@ -65,6 +74,12 @@ export function ConversionSources({
   }, [sources, query]);
 
   const allSelected = filtered.length > 0 && filtered.every((source) => selected.has(source.id));
+  const selectedSize = useMemo(() => {
+    const picked = sources.filter((source) => selected.has(source.id));
+    const known = picked.filter((source) => source.size !== null);
+    const total = known.reduce((sum, source) => sum + (source.size ?? 0), 0);
+    return { total: known.length > 0 ? total : null, approx: known.length < picked.length };
+  }, [sources, selected]);
 
   return (
     <section className="settings-card flex min-h-0 flex-col">
@@ -72,19 +87,20 @@ export function ConversionSources({
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-medium">
             Kaynaklar
-            <span data-num className="ml-1.5 text-2xs text-muted-foreground">
+            <span data-num className="ml-1.5 font-mono text-2xs text-muted-foreground">
               {sources.length}
             </span>
           </h3>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon-sm"
               aria-label="Dosya ekle"
               title="Dosya ekle"
               onClick={onAddFiles}
+              disabled={busy}
             >
-              <FileText />
+              <FilePlus2 />
             </Button>
             <Button
               variant="ghost"
@@ -92,8 +108,9 @@ export function ConversionSources({
               aria-label="Klasör ekle"
               title="Klasör ekle"
               onClick={onAddFolder}
+              disabled={busy}
             >
-              <FolderOpen />
+              <FolderPlus />
             </Button>
           </div>
         </div>
@@ -103,48 +120,77 @@ export function ConversionSources({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Kaynaklarda ara"
-            className="h-7 pl-7 text-xs"
+            className={cn('h-7 pl-7 text-xs', query && 'pr-7')}
             aria-label="Kaynaklarda ara"
           />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="Aramayı temizle"
+              className="absolute top-1/2 right-0.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-xs text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          )}
         </div>
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => onSelectAll(filtered.map((source) => source.id))}
             disabled={filtered.length === 0 || busy}
-            className="text-micro text-muted-foreground transition-colors hover:text-foreground disabled:opacity-45"
+            className="py-1 text-micro text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground disabled:opacity-45"
           >
-            {allSelected ? 'Seçimi temizle' : 'Görünenleri seç'}
+            {allSelected ? 'Görünenleri temizle' : 'Görünenleri seç'}
           </button>
-          <span data-num className="text-2xs text-muted-foreground">
-            {selected.size} seçili
+          <span className="text-2xs text-muted-foreground">
+            <span data-num>
+              {selected.size}/{sources.length}
+            </span>{' '}
+            seçili
           </span>
         </div>
       </header>
 
       {sources.length === 0 ? (
         <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-          <FileText className="size-7 text-muted-foreground" />
-          <p className="text-title">Dönüştürülecek dosya yok</p>
+          <FilePlus2 className="size-7 text-muted-foreground" />
+          <p className="text-title text-balance">Dönüştürülecek dosya yok</p>
           <p className="max-w-[34ch] text-sm text-muted-foreground">
             Dosya ekle ya da bir klasör seç; arşivindeki yerel dosyalar da burada listelenir.
           </p>
           <Button size="sm" variant="outline" onClick={onAddFiles} className="mt-1">
-            <FileText /> Dosya ekle
+            <FilePlus2 /> Dosya ekle
           </Button>
         </div>
       ) : filtered.length === 0 ? (
-        <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-          Aramayla eşleşen kaynak yok.
-        </p>
+        <div className="flex flex-col items-center gap-1 px-4 py-8 text-center">
+          <p className="text-sm text-muted-foreground">Aramayla eşleşen kaynak yok.</p>
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            className="py-1 text-micro text-primary transition-opacity duration-150 ease-out hover:opacity-80"
+          >
+            Aramayı temizle
+          </button>
+        </div>
       ) : (
-        <ul className="flex max-h-[32rem] flex-col divide-y divide-border/70 overflow-y-auto">
+        <ul
+          className="flex max-h-[30rem] flex-col divide-y divide-border/70 overflow-y-auto"
+          aria-label="Kaynaklar"
+        >
           {filtered.map((source) => {
             const Icon = FAMILY_ICON[source.family] ?? FileText;
             const active = selected.has(source.id);
             return (
-              <li key={source.id} className="group flex items-center gap-1 pr-2">
-                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2">
+              <li
+                key={source.id}
+                className={cn(
+                  'group flex items-center gap-1 pr-1.5 transition-colors duration-150 ease-out',
+                  active && 'bg-primary/[0.045]',
+                )}
+              >
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-3 py-2">
                   <input
                     type="checkbox"
                     checked={active}
@@ -153,23 +199,46 @@ export function ConversionSources({
                     className="size-3.5 shrink-0 accent-primary"
                     aria-label={`${source.name} seç`}
                   />
-                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'flex size-7 shrink-0 items-center justify-center rounded-md border transition-colors duration-150 ease-out [&_svg]:size-3.5',
+                      active
+                        ? 'border-primary/30 bg-primary/10 text-primary'
+                        : 'border-border/70 bg-background text-muted-foreground',
+                    )}
+                  >
+                    <Icon />
+                  </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm">{source.name}</span>
-                    <span className="truncate font-mono text-2xs text-muted-foreground">
-                      {source.ext.toUpperCase() || '—'} · {formatBytes(source.size)}
-                      {source.origin === 'vault' ? ' · arşiv' : ' · harici'}
+                    <span className="truncate text-sm" title={source.path}>
+                      {source.name}
+                    </span>
+                    <span className="flex min-w-0 items-baseline gap-1 truncate text-2xs text-muted-foreground">
+                      <span data-num className="shrink-0 font-mono uppercase">
+                        {source.ext || '—'}
+                      </span>
+                      <span aria-hidden>·</span>
+                      <span
+                        data-num
+                        className="shrink-0"
+                        title={source.size === null ? 'Boyut bilinmiyor' : undefined}
+                      >
+                        {formatBytes(source.size)}
+                      </span>
+                      <span aria-hidden>·</span>
+                      <span className="truncate">{ORIGIN_LABEL[source.origin]}</span>
                     </span>
                   </span>
                 </label>
-                {source.origin === 'vault' && <Badge variant="outline">arşiv</Badge>}
                 <Button
                   variant="ghost"
                   size="icon-xs"
                   aria-label={`${source.name} kaynağını kaldır`}
+                  title="Kaldır"
                   onClick={() => onRemove(source.id)}
                   disabled={busy}
-                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-0"
+                  className="opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-0"
                 >
                   <X />
                 </Button>
@@ -177,6 +246,22 @@ export function ConversionSources({
             );
           })}
         </ul>
+      )}
+
+      {sources.length > 0 && (
+        <footer className="mt-auto flex items-center justify-between gap-2 border-t border-border/70 px-3 py-2">
+          <span className="text-2xs text-muted-foreground">Seçili</span>
+          {selectedSize.total === null || selected.size === 0 ? (
+            <span className="text-2xs text-muted-foreground">
+              {selected.size === 0 ? '—' : 'boyut bilinmiyor'}
+            </span>
+          ) : (
+            <span data-num className="font-mono text-2xs text-muted-foreground">
+              {selectedSize.approx ? '≈ ' : ''}
+              {formatBytes(selectedSize.total)}
+            </span>
+          )}
+        </footer>
       )}
     </section>
   );

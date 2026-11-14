@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Ban,
-  CheckCircle2,
-  FolderOpen,
-  History,
-  Trash2,
-  XCircle,
-} from 'lucide-react';
+import { FolderOpen, History, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Stamp, type StampState } from '@/components/ui/stamp';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { useNotice } from '@/components/ui/notice';
 import { clearConversionHistory, listConversionHistory } from '@/lib/db/client';
@@ -16,28 +10,20 @@ import type { ConversionJobRow, ConversionStatus } from '@/lib/db/types';
 import { basenameOf } from '@/lib/convert-path';
 import { useOpenTarget } from '@/lib/open-target';
 
-const STATUS_MARK: Record<ConversionStatus, React.ComponentType<{ className?: string }>> = {
-  done: CheckCircle2,
-  error: XCircle,
-  cancelled: Ban,
+const STATUS_STAMP: Record<ConversionStatus, StampState> = {
+  done: 'converted',
+  error: 'error',
+  cancelled: 'none',
 };
 
 const STATUS_LABEL: Record<ConversionStatus, string> = {
-  done: 'tamamlandı',
+  done: 'dönüştürüldü',
   error: 'hata',
   cancelled: 'iptal',
 };
 
-const STATUS_CLASS: Record<ConversionStatus, string> = {
-  done: 'text-state-acquired',
-  error: 'text-state-error',
-  cancelled: 'text-muted-foreground',
-};
-
-const DATE_FORMAT = new Intl.DateTimeFormat('tr-TR', {
-  dateStyle: 'short',
-  timeStyle: 'short',
-});
+const DATE_FORMAT = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short' });
+const TIME_FORMAT = new Intl.DateTimeFormat('tr-TR', { timeStyle: 'short' });
 
 interface ConversionHistoryProps {
   refreshKey: number;
@@ -79,7 +65,7 @@ export function ConversionHistory({ refreshKey }: ConversionHistoryProps) {
 
   return (
     <section className="settings-card flex flex-col">
-      <header className="flex items-center justify-between gap-2 border-b border-border/70 p-4">
+      <header className="flex items-center justify-between gap-3 border-b border-border/70 p-4">
         <div>
           <h3 className="text-sm font-medium">Dönüşüm geçmişi</h3>
           <p className="text-micro text-muted-foreground">
@@ -92,7 +78,7 @@ export function ConversionHistory({ refreshKey }: ConversionHistoryProps) {
           onClick={() => setConfirmOpen(true)}
           disabled={rows.length === 0}
         >
-          <Trash2 /> Temizle
+          <Trash2 /> Geçmişi temizle
         </Button>
       </header>
 
@@ -123,23 +109,30 @@ export function ConversionHistory({ refreshKey }: ConversionHistoryProps) {
       ) : (
         <ul className="flex flex-col divide-y divide-border/70">
           {rows.map((row) => {
-            const Mark = STATUS_MARK[row.status];
             const output = row.output_paths[0];
+            const meta =
+              row.status === 'error' && row.error_message
+                ? row.error_message
+                : row.status === 'done' && output
+                  ? `→ ${basenameOf(output)}`
+                  : row.input_path;
             return (
-              <li key={row.id} className="flex items-center gap-2 px-4 py-2.5">
-                <Mark className={`size-4 shrink-0 ${STATUS_CLASS[row.status]}`} aria-hidden />
+              <li key={row.id} className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
+                <Stamp state={STATUS_STAMP[row.status]} className="w-[112px] shrink-0">
+                  {STATUS_LABEL[row.status]}
+                </Stamp>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                     <span className="truncate text-sm">{basenameOf(row.input_path)}</span>
                     <Badge variant="outline">.{row.target}</Badge>
-                    {row.status !== 'done' && (
-                      <span className="shrink-0 text-2xs text-muted-foreground">
-                        {STATUS_LABEL[row.status]}
-                      </span>
-                    )}
                   </span>
-                  <span className="truncate font-mono text-2xs text-muted-foreground">
-                    {row.error_message ?? row.input_path}
+                  <span
+                    className={`truncate text-2xs text-muted-foreground ${
+                      row.status === 'error' ? '' : 'font-mono'
+                    }`}
+                    title={meta}
+                  >
+                    {meta}
                   </span>
                 </div>
                 {output && (
@@ -153,8 +146,12 @@ export function ConversionHistory({ refreshKey }: ConversionHistoryProps) {
                     <FolderOpen />
                   </Button>
                 )}
-                <span data-num className="w-[86px] shrink-0 text-right font-mono text-2xs text-muted-foreground">
-                  {DATE_FORMAT.format(new Date(row.created_at))}
+                <span
+                  data-num
+                  className="flex w-[74px] shrink-0 flex-col items-end font-mono text-2xs text-muted-foreground"
+                >
+                  <span>{DATE_FORMAT.format(new Date(row.created_at))}</span>
+                  <span>{TIME_FORMAT.format(new Date(row.created_at))}</span>
                 </span>
               </li>
             );
