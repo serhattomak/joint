@@ -30,6 +30,7 @@
     "verify:security": "node dev/verify-security.mjs",
     "verify:ai-optin": "node dev/verify-ai-optin.mjs",
     "version:set": "node dev/set-version.mjs",
+    "clean:rust": "cargo sweep --maxsize 10GB src-tauri",
     "package:extension": "node dev/package-extension.mjs",
     "preview": "vite preview"
   },
