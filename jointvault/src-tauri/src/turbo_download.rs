@@ -452,6 +452,54 @@ fn extract_filename_from_url(url_str: &str) -> String {
     "downloaded_file".to_string()
 }
 
+/// Adın sonunda uzantı yoksa Content-Type'tan ekler; uzantı zaten varsa,
+/// tür bilinmiyorsa ya da tip söylemeyen türde (`octet-stream`) adı dokunulmaz
+/// bırakır. `probe` bunu çağırır: uzantısız URL'ler (`cdn.site/foto/abc123`)
+/// tipi belli bir adla insin, Windows dosyayı tanıyabilsin.
+fn ensure_extension(filename: &str, content_type: Option<&str>) -> String {
+    if filename.contains('.') {
+        return filename.to_string();
+    }
+    let Some(ct) = content_type else {
+        return filename.to_string();
+    };
+    // `image/jpeg; charset=binary` → `image/jpeg`
+    let base = ct.split(';').next().unwrap_or("").trim().to_lowercase();
+    let ext = match base.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/avif" => "avif",
+        "image/bmp" => "bmp",
+        "image/tiff" => "tiff",
+        "image/svg+xml" => "svg",
+        "image/x-icon" | "image/vnd.microsoft.icon" => "ico",
+        "application/pdf" => "pdf",
+        "application/zip" => "zip",
+        "application/x-7z-compressed" => "7z",
+        "application/vnd.rar" | "application/x-rar-compressed" => "rar",
+        "application/gzip" => "gz",
+        "application/x-tar" => "tar",
+        "video/mp4" => "mp4",
+        "video/webm" => "webm",
+        "video/x-matroska" => "mkv",
+        "video/quicktime" => "mov",
+        "video/x-msvideo" => "avi",
+        "audio/mpeg" => "mp3",
+        "audio/mp4" => "m4a",
+        "audio/wav" | "audio/x-wav" => "wav",
+        "audio/ogg" => "ogg",
+        "audio/flac" => "flac",
+        "audio/aac" => "aac",
+        "text/html" => "html",
+        "text/plain" => "txt",
+        "application/json" => "json",
+        _ => return filename.to_string(),
+    };
+    format!("{filename}.{ext}")
+}
+
 /// Kalıcı (yeniden denemenin düzeltemeyeceği) hataların makine işareti.
 ///
 /// Neden işaret: arayüz "kendiliğinden yeniden dene" kararını hatanın
@@ -705,15 +753,19 @@ async fn probe(url: &str, headers: &RequestHeaders) -> Result<ProbeResult, Strin
         filename = extract_filename_from_url(url);
     }
 
+    let content_type = hdrs
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    // URL/disposition uzantı vermediyse tipti Content-Type'tan tamamla.
+    let filename = ensure_extension(&filename, content_type.as_deref());
+
     Ok(ProbeResult {
         url: url.to_string(),
         filename,
         file_size,
         accepts_ranges,
-        content_type: hdrs
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string),
+        content_type,
     })
 }
 
@@ -1690,6 +1742,39 @@ mod tests {
         );
         // Ne `filename` ne `filename*` varsa `None`.
         assert_eq!(filename_from_disposition("attachment"), None);
+    }
+
+    /// Kullanıcı raporu: sağ tıklayıp görsel indirince dosya tipi doğru inmiyor.
+    ///
+    /// Kök neden: `probe` dosya adını yalnız Content-Disposition veya URL'nin
+    /// son parçasından türetiyordu; Content-Type'ı topluyor ama uzantı için
+    /// kullanmıyordu. Uzantısız görsel URL'leri (`cdn.site/foto/abc123`,
+    /// uzantısı query'de) uzantısız iniyordu; Windows tipi bilemiyordu.
+    #[test]
+    fn extensionless_filename_gains_extension_from_content_type() {
+        assert_eq!(
+            ensure_extension("abc123", Some("image/webp")),
+            "abc123.webp"
+        );
+        // Karakter kütresi parametresi ve büyük harf tolere edilir.
+        assert_eq!(
+            ensure_extension("f", Some("Image/JPEG; charset=binary")),
+            "f.jpg"
+        );
+        // `downloaded_file` yedeği de tiplenir.
+        assert_eq!(
+            ensure_extension("downloaded_file", Some("image/png")),
+            "downloaded_file.png"
+        );
+        // Uzantı varsa ad korunur (onaylanan kapsam: yalnız eksik tamamlanır).
+        assert_eq!(
+            ensure_extension("photo.png", Some("image/webp")),
+            "photo.png"
+        );
+        // Bilinmeyen veya tip söylemeyen Content-Type'ta ad dokunulmaz kalır.
+        assert_eq!(ensure_extension("x", Some("application/x-nedir")), "x");
+        assert_eq!(ensure_extension("x", Some("application/octet-stream")), "x");
+        assert_eq!(ensure_extension("x", None), "x");
     }
 
     #[test]
